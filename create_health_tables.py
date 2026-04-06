@@ -1,0 +1,276 @@
+import pymysql
+
+conn = pymysql.connect(host='localhost', user='root', password='root', database='school_crm', port=3306)
+cursor = conn.cursor()
+
+tables = [
+    """CREATE TABLE IF NOT EXISTS health_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        blood_group VARCHAR(10),
+        height_cm DECIMAL(5,1),
+        weight_kg DECIMAL(5,1),
+        bmi DECIMAL(5,2),
+        allergies TEXT,
+        chronic_conditions TEXT,
+        vaccinations TEXT,
+        disabilities TEXT,
+        vision_left VARCHAR(20),
+        vision_right VARCHAR(20),
+        dental_status VARCHAR(50),
+        doctor_name VARCHAR(100),
+        doctor_phone VARCHAR(20),
+        insurance_provider VARCHAR(100),
+        insurance_policy_no VARCHAR(50),
+        insurance_expiry DATE,
+        notes TEXT,
+        last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS infirmary_visits (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        visit_date DATE NOT NULL,
+        visit_time TIME,
+        complaint TEXT NOT NULL,
+        diagnosis TEXT,
+        treatment TEXT,
+        medicines_given TEXT,
+        temperature DECIMAL(4,1),
+        blood_pressure VARCHAR(20),
+        referred_to_hospital BOOLEAN DEFAULT FALSE,
+        hospital_name VARCHAR(200),
+        parent_notified BOOLEAN DEFAULT FALSE,
+        notified_at DATETIME,
+        attended_by VARCHAR(100),
+        status VARCHAR(20) DEFAULT 'treated',
+        discharge_time TIME,
+        follow_up_date DATE,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS incident_reports (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        incident_type VARCHAR(50) NOT NULL,
+        severity VARCHAR(20) DEFAULT 'minor',
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        incident_date DATE NOT NULL,
+        incident_time TIME,
+        location VARCHAR(200),
+        persons_involved TEXT,
+        witnesses TEXT,
+        first_aid_given BOOLEAN DEFAULT FALSE,
+        first_aid_details TEXT,
+        parent_notified BOOLEAN DEFAULT FALSE,
+        police_notified BOOLEAN DEFAULT FALSE,
+        insurance_claimed BOOLEAN DEFAULT FALSE,
+        insurance_claim_no VARCHAR(50),
+        insurance_amount DECIMAL(12,2),
+        action_taken TEXT,
+        reported_by INT,
+        status VARCHAR(20) DEFAULT 'reported',
+        resolution_notes TEXT,
+        resolved_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+        FOREIGN KEY (reported_by) REFERENCES users(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS health_checkups (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        checkup_name VARCHAR(200) NOT NULL,
+        checkup_type VARCHAR(50) DEFAULT 'annual',
+        checkup_date DATE NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        height_cm DECIMAL(5,1),
+        weight_kg DECIMAL(5,1),
+        bmi DECIMAL(5,2),
+        vision_left VARCHAR(20),
+        vision_right VARCHAR(20),
+        dental_status VARCHAR(100),
+        hearing_status VARCHAR(100),
+        blood_pressure VARCHAR(20),
+        hemoglobin DECIMAL(4,1),
+        doctor_name VARCHAR(100),
+        findings TEXT,
+        recommendations TEXT,
+        follow_up_required BOOLEAN DEFAULT FALSE,
+        status VARCHAR(20) DEFAULT 'completed',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS visitor_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        visitor_name VARCHAR(100) NOT NULL,
+        visitor_phone VARCHAR(20),
+        visitor_email VARCHAR(120),
+        visitor_photo_url VARCHAR(255),
+        id_type VARCHAR(30),
+        id_number VARCHAR(50),
+        purpose VARCHAR(200) NOT NULL,
+        visiting_person VARCHAR(100),
+        visiting_department VARCHAR(100),
+        entry_time DATETIME NOT NULL,
+        exit_time DATETIME,
+        badge_number VARCHAR(20),
+        vehicle_number VARCHAR(30),
+        items_carried TEXT,
+        otp_sent BOOLEAN DEFAULT FALSE,
+        otp_verified BOOLEAN DEFAULT FALSE,
+        approved_by INT,
+        status VARCHAR(20) DEFAULT 'checked_in',
+        remarks TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+        FOREIGN KEY (approved_by) REFERENCES users(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS safety_drills (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        drill_type VARCHAR(50) NOT NULL,
+        drill_name VARCHAR(200) NOT NULL,
+        scheduled_date DATE NOT NULL,
+        scheduled_time TIME,
+        actual_date DATE,
+        duration_minutes INT,
+        evacuation_time_seconds INT,
+        participants_count INT,
+        assembly_point VARCHAR(200),
+        conducted_by VARCHAR(100),
+        observations TEXT,
+        issues_found TEXT,
+        corrective_actions TEXT,
+        rating INT,
+        status VARCHAR(20) DEFAULT 'scheduled',
+        next_drill_date DATE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS medication_tracking (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        medication_name VARCHAR(200) NOT NULL,
+        dosage VARCHAR(100),
+        frequency VARCHAR(50),
+        timing VARCHAR(100),
+        prescribed_by VARCHAR(100),
+        start_date DATE NOT NULL,
+        end_date DATE,
+        `condition` VARCHAR(200),
+        side_effects TEXT,
+        parent_consent BOOLEAN DEFAULT FALSE,
+        administered_by VARCHAR(100),
+        last_administered DATETIME,
+        status VARCHAR(20) DEFAULT 'active',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS emergency_contacts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        contact_name VARCHAR(100) NOT NULL,
+        relationship VARCHAR(50),
+        phone_primary VARCHAR(20) NOT NULL,
+        phone_secondary VARCHAR(20),
+        email VARCHAR(120),
+        address TEXT,
+        priority INT DEFAULT 1,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS wellbeing_records (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        student_id INT NOT NULL,
+        record_date DATE NOT NULL,
+        mood VARCHAR(30),
+        mood_score INT,
+        sleep_hours DECIMAL(3,1),
+        stress_level VARCHAR(20),
+        notes TEXT,
+        counselor_referral BOOLEAN DEFAULT FALSE,
+        counselor_name VARCHAR(100),
+        intervention_type VARCHAR(50),
+        intervention_notes TEXT,
+        follow_up_date DATE,
+        recorded_by INT,
+        status VARCHAR(20) DEFAULT 'recorded',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES students(id),
+        FOREIGN KEY (recorded_by) REFERENCES users(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS sanitization_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        area_name VARCHAR(200) NOT NULL,
+        area_type VARCHAR(50),
+        scheduled_time TIME,
+        actual_time TIME,
+        cleaned_by VARCHAR(100),
+        verified_by VARCHAR(100),
+        cleaning_date DATE NOT NULL,
+        chemicals_used TEXT,
+        rating INT,
+        photo_url VARCHAR(255),
+        status VARCHAR(20) DEFAULT 'completed',
+        remarks TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )""",
+    """CREATE TABLE IF NOT EXISTS temperature_screens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        school_id INT NOT NULL,
+        person_type VARCHAR(20) DEFAULT 'student',
+        person_id INT NOT NULL,
+        screen_date DATE NOT NULL,
+        screen_time TIME,
+        temperature DECIMAL(4,1) NOT NULL,
+        is_fever BOOLEAN DEFAULT FALSE,
+        symptoms TEXT,
+        action_taken VARCHAR(100),
+        screened_by VARCHAR(100),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE
+    )"""
+]
+
+for sql in tables:
+    tname = sql.split('IF NOT EXISTS ')[1].split(' ')[0]
+    try:
+        cursor.execute(sql)
+        print(f"✓ Created table: {tname}")
+    except Exception as e:
+        print(f"✗ Error creating {tname}: {e}")
+
+# Add health_safety feature flag for school_id=2
+try:
+    cursor.execute("SELECT id FROM school_features WHERE school_id=2 AND feature_name='health_safety'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO school_features (school_id, feature_name, is_enabled) VALUES (2, 'health_safety', 1)")
+        print("✓ Added health_safety feature flag")
+    else:
+        print("✓ health_safety feature already exists")
+except Exception as e:
+    print(f"✗ Feature flag error: {e}")
+
+conn.commit()
+cursor.close()
+conn.close()
+print("\nDone! All 11 health tables created.")

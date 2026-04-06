@@ -1,0 +1,171 @@
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  Box, Typography, TextField, Button, Alert, CircularProgress, InputAdornment, alpha, useTheme
+} from '@mui/material';
+import { School, Email, Lock, Badge } from '@mui/icons-material';
+import useAuthStore from '../../store/authStore';
+
+export default function Login() {
+  const [form, setForm] = useState({ email: '', password: '', school_code: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuthStore();
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const PRIMARY = theme.palette.primary.main;
+  const SECONDARY = theme.palette.secondary.main;
+  const PRIMARY_LIGHT = theme.palette.primary.light;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await login(form);
+      const userRole = res?.data?.user?.role?.name;
+      navigate(userRole === 'parent' ? '/my-children' : '/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box sx={{
+      minHeight: '100vh', display: 'flex',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+    }}>
+      {/* Left - Branding */}
+      <Box sx={{
+        display: { xs: 'none', md: 'flex' },
+        flexDirection: 'column', justifyContent: 'center',
+        flex: 1, px: 8, position: 'relative', overflow: 'hidden',
+      }}>
+        <Box sx={{
+          position: 'absolute', top: '10%', left: '15%',
+          width: 300, height: 300, borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(PRIMARY, 0.15)} 0%, transparent 70%)`,
+        }} />
+        <Box sx={{
+          position: 'absolute', bottom: '15%', right: '10%',
+          width: 200, height: 200, borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(SECONDARY, 0.12)} 0%, transparent 70%)`,
+        }} />
+
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 5 }}>
+            <Box sx={{
+              width: 56, height: 56, borderRadius: 3,
+              background: `linear-gradient(135deg, ${PRIMARY}, ${SECONDARY})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: `0 8px 24px ${alpha(PRIMARY, 0.4)}`,
+            }}>
+              <School sx={{ color: '#fff', fontSize: 30 }} />
+            </Box>
+            <Typography variant="h4" sx={{ color: '#fff', fontWeight: 800 }}>
+              School CRM
+            </Typography>
+          </Box>
+          <Typography variant="h3" sx={{ color: '#fff', fontWeight: 800, lineHeight: 1.2, mb: 2 }}>
+            Manage your school<br />
+            <Box component="span" sx={{
+              background: `linear-gradient(135deg, ${PRIMARY_LIGHT}, ${alpha(SECONDARY, 0.8)})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              with confidence
+            </Box>
+          </Typography>
+          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.5)', maxWidth: 440, lineHeight: 1.7 }}>
+            A complete multi-tenant school management platform for admissions, attendance, fees, academics, and more.
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Right - Login Form */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flex: { xs: 1, md: '0 0 480px' },
+        px: { xs: 2, sm: 4, md: 6 },
+        py: { xs: 4, md: 0 },
+      }}>
+        <Box sx={{
+          width: '100%', maxWidth: 400,
+          bgcolor: '#fff', borderRadius: { xs: 3, md: 4 }, p: { xs: 3, sm: 4, md: 4.5 },
+          boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+        }}>
+          {/* Mobile logo */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1.5, mb: 3, justifyContent: 'center' }}>
+            <Box sx={{
+              width: 42, height: 42, borderRadius: 2.5,
+              background: `linear-gradient(135deg, ${PRIMARY}, ${SECONDARY})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <School sx={{ color: '#fff', fontSize: 24 }} />
+            </Box>
+            <Typography variant="h5" fontWeight={800}>School CRM</Typography>
+          </Box>
+
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
+            Welcome back
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+            Sign in to your school account
+          </Typography>
+
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth label="School Code" margin="normal" required
+              value={form.school_code}
+              onChange={(e) => setForm({ ...form, school_code: e.target.value })}
+              placeholder="e.g., SCHOOL001"
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Badge sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>,
+              }}
+            />
+            <TextField
+              fullWidth label="Email" type="email" margin="normal" required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Email sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>,
+              }}
+            />
+            <TextField
+              fullWidth label="Password" type="password" margin="normal" required
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Lock sx={{ color: 'text.secondary', fontSize: 20 }} /></InputAdornment>,
+              }}
+            />
+            <Button
+              type="submit" fullWidth variant="contained" size="large"
+              disabled={loading}
+              sx={{
+                mt: 3, py: 1.5, fontSize: '0.95rem',
+                background: `linear-gradient(135deg, ${PRIMARY}, ${SECONDARY})`,
+                '&:hover': { background: `linear-gradient(135deg, ${theme.palette.primary.dark}, ${theme.palette.secondary.dark || SECONDARY})` },
+              }}
+            >
+              {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Sign In'}
+            </Button>
+          </form>
+
+          <Box textAlign="center" mt={3}>
+            <Typography variant="body2" color="text.secondary">
+              Don't have a school account?{' '}
+              <Link to="/register" style={{ color: PRIMARY, fontWeight: 600, textDecoration: 'none' }}>
+                Register School
+              </Link>
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
