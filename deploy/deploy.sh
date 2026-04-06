@@ -22,10 +22,7 @@ apt install -y python3 python3-pip python3-venv nginx mysql-server git curl
 
 # 2. Setup MySQL Database
 echo "[2/8] Setting up MySQL database..."
-mysql -e "CREATE DATABASE IF NOT EXISTS school_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -e "CREATE USER IF NOT EXISTS 'school_crm_user'@'localhost' IDENTIFIED BY 'CHANGE_THIS_PASSWORD';"
-mysql -e "GRANT ALL PRIVILEGES ON school_crm.* TO 'school_crm_user'@'localhost';"
-mysql -e "FLUSH PRIVILEGES;"
+mysql -u rohit -prohit0101 -e "CREATE DATABASE IF NOT EXISTS school_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 echo "  -> Database 'school_crm' created"
 
 # 3. Clone Repository
