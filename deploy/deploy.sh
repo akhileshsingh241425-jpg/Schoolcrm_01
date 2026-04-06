@@ -21,9 +21,8 @@ apt update && apt upgrade -y
 apt install -y python3 python3-pip python3-venv nginx mysql-server git curl
 
 # 2. Setup MySQL Database
-echo "[2/8] Setting up MySQL database..."
-mysql -u rohit -prohit0101 -e "CREATE DATABASE IF NOT EXISTS school_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-echo "  -> Database 'school_crm' created"
+echo "[2/8] MySQL database 'rohit0101' already exists, using it..."
+echo "  -> Database ready"
 
 # 3. Clone Repository
 echo "[3/8] Cloning project..."
