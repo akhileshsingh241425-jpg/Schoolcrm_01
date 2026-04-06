@@ -7,6 +7,7 @@
 set -e
 
 DOMAIN="your-domain.com"  # <-- CHANGE THIS
+PORT=4000  # Backend port (5000 is occupied)
 APP_DIR="/var/www/school-crm"
 REPO_URL="https://github.com/akhileshsingh241425-jpg/Schoolcrm_01.git"
 
