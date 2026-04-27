@@ -12,65 +12,88 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    if not data:
-        return error_response('No data provided')
-    
-    email = data.get('email', '').strip()
-    password = data.get('password', '')
-    school_code = data.get('school_code', '').strip()
-    
-    if not email or not password:
-        return error_response('Email and password are required')
-    
-    # Check for super_admin login (may not need school code)
-    user = None
-    school = None
-    
-    # Try to find super_admin by email first
-    super_admin_role = Role.query.filter_by(name='super_admin').first()
-    if super_admin_role:
-        user = User.query.filter_by(email=email, role_id=super_admin_role.id, is_active=True).first()
-    
-    if user and user.check_password(password):
-        # Super admin found - get their school for context (may not exist if schools cleared)
-        school = School.query.get(user.school_id) if user.school_id else None
-    else:
-        # Normal login - requires school code
+    try:
+        data = request.get_json()
+        if not data:
+            return error_response('No data provided')
+        
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        school_code = data.get('school_code', '').strip()
+        
+        if not email or not password:
+            return error_response('Email and password are required')
+        
+        # Check for super_admin login (may not need school code)
         user = None
-        if not school_code:
-            return error_response('Email, password and school code are required')
+        school = None
         
-        school = School.query.filter_by(code=school_code, is_active=True).first()
-        if not school:
-            return error_response('Invalid school code', 401)
+        # Try to find super_admin by email first
+        try:
+            super_admin_role = Role.query.filter_by(name='super_admin').first()
+            if super_admin_role:
+                user = User.query.filter_by(email=email, role_id=super_admin_role.id, is_active=True).first()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            super_admin_role = None
+            user = None
         
-        user = User.query.filter_by(school_id=school.id, email=email, is_active=True).first()
-        if not user or not user.check_password(password):
-            return error_response('Invalid credentials', 401)
-    
-    # Update last login
-    user.last_login = datetime.utcnow()
-    db.session.commit()
-    
-    # Create tokens
-    access_token = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
-    
-    # Get enabled features (school may be None for super_admin with no school)
-    features = school.get_enabled_features() if school else []
-    
-    # Get user's allowed modules based on role
-    allowed_modules = user.get_allowed_modules()
-    
-    return success_response({
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'user': user.to_dict(),
-        'school': school.to_dict() if school else {},
-        'features': features,
-        'allowed_modules': allowed_modules
-    }, 'Login successful')
+        if user and user.check_password(password):
+            # Super admin found - get their school for context (may not exist if schools cleared)
+            try:
+                school = School.query.get(user.school_id) if user.school_id else None
+            except Exception:
+                school = None
+        else:
+            # Normal login - requires school code
+            user = None
+            if not school_code:
+                return error_response('Email, password and school code are required')
+            
+            school = School.query.filter_by(code=school_code, is_active=True).first()
+            if not school:
+                return error_response('Invalid school code', 401)
+            
+            user = User.query.filter_by(school_id=school.id, email=email, is_active=True).first()
+            if not user or not user.check_password(password):
+                return error_response('Invalid credentials', 401)
+        
+        # Update last login
+        try:
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        
+        # Create tokens
+        access_token = create_access_token(identity=str(user.id))
+        refresh_token = create_refresh_token(identity=str(user.id))
+        
+        # Get enabled features (school may be None for super_admin with no school)
+        try:
+            features = school.get_enabled_features() if school else []
+        except Exception:
+            features = []
+        
+        # Get user's allowed modules based on role
+        try:
+            allowed_modules = user.get_allowed_modules()
+        except Exception:
+            allowed_modules = []
+        
+        return success_response({
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': user.to_dict(),
+            'school': school.to_dict() if school else {},
+            'features': features,
+            'allowed_modules': allowed_modules
+        }, 'Login successful')
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Login error: {str(e)}', 500)
 
 
 @auth_bp.route('/register-school', methods=['POST'])
