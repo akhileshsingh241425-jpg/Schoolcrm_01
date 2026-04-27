@@ -306,6 +306,13 @@ def record_payment():
     db.session.add(receipt)
     db.session.commit()
 
+    # Notify parent about payment
+    try:
+        from app.routes.communication import notify_payment_received
+        notify_payment_received(g.school_id, payment)
+    except Exception:
+        pass
+
     return success_response(payment.to_dict(), 'Payment recorded', 201)
 
 

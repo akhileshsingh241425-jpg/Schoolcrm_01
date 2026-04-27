@@ -11,6 +11,7 @@ import {
   Edit, Visibility, CheckCircle, Cancel, TrendingUp, TrendingDown, AttachMoney
 } from '@mui/icons-material';
 import { feesAPI, studentsAPI } from '../../services/api';
+import OnlinePaymentModal from '../../components/OnlinePaymentModal';
 
 const fmt = (v) => Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
@@ -162,6 +163,8 @@ function PaymentsTab({ onSnack }) {
   const [data, setData] = useState({ items: [], total: 0 });
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
+  const [onlinePayOpen, setOnlinePayOpen] = useState(false);
+  const [onlinePayData, setOnlinePayData] = useState({});
   const [form, setForm] = useState({ student_id: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' });
   const load = useCallback(() => feesAPI.listPayments({ page: page + 1, per_page: 20 }).then(r => setData(r.data.data || { items: [], total: 0 })).catch(() => {}), [page]);
   useEffect(() => { load(); }, [load]);
@@ -174,7 +177,10 @@ function PaymentsTab({ onSnack }) {
   const statusColor = { completed: 'success', pending: 'warning', failed: 'error', cancelled: 'default' };
   return (
     <Box>
-      <Box display="flex" justifyContent="flex-end" mb={2}><Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>Record Payment</Button></Box>
+      <Box display="flex" justifyContent="flex-end" mb={2} gap={1}>
+        <Button variant="outlined" color="success" startIcon={<Payment />} onClick={() => setOnlinePayOpen(true)}>Pay Online</Button>
+        <Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>Record Payment</Button>
+      </Box>
       <TableContainer component={Paper}><Table>
         <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Amount</TableCell><TableCell>Late Fee</TableCell><TableCell>Total</TableCell><TableCell>Method</TableCell><TableCell>Status</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
         <TableBody>
@@ -208,6 +214,23 @@ function PaymentsTab({ onSnack }) {
         </Grid></DialogContent>
         <DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" onClick={save}>Record</Button></DialogActions>
       </Dialog>
+      {/* Online Payment Dialog */}
+      <Dialog open={onlinePayOpen && !onlinePayData.student_id} onClose={() => setOnlinePayOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Online Fee Payment</DialogTitle>
+        <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}><TextField fullWidth label="Student ID" type="number" value={onlinePayData.student_id || ''} onChange={e => setOnlinePayData({ ...onlinePayData, student_id: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={6}><TextField fullWidth label="Student Name" value={onlinePayData.student_name || ''} onChange={e => setOnlinePayData({ ...onlinePayData, student_name: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={6}><TextField fullWidth label="Fee Structure ID" type="number" value={onlinePayData.fee_structure_id || ''} onChange={e => setOnlinePayData({ ...onlinePayData, fee_structure_id: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={6}><TextField fullWidth label="Amount (₹)" type="number" value={onlinePayData.amount || ''} onChange={e => setOnlinePayData({ ...onlinePayData, amount: e.target.value })} /></Grid>
+        </Grid></DialogContent>
+        <DialogActions><Button onClick={() => { setOnlinePayOpen(false); setOnlinePayData({}); }}>Cancel</Button><Button variant="contained" color="success" startIcon={<Payment />} onClick={() => { if (onlinePayData.student_id && onlinePayData.fee_structure_id && onlinePayData.amount) { setOnlinePayData({ ...onlinePayData, student_id: Number(onlinePayData.student_id), fee_structure_id: Number(onlinePayData.fee_structure_id), amount: Number(onlinePayData.amount) }); } }}>Proceed to Pay</Button></DialogActions>
+      </Dialog>
+      <OnlinePaymentModal
+        open={onlinePayOpen && !!onlinePayData.student_id && typeof onlinePayData.student_id === 'number'}
+        onClose={() => { setOnlinePayOpen(false); setOnlinePayData({}); }}
+        paymentData={onlinePayData}
+        onSuccess={() => { onSnack('Online payment successful!'); setOnlinePayOpen(false); setOnlinePayData({}); load(); }}
+      />
     </Box>
   );
 }

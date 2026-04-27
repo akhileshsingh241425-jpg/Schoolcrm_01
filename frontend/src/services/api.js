@@ -1051,3 +1051,66 @@ export const importsAPI = {
   // Stats
   getImportStats: () => api.get('/imports/stats'),
 };
+
+// Schools - branding
+export const brandingAPI = {
+  updateBranding: (data) => api.put('/schools/my-school/branding', data),
+  uploadImage: (formData) => api.post('/schools/my-school/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  getPublicSchool: (code) => api.get(`/schools/public/${code}`),
+};
+
+// Super Admin
+export const superAdminAPI = {
+  dashboard: () => api.get('/superadmin/dashboard'),
+  // Schools
+  listSchools: (params) => api.get('/superadmin/schools', { params }),
+  getSchool: (id) => api.get(`/superadmin/schools/${id}`),
+  createSchool: (data) => api.post('/superadmin/schools', data),
+  updateSchool: (id, data) => api.put(`/superadmin/schools/${id}`, data),
+  toggleSchool: (id) => api.post(`/superadmin/schools/${id}/toggle`),
+  updateFeatures: (id, data) => api.put(`/superadmin/schools/${id}/features`, data),
+  // Plans
+  listPlans: () => api.get('/superadmin/plans'),
+  createPlan: (data) => api.post('/superadmin/plans', data),
+  updatePlan: (id, data) => api.put(`/superadmin/plans/${id}`, data),
+  deletePlan: (id) => api.delete(`/superadmin/plans/${id}`),
+  // Subscriptions
+  listSubscriptions: (params) => api.get('/superadmin/subscriptions', { params }),
+  createSubscription: (data) => api.post('/superadmin/subscriptions', data),
+  updateSubscription: (id, data) => api.put(`/superadmin/subscriptions/${id}`, data),
+  // Users
+  listUsers: (params) => api.get('/superadmin/users', { params }),
+  createUser: (data) => api.post('/superadmin/users', data),
+  toggleUser: (id) => api.post(`/superadmin/users/${id}/toggle`),
+  resetUserPassword: (id, password) => api.put(`/superadmin/users/${id}/reset-password`, { password }),
+  // System Settings
+  getSystemSettings: () => api.get('/superadmin/system-settings'),
+  saveSystemSettings: (data) => api.put('/superadmin/system-settings', data),
+  // Audit Logs
+  getAuditLogs: (params) => api.get('/superadmin/audit-logs', { params }),
+  // Public
+  publicPlans: () => api.get('/superadmin/public/plans'),
+};
+
+// Payment Gateway API
+export const paymentAPI = {
+  // Gateway config (public keys only)
+  getGatewayConfig: () => api.get('/payments/gateway-config'),
+
+  // Razorpay
+  createRazorpayOrder: (data) => api.post('/payments/razorpay/create-order', data),
+  verifyRazorpayPayment: (data) => api.post('/payments/razorpay/verify', data),
+
+  // Paytm
+  initiatePaytm: (data) => api.post('/payments/paytm/initiate', data),
+  verifyPaytm: (data) => api.post('/payments/paytm/verify', data),
+
+  // Payment status
+  checkStatus: (paymentId) => api.get(`/payments/status/${paymentId}`),
+
+  // Payment gateway settings (admin)
+  getSettings: () => api.get('/payments/settings'),
+  saveSettings: (data) => api.post('/payments/settings', data),
+};

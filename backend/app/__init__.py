@@ -63,6 +63,8 @@ def create_app(config_name='default'):
     from app.routes.canteen import canteen_bp
     from app.routes.sports import sports_bp
     from app.routes.imports import imports_bp
+    from app.routes.superadmin import superadmin_bp
+    from app.routes.payment_gateway import payment_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(schools_bp, url_prefix='/api/schools')
@@ -85,5 +87,7 @@ def create_app(config_name='default'):
     app.register_blueprint(canteen_bp, url_prefix='/api/canteen')
     app.register_blueprint(sports_bp, url_prefix='/api/sports')
     app.register_blueprint(imports_bp, url_prefix='/api/imports')
+    app.register_blueprint(superadmin_bp, url_prefix='/api/superadmin')
+    app.register_blueprint(payment_bp, url_prefix='/api/payments')
 
     return app

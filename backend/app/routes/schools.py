@@ -1,4 +1,7 @@
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, current_app, send_from_directory
+import os
+import uuid
+from werkzeug.utils import secure_filename
 from app import db
 from app.models.school import School, SchoolFeature, SchoolSetting
 from app.utils.decorators import super_admin_required, school_required, role_required
@@ -113,3 +116,92 @@ def update_my_settings():
     
     db.session.commit()
     return success_response(message='Settings updated')
+
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@schools_bp.route('/my-school/branding', methods=['PUT'])
+@role_required('school_admin')
+def update_branding():
+    """Update school branding (logo, login bg, banner, tagline, theme)"""
+    school = g.school
+    data = request.get_json()
+
+    branding_fields = ['tagline', 'theme_color']
+    for field in branding_fields:
+        if field in data:
+            setattr(school, field, data[field])
+
+    db.session.commit()
+    return success_response(school.to_dict(), 'Branding updated')
+
+
+@schools_bp.route('/my-school/upload-image', methods=['POST'])
+@role_required('school_admin')
+def upload_school_image():
+    """Upload logo, login_bg_image, or banner_image"""
+    school = g.school
+    image_type = request.form.get('type', 'logo')  # logo, login_bg, banner
+
+    if image_type not in ('logo', 'login_bg', 'banner'):
+        return error_response('Invalid image type')
+
+    if 'file' not in request.files:
+        return error_response('No file provided')
+
+    file = request.files['file']
+    if file.filename == '':
+        return error_response('No file selected')
+
+    if not allowed_file(file.filename):
+        return error_response('File type not allowed')
+
+    # Save file
+    upload_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'branding', str(school.id))
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = f'{image_type}_{uuid.uuid4().hex[:8]}.{ext}'
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    url = f'/api/schools/uploads/branding/{school.id}/{filename}'
+
+    if image_type == 'logo':
+        school.logo_url = url
+    elif image_type == 'login_bg':
+        school.login_bg_image = url
+    elif image_type == 'banner':
+        school.banner_image = url
+
+    db.session.commit()
+    return success_response({'url': url, 'type': image_type}, 'Image uploaded')
+
+
+@schools_bp.route('/uploads/branding/<int:school_id>/<filename>')
+def serve_branding_image(school_id, filename):
+    """Serve uploaded branding images (public)"""
+    upload_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'uploads'), 'branding', str(school_id))
+    return send_from_directory(upload_dir, filename)
+
+
+@schools_bp.route('/public/<school_code>', methods=['GET'])
+def get_school_public(school_code):
+    """Public endpoint - get school branding info for login page"""
+    school = School.query.filter_by(code=school_code, is_active=True).first()
+    if not school:
+        return error_response('School not found', 404)
+
+    return success_response({
+        'name': school.name,
+        'code': school.code,
+        'logo_url': school.logo_url,
+        'login_bg_image': school.login_bg_image,
+        'banner_image': school.banner_image,
+        'tagline': school.tagline,
+        'theme_color': school.theme_color,
+    })

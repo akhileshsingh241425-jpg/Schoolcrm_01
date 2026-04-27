@@ -15,6 +15,9 @@ class School(db.Model):
     state = db.Column(db.String(100))
     pincode = db.Column(db.String(10))
     logo_url = db.Column(db.String(500))
+    login_bg_image = db.Column(db.String(500))
+    banner_image = db.Column(db.String(500))
+    tagline = db.Column(db.String(255))
     website = db.Column(db.String(255))
     theme_color = db.Column(db.String(7), default='#1976d2')
     subdomain = db.Column(db.String(100), unique=True)
@@ -25,6 +28,14 @@ class School(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     max_students = db.Column(db.Integer, default=500)
     max_staff = db.Column(db.Integer, default=50)
+    country = db.Column(db.String(100), default='India')
+    principal_name = db.Column(db.String(255))
+    principal_email = db.Column(db.String(255))
+    principal_phone = db.Column(db.String(20))
+    board = db.Column(db.String(100))
+    school_type = db.Column(db.String(50))
+    established_year = db.Column(db.Integer)
+    registration_number = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -45,6 +56,9 @@ class School(db.Model):
             'state': self.state,
             'pincode': self.pincode,
             'logo_url': self.logo_url,
+            'login_bg_image': self.login_bg_image,
+            'banner_image': self.banner_image,
+            'tagline': self.tagline,
             'website': self.website,
             'theme_color': self.theme_color,
             'subdomain': self.subdomain,

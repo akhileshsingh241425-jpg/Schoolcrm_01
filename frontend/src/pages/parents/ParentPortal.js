@@ -11,9 +11,10 @@ import {
   LocalLibrary, DirectionsBus, HealthAndSafety, EmojiEvents,
   CheckCircle, Cancel, AccessTime, ExpandMore, ExpandLess,
   Person, Class as ClassIcon, TrendingUp, Warning,
-  Chat, Send, Phone, Email, Close
+  Chat, Send, Phone, Email, Close, Payment
 } from '@mui/icons-material';
 import { parentAPI, communicationAPI } from '../../services/api';
+import OnlinePaymentModal from '../../components/OnlinePaymentModal';
 import toast from 'react-hot-toast';
 
 // ---- Reusable Components ----
@@ -74,6 +75,8 @@ function ChildDetailView({ child, theme }) {
 
   const att = child.attendance || {};
   const fees = child.fees || {};
+  const [onlinePayOpen, setOnlinePayOpen] = useState(false);
+  const [onlinePayData, setOnlinePayData] = useState({});
   const exams = child.exams || {};
   const upcoming = child.upcoming_exams || [];
   const homework = child.homework || [];
@@ -387,6 +390,7 @@ function ChildDetailView({ child, theme }) {
                         <TableCell sx={{ fontWeight: 700 }}>Amount</TableCell>
                         <TableCell sx={{ fontWeight: 700, display: { xs: 'none', sm: 'table-cell' } }}>Due Date</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Action</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -403,6 +407,28 @@ function ChildDetailView({ child, theme }) {
                               sx={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'capitalize' }}
                             />
                           </TableCell>
+                          <TableCell>
+                            {inst.status !== 'paid' && (
+                              <Button
+                                size="small" variant="contained" color="success"
+                                startIcon={<Payment />}
+                                sx={{ fontSize: '0.7rem', textTransform: 'none', borderRadius: 2 }}
+                                onClick={() => {
+                                  setOnlinePayData({
+                                    student_id: child.student?.id || child.id,
+                                    student_name: `${child.student?.first_name || ''} ${child.student?.last_name || ''}`.trim(),
+                                    fee_structure_id: inst.fee_structure_id || inst.structure_id,
+                                    installment_id: inst.id,
+                                    amount: parseFloat(inst.amount || 0) - parseFloat(inst.paid_amount || 0),
+                                    email: child.student?.email || '',
+                                  });
+                                  setOnlinePayOpen(true);
+                                }}
+                              >
+                                Pay ₹{(parseFloat(inst.amount || 0) - parseFloat(inst.paid_amount || 0)).toLocaleString()}
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -411,6 +437,14 @@ function ChildDetailView({ child, theme }) {
               </CardContent>
             </Card>
           )}
+
+          {/* Online Payment Modal */}
+          <OnlinePaymentModal
+            open={onlinePayOpen}
+            onClose={() => { setOnlinePayOpen(false); setOnlinePayData({}); }}
+            paymentData={onlinePayData}
+            onSuccess={() => { toast.success('Payment successful! Receipt generated.'); setOnlinePayOpen(false); setOnlinePayData({}); }}
+          />
 
           {/* Recent Payments */}
           {(fees.recent_payments || []).length > 0 && (

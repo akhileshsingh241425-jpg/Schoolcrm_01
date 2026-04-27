@@ -57,7 +57,8 @@ export default function Reports() {
       </Tabs>
 
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Box display="flex" gap={2} alignItems="center" flexWrap="wrap"> onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })} InputLabelProps={{ shrink: true }} />
+        <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+          <TextField type="date" size="small" label="From" value={dateRange.start_date} onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })} InputLabelProps={{ shrink: true }} />
           <TextField type="date" size="small" label="To" value={dateRange.end_date} onChange={(e) => setDateRange({ ...dateRange, end_date: e.target.value })} InputLabelProps={{ shrink: true }} />
           <Button variant="contained" onClick={fetchReport}>Generate</Button>
         </Box>

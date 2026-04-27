@@ -98,8 +98,12 @@ class FeePayment(db.Model):
     payment_date = db.Column(db.Date, nullable=False)
     payment_mode = db.Column(db.Enum('cash', 'online', 'cheque', 'bank_transfer', 'upi', 'dd'), nullable=False)
     transaction_id = db.Column(db.String(255))
+    gateway = db.Column(db.String(20))  # razorpay, paytm
     razorpay_payment_id = db.Column(db.String(255))
     razorpay_order_id = db.Column(db.String(255))
+    razorpay_signature = db.Column(db.String(255))
+    paytm_order_id = db.Column(db.String(255))
+    paytm_txn_id = db.Column(db.String(255))
     cheque_no = db.Column(db.String(50))
     cheque_date = db.Column(db.Date)
     bank_name = db.Column(db.String(100))
@@ -127,6 +131,11 @@ class FeePayment(db.Model):
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'payment_mode': self.payment_mode,
             'transaction_id': self.transaction_id,
+            'gateway': self.gateway,
+            'razorpay_payment_id': self.razorpay_payment_id,
+            'razorpay_order_id': self.razorpay_order_id,
+            'paytm_order_id': self.paytm_order_id,
+            'paytm_txn_id': self.paytm_txn_id,
             'cheque_no': self.cheque_no,
             'cheque_status': self.cheque_status,
             'receipt_no': self.receipt_no,

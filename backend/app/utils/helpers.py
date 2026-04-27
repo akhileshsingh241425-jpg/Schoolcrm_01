@@ -55,48 +55,91 @@ def send_email(to, subject, body, html=None):
         return False, str(e)
 
 
-def send_whatsapp(phone, message):
-    """Send WhatsApp message via SensiBOT API.
-    Configure SENSIBOT_API_TOKEN in environment.
-    API: POST https://api.sensibot.io/assistant
+def send_whatsapp(phone, message, template_params=None):
+    """Send WhatsApp message via Tata Telebusiness Omni WhatsApp Cloud API.
+    Uses template-based messaging with 'pack_dispatch' template.
+    template_params: dict with keys header_text, param1, param2, param3, param4
+    If template_params not provided, auto-generates from message text.
     """
-    api_url = current_app.config.get('SENSIBOT_API_URL', 'https://api.sensibot.io')
-    api_token = current_app.config.get('SENSIBOT_API_TOKEN', '')
+    api_url = current_app.config.get('WHATSAPP_API_URL')
+    auth_token = current_app.config.get('WHATSAPP_AUTH_TOKEN', '')
+    template_name = current_app.config.get('WHATSAPP_TEMPLATE', 'pack_dispatch')
 
-    # Clean phone number — ensure country code, digits only
+    # Clean phone number - ensure country code, digits only
     clean_phone = phone.strip().replace(' ', '').replace('-', '').replace('+', '')
     if not clean_phone.startswith('91'):
         clean_phone = '91' + clean_phone.lstrip('0')
 
-    if not api_token:
-        current_app.logger.warning('[WhatsApp] SensiBOT not configured. Set SENSIBOT_API_TOKEN in .env')
-        return False, 'SensiBOT not configured. Set SENSIBOT_API_TOKEN in .env'
+    if not auth_token:
+        current_app.logger.warning('[WhatsApp] Tata Telebusiness not configured. Set WHATSAPP_AUTH_TOKEN')
+        return False, 'WhatsApp API not configured'
+
+    # Build template parameters
+    if not template_params:
+        # Auto-generate from message text - split into parts for pack_dispatch template
+        lines = message.strip().split('\n')
+        header_text = lines[0][:60] if lines else 'School Notification'
+        param1 = lines[1] if len(lines) > 1 else message[:100]
+        param2 = lines[2] if len(lines) > 2 else '-'
+        param3 = lines[3] if len(lines) > 3 else '-'
+        param4 = lines[4] if len(lines) > 4 else '-'
+    else:
+        header_text = template_params.get('header_text', 'School Notification')
+        param1 = template_params.get('param1', '-')
+        param2 = template_params.get('param2', '-')
+        param3 = template_params.get('param3', '-')
+        param4 = template_params.get('param4', '-')
+
+    payload = {
+        "to": clean_phone,
+        "type": "template",
+        "source": "external",
+        "template": {
+            "name": template_name,
+            "language": {"code": "en"},
+            "components": [
+                {
+                    "type": "header",
+                    "parameters": [
+                        {"type": "text", "text": str(header_text)}
+                    ]
+                },
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": str(param1)},
+                        {"type": "text", "text": str(param2)},
+                        {"type": "text", "text": str(param3)},
+                        {"type": "text", "text": str(param4)}
+                    ]
+                }
+            ]
+        }
+    }
 
     try:
         import requests as http_requests
         resp = http_requests.post(
-            f'{api_url}/assistant',
-            json={
-                'phone': clean_phone,
-                'message': message
-            },
+            api_url,
+            json=payload,
             headers={
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {api_token}'
+                'Authorization': f'Bearer {auth_token}'
             },
             timeout=15
         )
 
         if resp.status_code in (200, 201):
             data = resp.json()
-            current_app.logger.info(f'[WhatsApp] SensiBOT response for {clean_phone}: {data.get("status")}')
-            return True, data.get('data')
+            current_app.logger.info(f'[WhatsApp] Tata API success for {clean_phone}: {data}')
+            return True, data
         else:
-            current_app.logger.error(f'[WhatsApp] SensiBOT failed: {resp.status_code} - {resp.text}')
+            current_app.logger.error(f'[WhatsApp] Tata API failed: {resp.status_code} - {resp.text}')
             return False, resp.text
     except Exception as e:
         current_app.logger.error(f'WhatsApp send failed: {str(e)}')
         return False, str(e)
+
 
 
 def make_ivr_call(phone):

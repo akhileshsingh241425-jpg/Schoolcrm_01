@@ -32,3 +32,6 @@ uploads/
 
 # Token files
 token.txt
+
+# BOB workspace memory
+.bob/

@@ -6,6 +6,7 @@ import useAuthStore from './store/authStore';
 
 // Layout
 import DashboardLayout from './components/layout/DashboardLayout';
+import SuperAdminLayout from './components/layout/SuperAdminLayout';
 
 // Pages
 import Login from './pages/auth/Login';
@@ -36,6 +37,16 @@ import Canteen from './pages/canteen/Canteen';
 import Sports from './pages/sports/Sports';
 import DataImport from './pages/settings/DataImport';
 import ParentPortal from './pages/parents/ParentPortal';
+import SchoolBranding from './pages/settings/SchoolBranding';
+import PaymentSettings from './pages/settings/PaymentSettings';
+import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
+import ManageSchools from './pages/superadmin/ManageSchools';
+import ManagePlans from './pages/superadmin/ManagePlans';
+import ManageSubscriptions from './pages/superadmin/ManageSubscriptions';
+import ManageUsers from './pages/superadmin/ManageUsers';
+import SystemSettings from './pages/superadmin/SystemSettings';
+import AuditLogs from './pages/superadmin/AuditLogs';
+import CreateSchool from './pages/superadmin/CreateSchool';
 
 const { useEffect } = React;
 
@@ -63,6 +74,13 @@ function ModuleRoute({ module, feature, children }) {
   const { hasFeature, hasModule } = useAuthStore();
   if (feature && !hasFeature(feature)) return <Navigate to="/dashboard" />;
   if (module && !hasModule(module)) return <Navigate to="/dashboard" />;
+  return children;
+}
+
+function SuperAdminRoute({ children }) {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role?.name !== 'super_admin') return <Navigate to="/dashboard" />;
   return children;
 }
 
@@ -163,6 +181,29 @@ function App() {
 
         {/* Data Import / Migration */}
         <Route path="data-import" element={<ModuleRoute module="data_import"><DataImport /></ModuleRoute>} />
+        
+        {/* School Branding */}
+        <Route path="school-branding" element={<ModuleRoute module="settings"><SchoolBranding /></ModuleRoute>} />
+        
+        {/* Payment Gateway Settings */}
+        <Route path="payment-settings" element={<ModuleRoute module="settings"><PaymentSettings /></ModuleRoute>} />
+        
+      </Route>
+
+      {/* ─── Super Admin Panel (Separate Layout) ─── */}
+      <Route path="/super-admin" element={
+        <SuperAdminRoute>
+          <SuperAdminLayout />
+        </SuperAdminRoute>
+      }>
+        <Route index element={<SuperAdminDashboard />} />
+        <Route path="schools" element={<ManageSchools />} />
+        <Route path="schools/create" element={<CreateSchool />} />
+        <Route path="plans" element={<ManagePlans />} />
+        <Route path="subscriptions" element={<ManageSubscriptions />} />
+        <Route path="users" element={<ManageUsers />} />
+        <Route path="settings" element={<SystemSettings />} />
+        <Route path="audit" element={<AuditLogs />} />
       </Route>
     </Routes>
   );

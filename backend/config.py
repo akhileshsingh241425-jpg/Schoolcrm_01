@@ -38,6 +38,13 @@ class Config:
     RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID')
     RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET')
     
+    # Paytm
+    PAYTM_MERCHANT_ID = os.getenv('PAYTM_MERCHANT_ID')
+    PAYTM_MERCHANT_KEY = os.getenv('PAYTM_MERCHANT_KEY')
+    PAYTM_WEBSITE = os.getenv('PAYTM_WEBSITE', 'DEFAULT')
+    PAYTM_INDUSTRY_TYPE = os.getenv('PAYTM_INDUSTRY_TYPE', 'Education')
+    PAYTM_ENV = os.getenv('PAYTM_ENV', 'staging')  # staging or production
+    
     # Upload
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
     MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', 16 * 1024 * 1024))
@@ -45,9 +52,11 @@ class Config:
     # Redis
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
-    # SensiBOT WhatsApp API
-    SENSIBOT_API_URL = os.getenv('SENSIBOT_API_URL', 'https://api.sensibot.io')
-    SENSIBOT_API_TOKEN = os.getenv('SENSIBOT_API_TOKEN', '')
+    # Tata Telebusiness WhatsApp Cloud API
+    WHATSAPP_API_URL = os.getenv('WHATSAPP_API_URL', 'https://wb.omni.tatatelebusiness.com/whatsapp-cloud/messages')
+    WHATSAPP_AUTH_TOKEN = os.getenv('WHATSAPP_AUTH_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwaG9uZU51bWJlciI6Iis5MTg1MjcyODg5MzgiLCJwaG9uZU51bWJlcklkIjoiNDgwNTg4MDkxNzk5NDkwIiwiaWF0IjoxNzI4NTU3MDQ3fQ.jOY6HSv88KZja3dsml3EaUQWrepRDhezsSMZ5IfcUZo')
+    WHATSAPP_PHONE = os.getenv('WHATSAPP_PHONE', '+918527288938')
+    WHATSAPP_TEMPLATE = os.getenv('WHATSAPP_TEMPLATE', 'pack_dispatch')
 
     # IVR Solutions Click-to-Call API
     IVR_API_URL = os.getenv('IVR_API_URL', 'https://api.ivrsolutions.in/api/c2c_get')
