@@ -5,13 +5,30 @@ Uses Flask-SQLAlchemy's db.create_all() to ensure every model-defined table exis
 Run on production server:
   cd /var/www/school-crm
   git pull
-  python3 migrate_create_all_tables.py
+  /var/www/school-crm/backend/venv/bin/python3 migrate_create_all_tables.py
+  
+  OR simply:
+  backend/venv/bin/python3 migrate_create_all_tables.py
 """
 import sys
 import os
 
+# Auto-detect and use virtual environment if running with system Python
+script_dir = os.path.dirname(os.path.abspath(__file__))
+venv_python = os.path.join(script_dir, 'backend', 'venv', 'bin', 'python3')
+
+if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    # Not running inside a virtualenv - re-launch with venv Python
+    if os.path.exists(venv_python):
+        print(f"Re-launching with virtualenv Python: {venv_python}")
+        os.execv(venv_python, [venv_python] + sys.argv)
+    else:
+        print("WARNING: Virtual environment not found at backend/venv/")
+        print("If Flask is not installed, this will fail.")
+        print("Try running with: backend/venv/bin/python3 migrate_create_all_tables.py")
+
 # Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+sys.path.insert(0, os.path.join(script_dir, 'backend'))
 
 def main():
     # Load environment variables
