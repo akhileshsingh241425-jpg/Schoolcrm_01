@@ -16,27 +16,55 @@ superadmin_bp = Blueprint('superadmin', __name__)
 @superadmin_bp.route('/dashboard', methods=['GET'])
 @super_admin_required
 def dashboard():
-    total_schools = School.query.count()
-    active_schools = School.query.filter_by(is_active=True).count()
-    total_students = db.session.execute(
-        db.text("SELECT COUNT(*) FROM students")
-    ).scalar() or 0
-    total_staff = db.session.execute(
-        db.text("SELECT COUNT(*) FROM staff")
-    ).scalar() or 0
-    total_revenue = db.session.query(
-        db.func.sum(SchoolSubscription.amount)
-    ).filter_by(payment_status='paid').scalar() or 0
+    try:
+        total_schools = School.query.count()
+    except Exception:
+        total_schools = 0
+
+    try:
+        active_schools = School.query.filter_by(is_active=True).count()
+    except Exception:
+        active_schools = 0
+
+    try:
+        total_students = db.session.execute(
+            db.text("SELECT COUNT(*) FROM students")
+        ).scalar() or 0
+    except Exception:
+        total_students = 0
+
+    try:
+        total_staff = db.session.execute(
+            db.text("SELECT COUNT(*) FROM staff")
+        ).scalar() or 0
+    except Exception:
+        total_staff = 0
+
+    try:
+        total_revenue = db.session.query(
+            db.func.sum(SchoolSubscription.amount)
+        ).filter_by(payment_status='paid').scalar() or 0
+    except Exception:
+        db.session.rollback()
+        total_revenue = 0
 
     # Recent subscriptions
-    recent_subs = SchoolSubscription.query.order_by(
-        SchoolSubscription.created_at.desc()
-    ).limit(10).all()
+    try:
+        recent_subs = SchoolSubscription.query.order_by(
+            SchoolSubscription.created_at.desc()
+        ).limit(10).all()
+    except Exception:
+        db.session.rollback()
+        recent_subs = []
 
     # Plan-wise breakdown
-    plan_breakdown = db.session.query(
-        School.plan, db.func.count(School.id)
-    ).group_by(School.plan).all()
+    try:
+        plan_breakdown = db.session.query(
+            School.plan, db.func.count(School.id)
+        ).group_by(School.plan).all()
+    except Exception:
+        db.session.rollback()
+        plan_breakdown = []
 
     return success_response({
         'total_schools': total_schools,
@@ -45,7 +73,7 @@ def dashboard():
         'total_students': total_students,
         'total_staff': total_staff,
         'total_revenue': float(total_revenue),
-        'plan_breakdown': {p: c for p, c in plan_breakdown},
+        'plan_breakdown': {p: c for p, c in plan_breakdown} if plan_breakdown else {},
         'recent_subscriptions': [s.to_dict() for s in recent_subs],
     })
 
