@@ -258,10 +258,45 @@ def main():
                                 break
                         if col_obj:
                             try:
-                                alter_sql = f"ALTER TABLE `{table_name}` ADD COLUMN `{col_name}` {col_obj.type}"
+                                # Get the MySQL column type string
+                                col_type = str(col_obj.type).upper()
+                                # Handle common SQLAlchemy -> MySQL type mappings
+                                type_map = {
+                                    'VARCHAR': 'VARCHAR',
+                                    'STRING': 'VARCHAR',
+                                    'INTEGER': 'INT',
+                                    'BIGINT': 'BIGINT',
+                                    'NUMERIC': 'DECIMAL',
+                                    'DECIMAL': 'DECIMAL',
+                                    'BOOLEAN': 'TINYINT(1)',
+                                    'DATETIME': 'DATETIME',
+                                    'DATE': 'DATE',
+                                    'TEXT': 'TEXT',
+                                    'JSON': 'JSON',
+                                }
+                                # Extract base type name
+                                base_type = col_type.split('(')[0] if '(' in col_type else col_type
+                                mysql_type = type_map.get(base_type, 'VARCHAR(255)')
+                                
+                                # For VARCHAR with length, preserve it
+                                if base_type in ('VARCHAR', 'STRING') and '(' in col_type:
+                                    mysql_type = col_type.replace('STRING', 'VARCHAR')
+                                elif base_type in ('NUMERIC', 'DECIMAL') and '(' in col_type:
+                                    mysql_type = col_type.replace('NUMERIC', 'DECIMAL')
+                                elif base_type == 'INTEGER':
+                                    mysql_type = 'INT'
+                                elif base_type == 'BIGINT':
+                                    mysql_type = 'BIGINT'
+                                
+                                nullable = "" if col_obj.nullable else " NOT NULL"
+                                default_val = ""
+                                if col_obj.default is not None:
+                                    default_val = f" DEFAULT '{col_obj.default.arg}'"
+                                
+                                alter_sql = f"ALTER TABLE `{table_name}` ADD COLUMN `{col_name}` {mysql_type}{nullable}{default_val}"
                                 db.session.execute(db.text(alter_sql))
                                 db.session.commit()
-                                print(f"  ✓ Added column {table_name}.{col_name}")
+                                print(f"  ✓ Added column {table_name}.{col_name} ({mysql_type})")
                             except Exception as ce:
                                 db.session.rollback()
                                 print(f"  ✗ Could not add {table_name}.{col_name}: {ce}")
