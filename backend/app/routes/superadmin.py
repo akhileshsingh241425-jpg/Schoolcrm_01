@@ -316,67 +316,76 @@ def public_plans():
 @superadmin_bp.route('/schools', methods=['POST'])
 @super_admin_required
 def create_school():
-    data = request.get_json()
-    if not data.get('name') or not data.get('email'):
-        return error_response('School name and email are required', 400)
+    try:
+        data = request.get_json()
+        if not data.get('name') or not data.get('email'):
+            return error_response('School name and email are required', 400)
 
-    if School.query.filter_by(email=data['email']).first():
-        return error_response('A school with this email already exists', 409)
+        if School.query.filter_by(email=data['email']).first():
+            return error_response('A school with this email already exists', 409)
 
-    # Generate unique school code
-    base_code = data['name'][:3].upper()
-    code = base_code
-    counter = 1
-    while School.query.filter_by(code=code).first():
-        code = f"{base_code}{counter}"
-        counter += 1
+        # Generate unique school code
+        base_code = data['name'][:3].upper()
+        code = base_code
+        counter = 1
+        while School.query.filter_by(code=code).first():
+            code = f"{base_code}{counter}"
+            counter += 1
 
-    school = School(
-        name=data['name'],
-        code=code,
-        email=data['email'],
-        phone=data.get('phone'),
-        address=data.get('address'),
-        city=data.get('city'),
-        state=data.get('state'),
-        pincode=data.get('pincode'),
-        country=data.get('country', 'India'),
-        website=data.get('website'),
-        principal_name=data.get('principal_name'),
-        principal_email=data.get('principal_email'),
-        principal_phone=data.get('principal_phone'),
-        board=data.get('board', 'CBSE'),
-        school_type=data.get('school_type', 'co-ed'),
-        established_year=data.get('established_year'),
-        registration_number=data.get('registration_number'),
-        is_active=True,
-        plan='basic',
-    )
-    db.session.add(school)
-    db.session.flush()  # get school.id
+        established_year = data.get('established_year')
+        if established_year:
+            try:
+                established_year = int(established_year)
+            except (ValueError, TypeError):
+                established_year = None
 
-    # Enable requested features
-    for feature_name in (data.get('features') or []):
-        db.session.add(SchoolFeature(school_id=school.id, feature_name=feature_name, is_enabled=True))
+        school = School(
+            name=data['name'],
+            code=code,
+            email=data['email'],
+            phone=data.get('phone'),
+            address=data.get('address'),
+            city=data.get('city'),
+            state=data.get('state'),
+            pincode=data.get('pincode'),
+            country=data.get('country', 'India'),
+            website=data.get('website'),
+            principal_name=data.get('principal_name'),
+            principal_email=data.get('principal_email'),
+            principal_phone=data.get('principal_phone'),
+            board=data.get('board', 'CBSE'),
+            school_type=data.get('school_type', 'co-ed'),
+            established_year=established_year,
+            registration_number=data.get('registration_number'),
+            is_active=True,
+            plan='basic',
+        )
+        db.session.add(school)
+        db.session.flush()
 
-    # Optionally create school admin user
-    admin_data = data.get('admin')
-    if admin_data and admin_data.get('email') and admin_data.get('password'):
-        admin_role = Role.query.filter_by(name='school_admin').first()
-        if admin_role:
-            admin_user = User(
-                school_id=school.id,
-                role_id=admin_role.id,
-                email=admin_data['email'],
-                first_name=admin_data.get('first_name', ''),
-                last_name=admin_data.get('last_name', ''),
-                is_active=True,
-            )
-            admin_user.set_password(admin_data['password'])
-            db.session.add(admin_user)
+        for feature_name in (data.get('features') or []):
+            db.session.add(SchoolFeature(school_id=school.id, feature_name=feature_name, is_enabled=True))
 
-    db.session.commit()
-    return success_response(school.to_dict(), 'School created successfully', 201)
+        admin_data = data.get('admin')
+        if admin_data and admin_data.get('email') and admin_data.get('password'):
+            admin_role = Role.query.filter_by(name='school_admin').first()
+            if admin_role:
+                admin_user = User(
+                    school_id=school.id,
+                    role_id=admin_role.id,
+                    email=admin_data['email'],
+                    first_name=admin_data.get('first_name', ''),
+                    last_name=admin_data.get('last_name', ''),
+                    is_active=True,
+                )
+                admin_user.set_password(admin_data['password'])
+                db.session.add(admin_user)
+
+        db.session.commit()
+        return success_response(school.to_dict(), 'School created successfully', 201)
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 500)
 
 
 # ─── Manage Users ────────────────────────────────────────────────────────
