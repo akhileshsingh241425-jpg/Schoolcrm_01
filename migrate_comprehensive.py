@@ -25,6 +25,7 @@ school_cols = [
     ("session", "VARCHAR(50) DEFAULT NULL"),
     ("notes", "TEXT DEFAULT NULL"),
     ("custom_fields", "JSON DEFAULT NULL"),
+    ("theme_color", "VARCHAR(50) DEFAULT NULL"),
 ]
 for col, col_type in school_cols:
     try:
