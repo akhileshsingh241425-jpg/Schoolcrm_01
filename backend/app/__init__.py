@@ -64,8 +64,10 @@ def create_app(config_name='default'):
     from app.routes.sports import sports_bp
     from app.routes.imports import imports_bp
     from app.routes.superadmin import superadmin_bp
+    from app.routes.superadmin_staff import staff_bp as platform_staff_bp
     from app.routes.payment_gateway import payment_bp
 
+    app.register_blueprint(platform_staff_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(schools_bp, url_prefix='/api/schools')
     app.register_blueprint(students_bp, url_prefix='/api/students')

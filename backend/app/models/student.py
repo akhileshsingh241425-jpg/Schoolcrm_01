@@ -247,6 +247,33 @@ class StudentDocument(db.Model):
         }
 
 
+class ParentDocument(db.Model):
+    __tablename__ = 'parent_documents'
+
+    id = db.Column(db.Integer, primary_key=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('parent_details.id', ondelete='CASCADE'), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    document_type = db.Column(db.String(100), nullable=False)
+    document_name = db.Column(db.String(255))
+    file_url = db.Column(db.String(500), nullable=False)
+    verified = db.Column(db.Boolean, default=False)
+    verified_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    parent = db.relationship('ParentDetail', backref=db.backref('documents', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'parent_id': self.parent_id,
+            'document_type': self.document_type,
+            'document_name': self.document_name,
+            'file_url': self.file_url,
+            'verified': self.verified,
+            'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None
+        }
+
+
 # ---- Student Promotion / Auto Promotion Engine ----
 
 class StudentPromotion(db.Model):

@@ -1,15 +1,18 @@
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, current_app
 from app import db
 from app.models.student import (
-    Student, ParentDetail, StudentDocument, Class, Section, AcademicYear,
+    Student, ParentDetail, StudentDocument, ParentDocument, Class, Section, AcademicYear,
     StudentPromotion, StudentAchievement, StudentBehavior, StudentTimeline,
     StudentCounseling, StudentHouse, Alumni, StudentMedical
 )
+from app.models.attendance import StudentAttendance
+from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate
 from sqlalchemy.orm import joinedload
-from datetime import datetime
+from datetime import datetime, date
 import uuid
+import os
 
 students_bp = Blueprint('students', __name__)
 
@@ -64,6 +67,45 @@ def list_students():
     return success_response(paginate(query))
 
 
+@students_bp.route('/search-comprehensive', methods=['GET'])
+@school_required
+def search_students_comprehensive():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return success_response([])
+    like = f'%{q}%'
+    students = Student.query.options(
+        joinedload(Student.current_class),
+        joinedload(Student.current_section),
+        joinedload(Student.house)
+    ).filter(
+        Student.school_id == g.school_id,
+        db.or_(
+            Student.first_name.ilike(like),
+            Student.last_name.ilike(like),
+            Student.admission_no.ilike(like),
+            Student.roll_no.ilike(like)
+        )
+    ).limit(20).all()
+    result = []
+    for s in students:
+        d = s.to_dict()
+        d['parents'] = [p.to_dict() for p in s.parents.all()]
+        d['documents'] = [doc.to_dict() for doc in s.documents.all()]
+        if s.current_section and s.current_section.class_teacher_id:
+            ct = Staff.query.get(s.current_section.class_teacher_id)
+            d['class_teacher'] = ct.name if ct else None
+        else:
+            d['class_teacher'] = None
+        attendance = StudentAttendance.query.filter(
+            StudentAttendance.student_id == s.id,
+            StudentAttendance.date >= date.today().replace(day=1)
+        ).order_by(StudentAttendance.date.desc()).all()
+        d['attendance'] = [a.to_dict() for a in attendance]
+        result.append(d)
+    return success_response(result)
+
+
 @students_bp.route('/<int:student_id>', methods=['GET'])
 @school_required
 def get_student(student_id):
@@ -104,6 +146,17 @@ def get_student_360(student_id):
     data['counseling'] = [c.to_dict() for c in student.counseling.order_by(StudentCounseling.session_date.desc()).limit(10).all()]
     data['promotions'] = [p.to_dict() for p in student.promotions.order_by(StudentPromotion.promoted_at.desc()).all()]
     data['medical'] = [m.to_dict() for m in StudentMedical.query.filter_by(student_id=student_id, school_id=g.school_id).order_by(StudentMedical.record_date.desc()).limit(20).all()]
+    data['class_teacher'] = None
+    if student.current_section and student.current_section.class_teacher_id:
+        ct = Staff.query.get(student.current_section.class_teacher_id)
+        data['class_teacher'] = ct.name if ct else None
+    attendance = StudentAttendance.query.filter(
+        StudentAttendance.student_id == student_id,
+        StudentAttendance.date >= date.today().replace(day=1)
+    ).order_by(StudentAttendance.date.desc()).all()
+    data['attendance'] = [a.to_dict() for a in attendance]
+    for p in data.get('parents', []):
+        p['documents'] = [d.to_dict() for d in ParentDocument.query.filter_by(parent_id=p['id'], school_id=g.school_id).all()]
     if student.sibling_group_id:
         siblings = Student.query.filter(Student.school_id == g.school_id, Student.sibling_group_id == student.sibling_group_id, Student.id != student.id).all()
         data['siblings'] = [{'id': s.id, 'full_name': f"{s.first_name} {s.last_name or ''}", 'class': s.current_class.name if s.current_class else None} for s in siblings]
@@ -312,6 +365,56 @@ def create_section():
     db.session.add(section)
     db.session.commit()
     return success_response(section.to_dict(), 'Section created', 201)
+
+
+@students_bp.route('/classes/<int:class_id>', methods=['PUT'])
+@role_required('school_admin')
+def update_class(class_id):
+    cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
+    data = request.get_json()
+    if 'name' in data:
+        cls.name = data['name']
+    if 'numeric_name' in data:
+        cls.numeric_name = data['numeric_name']
+    if 'description' in data:
+        cls.description = data['description']
+    db.session.commit()
+    return success_response(cls.to_dict(), 'Class updated')
+
+
+@students_bp.route('/classes/<int:class_id>', methods=['DELETE'])
+@role_required('school_admin')
+def delete_class(class_id):
+    cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
+    db.session.delete(cls)
+    db.session.commit()
+    return success_response(message='Class deleted')
+
+
+@students_bp.route('/sections/<int:section_id>', methods=['PUT'])
+@role_required('school_admin')
+def update_section(section_id):
+    section = Section.query.filter_by(id=section_id, school_id=g.school_id).first_or_404()
+    data = request.get_json()
+    if 'name' in data:
+        section.name = data['name']
+    if 'capacity' in data:
+        section.capacity = data['capacity']
+    if 'class_teacher_id' in data:
+        section.class_teacher_id = data['class_teacher_id']
+    if 'co_class_teacher_id' in data:
+        section.co_class_teacher_id = data['co_class_teacher_id']
+    db.session.commit()
+    return success_response(section.to_dict(), 'Section updated')
+
+
+@students_bp.route('/sections/<int:section_id>', methods=['DELETE'])
+@role_required('school_admin')
+def delete_section(section_id):
+    section = Section.query.filter_by(id=section_id, school_id=g.school_id).first_or_404()
+    db.session.delete(section)
+    db.session.commit()
+    return success_response(message='Section deleted')
 
 
 # ===================== ACADEMIC YEARS =====================
@@ -682,6 +785,76 @@ def delete_document(doc_id):
     db.session.delete(doc)
     db.session.commit()
     return success_response(message='Document deleted')
+
+
+@students_bp.route('/<int:student_id>/documents/upload', methods=['POST'])
+@role_required('school_admin', 'teacher')
+def upload_student_document_file(student_id):
+    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    if 'file' not in request.files:
+        return error_response('No file provided')
+    file = request.files['file']
+    if file.filename == '':
+        return error_response('No file selected')
+    doc_type = request.form.get('document_type', 'other')
+    doc_name = request.form.get('document_name', doc_type)
+    ext = os.path.splitext(file.filename)[1]
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads', 'student_docs', str(g.school_id), str(student_id))
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, safe_name)
+    file.save(file_path)
+    file_url = f'/uploads/student_docs/{g.school_id}/{student_id}/{safe_name}'
+    doc = StudentDocument(
+        student_id=student_id, school_id=g.school_id,
+        document_type=doc_type, document_name=doc_name, file_url=file_url
+    )
+    db.session.add(doc)
+    tl = StudentTimeline(
+        school_id=g.school_id, student_id=student_id,
+        event_type='document', title=f"Document: {doc_type}",
+        event_date=datetime.utcnow().date(), created_by=g.user_id
+    )
+    db.session.add(tl)
+    db.session.commit()
+    return success_response(doc.to_dict(), 'Document uploaded', 201)
+
+
+@students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents', methods=['GET'])
+@school_required
+def list_parent_documents(student_id, parent_id):
+    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
+    docs = ParentDocument.query.filter_by(parent_id=parent_id, school_id=g.school_id).all()
+    return success_response([d.to_dict() for d in docs])
+
+
+@students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents/upload', methods=['POST'])
+@role_required('school_admin', 'teacher')
+def upload_parent_document_file(student_id, parent_id):
+    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
+    if 'file' not in request.files:
+        return error_response('No file provided')
+    file = request.files['file']
+    if file.filename == '':
+        return error_response('No file selected')
+    doc_type = request.form.get('document_type', 'other')
+    doc_name = request.form.get('document_name', doc_type)
+    ext = os.path.splitext(file.filename)[1]
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    upload_dir = os.path.join(current_app.root_path, '..', 'uploads', 'parent_docs', str(g.school_id), str(parent_id))
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, safe_name)
+    file.save(file_path)
+    file_url = f'/uploads/parent_docs/{g.school_id}/{parent_id}/{safe_name}'
+    doc = ParentDocument(
+        parent_id=parent_id, school_id=g.school_id,
+        document_type=doc_type, document_name=doc_name, file_url=file_url
+    )
+    db.session.add(doc)
+    db.session.commit()
+    return success_response(doc.to_dict(), 'Document uploaded', 201)
 
 
 # ===================== HOUSES =====================

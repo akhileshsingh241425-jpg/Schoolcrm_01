@@ -72,6 +72,7 @@ export default function StudentDetail() {
               <Chip label={student.status || 'active'} color={statusColors[student.status] || 'default'} size="small" />
               {student.current_class && <Chip label={`Class: ${student.current_class.name}`} variant="outlined" size="small" />}
               {student.current_section && <Chip label={`Section: ${student.current_section.name}`} variant="outlined" size="small" />}
+              {student.class_teacher && <Chip label={`Class Teacher: ${student.class_teacher}`} variant="outlined" size="small" color="primary" />}
               {student.house && <Chip label={`House: ${student.house.name}`} size="small" sx={{ bgcolor: student.house.color, color: 'white' }} />}
               {student.roll_no && <Chip label={`Roll: ${student.roll_no}`} variant="outlined" size="small" />}
             </Box>
@@ -124,6 +125,25 @@ export default function StudentDetail() {
               </Grid>
             ))}
           </Grid>
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" gutterBottom>Attendance (This Month)</Typography>
+          {student.attendance?.length > 0 ? (
+            <Box display="flex" gap={0.5} flexWrap="wrap" mb={1}>
+              {(() => {
+                const pres = student.attendance.filter(a => a.status === 'present').length;
+                const abs = student.attendance.filter(a => a.status === 'absent').length;
+                const leave = student.attendance.filter(a => a.status === 'leave').length;
+                return (
+                  <>
+                    <Chip label={`Present: ${pres}`} color="success" size="small" />
+                    <Chip label={`Absent: ${abs}`} color="error" size="small" />
+                    <Chip label={`Leave: ${leave}`} color="warning" size="small" />
+                  </>
+                );
+              })()}
+            </Box>
+          ) : <Alert severity="info" sx={{ mb: 1 }}>No attendance records this month</Alert>}
 
           <Divider sx={{ my: 2 }} />
           <Typography variant="h6" gutterBottom>Address</Typography>
@@ -249,7 +269,7 @@ export default function StudentDetail() {
       )}
 
       {/* Tab 7: Documents */}
-      {tab === 7 && <DocumentsTab studentId={id} documents={student.documents} onRefresh={fetchStudent} />}
+      {tab === 7 && <DocumentsTab studentId={id} documents={student.documents} parents={student.parents} onRefresh={fetchStudent} />}
 
       {/* Tab 8: Promotions */}
       {tab === 8 && (
@@ -592,17 +612,38 @@ function MedicalTab({ studentId, records, onRefresh }) {
   );
 }
 
-function DocumentsTab({ studentId, documents, onRefresh }) {
+function DocumentsTab({ studentId, documents, onRefresh, parents }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ document_type: '', document_name: '', file_url: '' });
+  const [parentOpen, setParentOpen] = useState(null);
+  const [form, setForm] = useState({ document_type: '', document_name: '', file: null });
+  const [parentForm, setParentForm] = useState({ document_type: '', document_name: '', file: null });
 
   const handleAdd = async () => {
-    if (!form.document_type || !form.file_url) { toast.error('Type and URL required'); return; }
+    if (!form.document_type || !form.file) { toast.error('Type and file required'); return; }
     try {
-      await studentsAPI.uploadDocument(studentId, form);
+      const fd = new FormData();
+      fd.append('file', form.file);
+      fd.append('document_type', form.document_type);
+      fd.append('document_name', form.document_name || form.document_type);
+      await studentsAPI.uploadStudentDocument(studentId, fd);
       toast.success('Document uploaded');
       setOpen(false);
-      setForm({ document_type: '', document_name: '', file_url: '' });
+      setForm({ document_type: '', document_name: '', file: null });
+      onRefresh();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+
+  const handleParentAdd = async (parentId) => {
+    if (!parentForm.document_type || !parentForm.file) { toast.error('Type and file required'); return; }
+    try {
+      const fd = new FormData();
+      fd.append('file', parentForm.file);
+      fd.append('document_type', parentForm.document_type);
+      fd.append('document_name', parentForm.document_name || parentForm.document_type);
+      await studentsAPI.uploadParentDocument(studentId, parentId, fd);
+      toast.success('Parent document uploaded');
+      setParentOpen(null);
+      setParentForm({ document_type: '', document_name: '', file: null });
       onRefresh();
     } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
   };
@@ -620,9 +661,10 @@ function DocumentsTab({ studentId, documents, onRefresh }) {
 
   return (
     <Paper sx={{ p: 3 }}>
+      {/* Student Documents */}
       <Box display="flex" justifyContent="space-between" mb={2}>
-        <Typography variant="h6">Documents</Typography>
-        <Button startIcon={<Add />} variant="contained" onClick={() => setOpen(true)}>Add Document</Button>
+        <Typography variant="h6">Student Documents</Typography>
+        <Button startIcon={<Add />} variant="contained" onClick={() => setOpen(true)}>Upload</Button>
       </Box>
       {(documents || []).length === 0 ? <Alert severity="info">No documents uploaded</Alert> : (
         <TableContainer>
@@ -645,6 +687,7 @@ function DocumentsTab({ studentId, documents, onRefresh }) {
                       <Chip label="Pending" size="small" variant="outlined" />}
                   </TableCell>
                   <TableCell>
+                    <Button size="small" href={d.file_url} target="_blank">View</Button>
                     {!d.verified && <Tooltip title="Verify"><IconButton size="small" color="success" onClick={() => handleVerify(d.id)}><CheckCircle /></IconButton></Tooltip>}
                     <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(d.id)}><Delete /></IconButton></Tooltip>
                   </TableCell>
@@ -655,19 +698,86 @@ function DocumentsTab({ studentId, documents, onRefresh }) {
         </TableContainer>
       )}
 
+      <Divider sx={{ my: 3 }} />
+
+      {/* Parent Documents */}
+      <Typography variant="h6" gutterBottom>Parent Documents</Typography>
+      {(parents || []).length === 0 ? <Alert severity="info">No parents added</Alert> : (
+        parents.map(p => (
+          <Card key={p.id} variant="outlined" sx={{ mb: 2 }}>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography fontWeight={600}>{p.name} ({p.relation})</Typography>
+                <Button size="small" startIcon={<Add />} variant="outlined" onClick={() => setParentOpen(p.id)}>Upload Document</Button>
+              </Box>
+              {(p.documents || []).length === 0 ? <Typography variant="body2" color="text.secondary">No documents</Typography> : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'grey.50' }}>
+                        {['Type', 'Name', 'Uploaded', 'Status'].map(h =>
+                          <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>)}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {p.documents.map(d => (
+                        <TableRow key={d.id}>
+                          <TableCell>{d.document_type}</TableCell>
+                          <TableCell>{d.document_name}</TableCell>
+                          <TableCell>{d.uploaded_at?.split('T')[0]}</TableCell>
+                          <TableCell>
+                            {d.verified ?
+                              <Chip label="Verified" size="small" color="success" /> :
+                              <Chip label="Pending" size="small" variant="outlined" />}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </CardContent>
+          </Card>
+        ))
+      )}
+
+      {/* Student Document Upload Dialog */}
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Add Document</DialogTitle>
+        <DialogTitle>Upload Student Document</DialogTitle>
         <DialogContent>
           <TextField fullWidth select label="Document Type" value={form.document_type} onChange={e => setForm({ ...form, document_type: e.target.value })} sx={{ mt: 2, mb: 2 }}>
-            {['Birth Certificate', 'Aadhar Card', 'Transfer Certificate', 'Character Certificate', 'Report Card', 'Medical Certificate', 'Photo', 'Other'].map(t =>
-              <MenuItem key={t} value={t}>{t}</MenuItem>)}
+            {['aadhar_card', 'birth_certificate', 'transfer_certificate', 'marksheet', 'photo', 'other', 'tc'].map(t =>
+              <MenuItem key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</MenuItem>)}
           </TextField>
           <TextField fullWidth label="Document Name" value={form.document_name} onChange={e => setForm({ ...form, document_name: e.target.value })} sx={{ mb: 2 }} />
-          <TextField fullWidth label="File URL" value={form.file_url} onChange={e => setForm({ ...form, file_url: e.target.value })} helperText="Enter file URL" />
+          <Button variant="outlined" component="label" fullWidth sx={{ mb: 2 }}>
+            {form.file ? form.file.name : 'Choose File'}
+            <input type="file" hidden onChange={e => setForm({ ...form, file: e.target.files[0] })} />
+          </Button>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd}>Save</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={!form.file}>Upload</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Parent Document Upload Dialog */}
+      <Dialog open={!!parentOpen} onClose={() => setParentOpen(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Upload Parent Document</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth select label="Document Type" value={parentForm.document_type} onChange={e => setParentForm({ ...parentForm, document_type: e.target.value })} sx={{ mt: 2, mb: 2 }}>
+            {['parent_aadhar', 'parent_pan', 'parent_photo', 'other'].map(t =>
+              <MenuItem key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</MenuItem>)}
+          </TextField>
+          <TextField fullWidth label="Document Name" value={parentForm.document_name} onChange={e => setParentForm({ ...parentForm, document_name: e.target.value })} sx={{ mb: 2 }} />
+          <Button variant="outlined" component="label" fullWidth sx={{ mb: 2 }}>
+            {parentForm.file ? parentForm.file.name : 'Choose File'}
+            <input type="file" hidden onChange={e => setParentForm({ ...parentForm, file: e.target.files[0] })} />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setParentOpen(null)}>Cancel</Button>
+          <Button variant="contained" onClick={() => handleParentAdd(parentOpen)} disabled={!parentForm.file}>Upload</Button>
         </DialogActions>
       </Dialog>
     </Paper>

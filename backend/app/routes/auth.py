@@ -55,6 +55,9 @@ def login():
             if not school:
                 return error_response('Invalid school code', 401)
             
+            if not school.has_active_subscription():
+                return error_response('School subscription is inactive or expired. Contact super admin.', 403)
+            
             user = User.query.filter_by(school_id=school.id, email=email, is_active=True).first()
             if not user or not user.check_password(password):
                 return error_response('Invalid credentials', 401)

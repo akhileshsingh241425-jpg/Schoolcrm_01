@@ -24,6 +24,7 @@ import Admissions from './pages/admissions/Admissions';
 import Attendance from './pages/attendance/Attendance';
 import Fees from './pages/fees/Fees';
 import Academics from './pages/academics/Academics';
+import ClassSectionManagement from './pages/academics/ClassSectionManagement';
 import Communication from './pages/communication/Communication';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
@@ -47,6 +48,7 @@ import ManageUsers from './pages/superadmin/ManageUsers';
 import SystemSettings from './pages/superadmin/SystemSettings';
 import AuditLogs from './pages/superadmin/AuditLogs';
 import CreateSchool from './pages/superadmin/CreateSchool';
+import StaffManagement from './pages/superadmin/StaffManagement';
 
 const { useEffect } = React;
 
@@ -146,6 +148,7 @@ function App() {
         
         {/* Academics */}
         <Route path="academics" element={<ModuleRoute module="academics" feature="academic"><Academics /></ModuleRoute>} />
+        <Route path="academics/classes" element={<ModuleRoute module="academics" feature="academic"><ClassSectionManagement /></ModuleRoute>} />
         
         {/* Communication */}
         <Route path="communication" element={<ModuleRoute module="communication" feature="communication"><Communication /></ModuleRoute>} />
@@ -204,6 +207,7 @@ function App() {
         <Route path="users" element={<ManageUsers />} />
         <Route path="settings" element={<SystemSettings />} />
         <Route path="audit" element={<AuditLogs />} />
+        <Route path="staff" element={<StaffManagement />} />
       </Route>
     </Routes>
   );

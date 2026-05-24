@@ -8,7 +8,7 @@ import {
 import {
   Menu as MenuIcon, Dashboard, School, People, Star, Receipt,
   Settings, Logout, AdminPanelSettings, BarChart, Security,
-  ManageAccounts, Notifications, ChevronLeft, Circle
+  ManageAccounts, Notifications, ChevronLeft, Circle, Group
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 
@@ -28,6 +28,7 @@ const navItems = [
   ]},
   { label: 'USERS & ACCESS', items: [
     { text: 'Manage Users', icon: <ManageAccounts />, path: '/super-admin/users' },
+    { text: 'Platform Staff', icon: <Group />, path: '/super-admin/staff' },
   ]},
   { label: 'SYSTEM', items: [
     { text: 'System Settings', icon: <Settings />, path: '/super-admin/settings' },

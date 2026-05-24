@@ -1,7 +1,7 @@
-from app.models.school import School, SchoolFeature, SchoolSetting
+from app.models.school import School, SchoolFeature, SchoolSetting, Director
 from app.models.user import User, Role, Permission, RolePermission
 from app.models.student import (
-    Student, ParentDetail, StudentDocument, AcademicYear, Class, Section,
+    Student, ParentDetail, StudentDocument, ParentDocument, AcademicYear, Class, Section,
     StudentPromotion, StudentAchievement, StudentBehavior, StudentTimeline,
     StudentCounseling, StudentHouse, Alumni, StudentMedical
 )
@@ -78,5 +78,6 @@ from app.models.sports import (
     Sport, SportsTeam, Tournament, TournamentMatch,
     Club, ClubMember, Event, FacilityBooking, FitnessRecord, Certificate
 )
-from app.models.subscription import SubscriptionPlan, SchoolSubscription
+from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment
 from app.models.audit import AuditLog
+from app.models.platform_staff import PlatformStaff, PlatformStaffAttendance, PlatformStaffPayroll, PlatformStaffLeave

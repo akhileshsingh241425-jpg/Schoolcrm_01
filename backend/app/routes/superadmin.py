@@ -1,9 +1,20 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, current_app
 from datetime import datetime, date
 from werkzeug.security import generate_password_hash
+import os
+import uuid
+from werkzeug.utils import secure_filename
 from app import db
-from app.models.school import School, SchoolFeature
-from app.models.subscription import SubscriptionPlan, SchoolSubscription
+from app.models.school import School, SchoolFeature, Director
+from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.colors import HexColor
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from flask import send_file
 from app.models.user import User, Role
 from app.models.audit import AuditLog
 from app.utils.decorators import super_admin_required
@@ -136,9 +147,11 @@ def update_school(school_id):
     school = School.query.get_or_404(school_id)
     data = request.get_json()
 
-    updatable = ['name', 'email', 'phone', 'address', 'city', 'state', 'pincode',
-                 'logo_url', 'website', 'theme_color', 'plan', 'is_active',
-                 'max_students', 'max_staff', 'tagline']
+    updatable = ['name', 'short_name', 'email', 'phone', 'secondary_phone',
+                 'alternate_contacts', 'address', 'city', 'state', 'pincode',
+                 'logo_url', 'website', 'domain_name', 'theme_color', 'plan',
+                 'session', 'is_active', 'max_students', 'max_staff', 'tagline',
+                 'notes', 'custom_fields']
 
     for field in updatable:
         if field in data:
@@ -305,12 +318,145 @@ def update_subscription(sub_id):
     return success_response(sub.to_dict(), 'Subscription updated')
 
 
+@superadmin_bp.route('/subscriptions/<int:sub_id>/payments', methods=['GET'])
+@super_admin_required
+def list_subscription_payments(sub_id):
+    SchoolSubscription.query.get_or_404(sub_id)
+    payments = SubscriptionPayment.query.filter_by(subscription_id=sub_id).order_by(SubscriptionPayment.created_at.desc()).all()
+    return success_response([p.to_dict() for p in payments])
+
+
+@superadmin_bp.route('/subscriptions/<int:sub_id>/payments', methods=['POST'])
+@super_admin_required
+def record_subscription_payment(sub_id):
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    data = request.get_json()
+    if not data.get('amount') or not data.get('payment_mode'):
+        return error_response('Amount and payment mode are required')
+    last = SubscriptionPayment.query.filter_by(school_id=sub.school_id).order_by(SubscriptionPayment.id.desc()).first()
+    next_no = 1
+    if last and last.receipt_no and last.receipt_no.startswith('INV-'):
+        try:
+            next_no = int(last.receipt_no.split('-')[1]) + 1
+        except (IndexError, ValueError):
+            next_no = SubscriptionPayment.query.count() + 1
+    receipt_no = f"INV-{next_no:06d}"
+    payment = SubscriptionPayment(
+        subscription_id=sub_id,
+        school_id=sub.school_id,
+        amount=data['amount'],
+        payment_date=datetime.strptime(data['payment_date'], '%Y-%m-%d').date() if data.get('payment_date') else date.today(),
+        payment_mode=data['payment_mode'],
+        transaction_id=data.get('transaction_id'),
+        receipt_no=receipt_no,
+        status=data.get('status', 'completed'),
+        notes=data.get('notes')
+    )
+    db.session.add(payment)
+    if payment.status == 'completed':
+        sub.payment_status = 'paid'
+    db.session.commit()
+    return success_response(payment.to_dict(), 'Payment recorded', 201)
+
+
+@superadmin_bp.route('/subscriptions/payments/<int:payment_id>/invoice', methods=['GET'])
+@super_admin_required
+def download_subscription_invoice(payment_id):
+    payment = SubscriptionPayment.query.get_or_404(payment_id)
+    sub = SchoolSubscription.query.get_or_404(payment.subscription_id)
+    school = School.query.get_or_404(payment.school_id)
+    plan = SubscriptionPlan.query.get_or_404(sub.plan_id)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=15*mm)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Colors
+    primary = HexColor('#1a56db')
+    light_gray = HexColor('#f3f4f6')
+
+    # Title
+    title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=22, textColor=primary, spaceAfter=4*mm)
+    elements.append(Paragraph('INVOICE', title_style))
+    elements.append(Paragraph(f'Receipt No: {payment.receipt_no}', styles['Normal']))
+    elements.append(Paragraph(f'Date: {payment.payment_date}', styles['Normal']))
+    elements.append(Spacer(1, 8*mm))
+
+    # Bill To
+    bill_style = ParagraphStyle('BillTo', parent=styles['Normal'], fontSize=11, spaceAfter=2*mm)
+    elements.append(Paragraph(f'<b>Bill To:</b>', bill_style))
+    elements.append(Paragraph(f'{school.name}', bill_style))
+    if school.address:
+        elements.append(Paragraph(f'{school.address}', bill_style))
+    if school.city:
+        elements.append(Paragraph(f'{school.city}, {school.state or ""}', bill_style))
+    elements.append(Spacer(1, 6*mm))
+
+    # Plan Info
+    plan_style = ParagraphStyle('PlanInfo', parent=styles['Normal'], fontSize=10)
+    elements.append(Paragraph(f'<b>Plan:</b> {plan.name}', plan_style))
+    elements.append(Paragraph(f'<b>Billing Cycle:</b> {sub.billing_cycle.title()}', plan_style))
+    elements.append(Paragraph(f'<b>Period:</b> {sub.start_date} to {sub.end_date}', plan_style))
+    elements.append(Spacer(1, 6*mm))
+
+    # Amount Table
+    t_data = [
+        ['Description', 'Amount'],
+        [f'{plan.name} Subscription ({sub.billing_cycle})', f'₹ {payment.amount:,.2f}'],
+        ['', ''],
+        ['Total', f'₹ {payment.amount:,.2f}']
+    ]
+    t = Table(t_data, colWidths=[120*mm, 50*mm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), primary),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('BACKGROUND', (0, 1), (-1, 1), light_gray),
+        ('FONTNAME', (0, 3), (-1, 3), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 3), (-1, 3), 12),
+        ('LINEABOVE', (0, 3), (-1, 3), 1, primary),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -2), 0.5, HexColor('#d1d5db')),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 6*mm))
+
+    # Payment Info
+    pay_style = ParagraphStyle('PayInfo', parent=styles['Normal'], fontSize=10)
+    elements.append(Paragraph(f'<b>Payment Mode:</b> {payment.payment_mode.replace("_", " ").title()}', pay_style))
+    if payment.transaction_id:
+        elements.append(Paragraph(f'<b>Transaction ID:</b> {payment.transaction_id}', pay_style))
+    elements.append(Paragraph(f'<b>Status:</b> {payment.status.title()}', pay_style))
+    elements.append(Spacer(1, 20*mm))
+
+    # Footer
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=HexColor('#6b7280'), alignment=1)
+    elements.append(Paragraph('This is a computer-generated invoice.', footer_style))
+
+    doc.build(elements)
+    buf.seek(0)
+    return send_file(buf, mimetype='application/pdf', as_attachment=True,
+                     download_name=f'invoice_{payment.receipt_no}.pdf')
+
+
 # ─── Public Plans (no auth) ────────────────────────────────────────
 @superadmin_bp.route('/public/plans', methods=['GET'])
 def public_plans():
     """Public endpoint for schools to see available plans"""
     plans = SubscriptionPlan.query.filter_by(is_active=True).all()
     return success_response([p.to_dict() for p in plans])
+
+# ─── Helper: allowed file types ─────────────────────────────────────────
+ALLOWED_DOC_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx'}
+
+def allowed_doc_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTENSIONS
+
 
 # ─── Create School ───────────────────────────────────────────────────────
 @superadmin_bp.route('/schools', methods=['POST'])
@@ -341,15 +487,19 @@ def create_school():
 
         school = School(
             name=data['name'],
+            short_name=data.get('short_name'),
             code=code,
             email=data['email'],
             phone=data.get('phone'),
+            secondary_phone=data.get('secondary_phone'),
+            alternate_contacts=data.get('alternate_contacts'),
             address=data.get('address'),
             city=data.get('city'),
             state=data.get('state'),
             pincode=data.get('pincode'),
             country=data.get('country', 'India'),
             website=data.get('website'),
+            domain_name=data.get('domain_name'),
             principal_name=data.get('principal_name'),
             principal_email=data.get('principal_email'),
             principal_phone=data.get('principal_phone'),
@@ -357,6 +507,9 @@ def create_school():
             school_type=data.get('school_type', 'co-ed'),
             established_year=established_year,
             registration_number=data.get('registration_number'),
+            session=data.get('session'),
+            notes=data.get('notes'),
+            custom_fields=data.get('custom_fields'),
             is_active=True,
             plan='basic',
         )
@@ -381,11 +534,90 @@ def create_school():
                 admin_user.set_password(admin_data['password'])
                 db.session.add(admin_user)
 
+        # ── Director Info ─────────────────────────────────────────────
+        director_data = data.get('director')
+        staff_category = data.get('staff_category')
+        if director_data and director_data.get('name'):
+            director = Director(
+                school_id=school.id,
+                name=director_data['name'],
+                email=director_data.get('email'),
+                phone=director_data.get('phone'),
+                secondary_phone=director_data.get('secondary_phone'),
+                address=director_data.get('address'),
+                city=director_data.get('city'),
+                state=director_data.get('state'),
+                pincode=director_data.get('pincode'),
+                qualification=director_data.get('qualification'),
+                experience_years=director_data.get('experience_years'),
+                aadhar_no=director_data.get('aadhar_no'),
+                pan_no=director_data.get('pan_no'),
+                other_doc_name=director_data.get('other_doc_name'),
+            )
+            db.session.add(director)
+
+            # Also create a user with staff category
+            if staff_category and director_data.get('email'):
+                role_map = {
+                    'director': 'school_admin',
+                    'principal': 'school_admin',
+                    'teacher': 'teacher',
+                    'accountant': 'accountant',
+                    'counselor': 'counselor',
+                    'librarian': 'librarian',
+                    'transport_manager': 'transport_manager',
+                }
+                role_name = role_map.get(staff_category.get('category', '').lower(), 'school_admin')
+                role = Role.query.filter_by(name=role_name).first()
+                if role:
+                    dir_user = User(
+                        school_id=school.id,
+                        role_id=role.id,
+                        email=director_data.get('email', director_data.get('phone', '')),
+                        first_name=director_data['name'],
+                        is_active=True,
+                    )
+                    default_pass = director_data.get('phone', 'password') or 'password'
+                    dir_user.set_password(default_pass)
+                    db.session.add(dir_user)
+
         db.session.commit()
-        return success_response(school.to_dict(), 'School created successfully', 201)
+
+        result = school.to_dict()
+        if director_data and director_data.get('name'):
+            result['director'] = director.to_dict()
+        return success_response(result, 'School created successfully', 201)
     except Exception as e:
         db.session.rollback()
         return error_response(str(e), 500)
+
+
+@superadmin_bp.route('/schools/upload-doc', methods=['POST'])
+@super_admin_required
+def upload_school_doc():
+    """Upload a document (aadhar, pan, photo, other) for school/director"""
+    if 'file' not in request.files:
+        return error_response('No file provided', 400)
+    file = request.files['file']
+    if file.filename == '':
+        return error_response('No file selected', 400)
+    if not allowed_doc_file(file.filename):
+        return error_response('File type not allowed. Allowed: png, jpg, jpeg, pdf, doc, docx', 400)
+
+    upload_dir = os.path.join(
+        current_app.config.get('UPLOAD_FOLDER', 'uploads'),
+        'school_docs',
+        request.form.get('school_code', 'temp')
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    filename = f"{request.form.get('doc_type', 'doc')}_{uuid.uuid4().hex[:12]}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+
+    url = f"/api/schools/uploads/school_docs/{request.form.get('school_code', 'temp')}/{filename}"
+    return success_response({'url': url, 'filename': filename}, 'Document uploaded')
 
 
 # ─── Manage Users ────────────────────────────────────────────────────────

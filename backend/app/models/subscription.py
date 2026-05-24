@@ -44,8 +44,13 @@ class SchoolSubscription(db.Model):
 
     school = db.relationship('School', backref='subscriptions')
     plan = db.relationship('SubscriptionPlan', backref='subscriptions')
+    payments = db.relationship('SubscriptionPayment', backref='subscription', lazy='dynamic')
 
     def to_dict(self):
+        total_paid = db.session.query(db.func.coalesce(db.func.sum(SubscriptionPayment.amount), 0)).filter(
+            SubscriptionPayment.subscription_id == self.id,
+            SubscriptionPayment.status == 'completed'
+        ).scalar()
         return {
             'id': self.id,
             'school_id': self.school_id,
@@ -54,5 +59,39 @@ class SchoolSubscription(db.Model):
             'amount': float(self.amount) if self.amount else None,
             'start_date': self.start_date.isoformat() if self.start_date else None,
             'end_date': self.end_date.isoformat() if self.end_date else None,
-            'payment_status': self.payment_status
+            'payment_status': self.payment_status,
+            'total_paid': float(total_paid) if total_paid else 0
+        }
+
+
+class SubscriptionPayment(db.Model):
+    __tablename__ = 'subscription_payments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey('school_subscriptions.id', ondelete='CASCADE'), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    payment_date = db.Column(db.Date, nullable=False)
+    payment_mode = db.Column(db.Enum('cash', 'online', 'bank_transfer', 'cheque', 'upi', 'dd'), nullable=False)
+    transaction_id = db.Column(db.String(255))
+    receipt_no = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.Enum('completed', 'pending', 'failed', 'refunded'), default='completed')
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    school = db.relationship('School', backref='subscription_payments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'subscription_id': self.subscription_id,
+            'school_id': self.school_id,
+            'amount': float(self.amount) if self.amount else None,
+            'payment_date': self.payment_date.isoformat() if self.payment_date else None,
+            'payment_mode': self.payment_mode,
+            'transaction_id': self.transaction_id,
+            'receipt_no': self.receipt_no,
+            'status': self.status,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }

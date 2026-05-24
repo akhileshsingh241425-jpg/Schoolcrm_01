@@ -14,8 +14,8 @@ env/
 node_modules/
 npm-debug.log*
 
-# Build output - kept for deployment
-# frontend/build/
+# Build output - built on server
+frontend/build/
 
 # IDE
 .vscode/

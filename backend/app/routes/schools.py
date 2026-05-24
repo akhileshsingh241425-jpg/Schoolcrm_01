@@ -42,9 +42,11 @@ def update_school(school_id):
     school = School.query.get_or_404(school_id)
     data = request.get_json()
     
-    updatable = ['name', 'email', 'phone', 'address', 'city', 'state', 'pincode',
-                 'logo_url', 'website', 'theme_color', 'plan', 'is_active',
-                 'max_students', 'max_staff']
+    updatable = ['name', 'short_name', 'email', 'phone', 'secondary_phone',
+                 'alternate_contacts', 'address', 'city', 'state', 'pincode',
+                 'logo_url', 'website', 'domain_name', 'theme_color', 'plan',
+                 'session', 'is_active', 'max_students', 'max_staff',
+                 'notes', 'custom_fields']
     
     for field in updatable:
         if field in data:

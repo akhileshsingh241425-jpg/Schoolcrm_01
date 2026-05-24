@@ -1,5 +1,5 @@
 from app import db
-from datetime import datetime
+from datetime import datetime, date
 
 
 class School(db.Model):
@@ -7,9 +7,12 @@ class School(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
+    short_name = db.Column(db.String(100))
     code = db.Column(db.String(50), unique=True, nullable=False)
     email = db.Column(db.String(255))
     phone = db.Column(db.String(20))
+    secondary_phone = db.Column(db.String(20))
+    alternate_contacts = db.Column(db.JSON)
     address = db.Column(db.Text)
     city = db.Column(db.String(100))
     state = db.Column(db.String(100))
@@ -19,10 +22,11 @@ class School(db.Model):
     banner_image = db.Column(db.String(500))
     tagline = db.Column(db.String(255))
     website = db.Column(db.String(255))
-    theme_color = db.Column(db.String(7), default='#1976d2')
+    domain_name = db.Column(db.String(255))
     subdomain = db.Column(db.String(100), unique=True)
     custom_domain = db.Column(db.String(255))
     plan = db.Column(db.Enum('basic', 'standard', 'premium'), default='basic')
+    session = db.Column(db.String(50))
     subscription_start = db.Column(db.Date)
     subscription_end = db.Column(db.Date)
     is_active = db.Column(db.Boolean, default=True)
@@ -36,6 +40,8 @@ class School(db.Model):
     school_type = db.Column(db.String(50))
     established_year = db.Column(db.Integer)
     registration_number = db.Column(db.String(100))
+    notes = db.Column(db.Text)
+    custom_fields = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -48,15 +54,19 @@ class School(db.Model):
         return {
             'id': self.id,
             'name': self.name,
+            'short_name': self.short_name,
             'code': self.code,
             'email': self.email,
             'phone': self.phone,
+            'secondary_phone': self.secondary_phone,
+            'alternate_contacts': self.alternate_contacts,
             'address': self.address,
             'city': self.city,
             'state': self.state,
             'pincode': self.pincode,
             'country': self.country,
             'website': self.website,
+            'domain_name': self.domain_name,
             'logo_url': self.logo_url,
             'login_bg_image': self.login_bg_image,
             'banner_image': self.banner_image,
@@ -65,6 +75,7 @@ class School(db.Model):
             'subdomain': self.subdomain,
             'custom_domain': self.custom_domain,
             'plan': self.plan,
+            'session': self.session,
             'subscription_start': self.subscription_start.isoformat() if self.subscription_start else None,
             'subscription_end': self.subscription_end.isoformat() if self.subscription_end else None,
             'is_active': self.is_active,
@@ -77,9 +88,16 @@ class School(db.Model):
             'school_type': self.school_type,
             'established_year': self.established_year,
             'registration_number': self.registration_number,
+            'notes': self.notes,
+            'custom_fields': self.custom_fields,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+
+    def has_active_subscription(self):
+        if not self.subscription_end:
+            return False
+        return self.subscription_end >= date.today()
 
     def get_enabled_features(self):
         return [f.feature_name for f in self.features.filter_by(is_enabled=True).all()]
@@ -121,4 +139,57 @@ class SchoolSetting(db.Model):
         return {
             'setting_key': self.setting_key,
             'setting_value': self.setting_value
+        }
+
+
+class Director(db.Model):
+    __tablename__ = 'directors'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(20))
+    secondary_phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    city = db.Column(db.String(100))
+    state = db.Column(db.String(100))
+    pincode = db.Column(db.String(10))
+    qualification = db.Column(db.String(255))
+    experience_years = db.Column(db.Integer)
+    aadhar_no = db.Column(db.String(20))
+    aadhar_doc_url = db.Column(db.String(500))
+    pan_no = db.Column(db.String(20))
+    pan_doc_url = db.Column(db.String(500))
+    photo_url = db.Column(db.String(500))
+    other_doc_name = db.Column(db.String(255))
+    other_doc_url = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    school = db.relationship('School', backref=db.backref('directors', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'name': self.name,
+            'email': self.email,
+            'phone': self.phone,
+            'secondary_phone': self.secondary_phone,
+            'address': self.address,
+            'city': self.city,
+            'state': self.state,
+            'pincode': self.pincode,
+            'qualification': self.qualification,
+            'experience_years': self.experience_years,
+            'aadhar_no': self.aadhar_no,
+            'aadhar_doc_url': self.aadhar_doc_url,
+            'pan_no': self.pan_no,
+            'pan_doc_url': self.pan_doc_url,
+            'photo_url': self.photo_url,
+            'other_doc_name': self.other_doc_name,
+            'other_doc_url': self.other_doc_url,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

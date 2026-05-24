@@ -11,8 +11,8 @@ import {
 import {
   Add, Search, Visibility, Edit, Delete, School, People, TrendingUp,
   EmojiEvents, FilterList, FileDownload, Upload, Badge as BadgeIcon,
-  SwapVert, Groups, PersonSearch, Psychology, MedicalServices, Timeline,
-  Star, Warning, CheckCircle, Cancel
+  SwapVert, Groups, Psychology, MedicalServices, Timeline,
+  Star, Warning, CheckCircle, Cancel, PersonSearch
 } from '@mui/icons-material';
 import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
@@ -32,6 +32,21 @@ function StudentList({ navigate }) {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [filters, setFilters] = useState({ search: '', class_id: '', section_id: '', status: '', gender: '' });
   const [loading, setLoading] = useState(false);
+  const [deepSearchOpen, setDeepSearchOpen] = useState(false);
+  const [deepQuery, setDeepQuery] = useState('');
+  const [deepResults, setDeepResults] = useState([]);
+  const [deepLoading, setDeepLoading] = useState(false);
+
+  const handleDeepSearch = async () => {
+    if (!deepQuery.trim()) return;
+    setDeepLoading(true);
+    try {
+      const res = await studentsAPI.searchComprehensive(deepQuery.trim());
+      setDeepResults(res.data.data || []);
+      setDeepSearchOpen(true);
+    } catch { toast.error('Search failed'); }
+    setDeepLoading(false);
+  };
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -106,8 +121,20 @@ function StudentList({ navigate }) {
               <MenuItem value="female">Female</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} md={1}>
+          <Grid item xs={6} md={1}>
             <Button size="small" onClick={() => setFilters({ search: '', class_id: '', section_id: '', status: '', gender: '' })}>Clear</Button>
+          </Grid>
+          <Grid item xs={6} md={1}>
+            <Button size="small" variant="outlined" startIcon={<PersonSearch />} onClick={async () => {
+              if (!filters.search.trim()) return;
+              setDeepQuery(filters.search);
+              setDeepLoading(true);
+              try { const r = await studentsAPI.searchComprehensive(filters.search.trim()); setDeepResults(r.data.data || []); setDeepSearchOpen(true); }
+              catch { toast.error('Search failed'); }
+              setDeepLoading(false);
+            }} disabled={deepLoading}>
+              {deepLoading ? '...' : 'Deep'}
+            </Button>
           </Grid>
         </Grid>
       </Paper>
@@ -154,6 +181,53 @@ function StudentList({ navigate }) {
           rowsPerPageOptions={[10, 25, 50, 100]}
         />
       </TableContainer>
+
+      {/* Deep Search Results Dialog */}
+      <Dialog open={deepSearchOpen} onClose={() => setDeepSearchOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Deep Search Results</DialogTitle>
+        <DialogContent>
+          {deepResults.length === 0 ? <Alert severity="info">No results found</Alert> : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'grey.100' }}>
+                    {['Name', 'Adm No', 'Class', 'Section', 'Class Teacher', 'Parents', 'Docs', 'Attendance'].map(h =>
+                      <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>)}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {deepResults.map(s => (
+                    <TableRow key={s.id} hover sx={{ cursor: 'pointer' }} onClick={() => { setDeepSearchOpen(false); navigate(`/students/${s.id}`); }}>
+                      <TableCell sx={{ fontWeight: 500 }}>{s.full_name}</TableCell>
+                      <TableCell>{s.admission_no || '-'}</TableCell>
+                      <TableCell>{s.current_class?.name || '-'}</TableCell>
+                      <TableCell>{s.current_section?.name || '-'}</TableCell>
+                      <TableCell>{s.class_teacher || '-'}</TableCell>
+                      <TableCell>
+                        {(s.parents || []).map(p => <Chip key={p.id} label={`${p.name} (${p.relation})`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />)}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={`${(s.documents || []).length}`} size="small" color="info" />
+                      </TableCell>
+                      <TableCell>
+                        {s.attendance?.length > 0 ? (
+                          <Box display="flex" gap={0.3} flexWrap="wrap">
+                            <Chip label={`P:${s.attendance.filter(a => a.status === 'present').length}`} size="small" color="success" />
+                            <Chip label={`A:${s.attendance.filter(a => a.status === 'absent').length}`} size="small" color="error" />
+                          </Box>
+                        ) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeepSearchOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

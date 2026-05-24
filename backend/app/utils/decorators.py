@@ -27,6 +27,8 @@ def school_required(f):
         school = School.query.get(user.school_id)
         if not school or not school.is_active:
             return jsonify({'error': 'School is inactive or not found'}), 403
+        if not school.has_active_subscription():
+            return jsonify({'error': 'School subscription is inactive or expired'}), 403
         
         g.current_user = user
         g.school_id = user.school_id
@@ -54,6 +56,8 @@ def role_required(*roles):
             school = School.query.get(user.school_id)
             if not school or not school.is_active:
                 return jsonify({'error': 'School is inactive'}), 403
+            if not school.has_active_subscription():
+                return jsonify({'error': 'School subscription is inactive or expired'}), 403
             
             g.current_user = user
             g.school_id = user.school_id

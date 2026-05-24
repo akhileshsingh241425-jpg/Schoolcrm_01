@@ -12,7 +12,7 @@ import {
   Inventory, DirectionsBus, LocalLibrary, Settings, Logout,
   FamilyRestroom, HealthAndSafety, Hotel, Restaurant, SportsBasketball,
   CloudUpload, Search, NotificationsNoneOutlined, Palette, Close,
-  ChildCare, AdminPanelSettings, Star, Receipt, Brush, Payment,
+  ChildCare, AdminPanelSettings, Star, Receipt, Brush, Payment, Group,
   KeyboardArrowDown, KeyboardArrowUp
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
@@ -37,6 +37,7 @@ const menuGroups = [
       { text: 'Academics', icon: <EventNote />, path: '/academics', feature: 'academic', module: 'academics' },
       { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
       { text: 'Library', icon: <LocalLibrary />, path: '/library', feature: 'library', module: 'library' },
+      { text: 'Classes & Sections', icon: <Group />, path: '/academics/classes', feature: 'academic', module: 'academics' },
     ],
   },
   {

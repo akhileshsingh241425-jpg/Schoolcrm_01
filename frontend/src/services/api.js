@@ -83,6 +83,10 @@ export const studentsAPI = {
   createClass: (data) => api.post('/students/classes', data),
   listSections: (classId) => api.get(`/students/sections/${classId}`),
   createSection: (data) => api.post('/students/sections', data),
+  updateClass: (id, data) => api.put(`/students/classes/${id}`, data),
+  deleteClass: (id) => api.delete(`/students/classes/${id}`),
+  updateSection: (id, data) => api.put(`/students/sections/${id}`, data),
+  deleteSection: (id) => api.delete(`/students/sections/${id}`),
   listAcademicYears: () => api.get('/students/academic-years'),
   createAcademicYear: (data) => api.post('/students/academic-years', data),
   // Promotions
@@ -134,6 +138,17 @@ export const studentsAPI = {
   smartAllocate: (data) => api.post('/students/smart-allocate', data),
   // Bulk import
   bulkImport: (data) => api.post('/students/bulk-import', data),
+  // Comprehensive search
+  searchComprehensive: (q) => api.get('/students/search-comprehensive', { params: { q } }),
+  // File upload (multipart)
+  uploadStudentDocument: (id, formData) => api.post(`/students/${id}/documents/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  // Parent documents
+  listParentDocuments: (studentId, parentId) => api.get(`/students/${studentId}/parents/${parentId}/documents`),
+  uploadParentDocument: (studentId, parentId, formData) => api.post(`/students/${studentId}/parents/${parentId}/documents/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
 
 // Staff
@@ -1062,6 +1077,28 @@ export const brandingAPI = {
 };
 
 // Super Admin
+// Platform Staff (Super Admin Staff Management)
+export const platformStaffAPI = {
+  list: (params) => api.get('/superadmin/staff', { params }),
+  get: (id) => api.get(`/superadmin/staff/${id}`),
+  create: (data) => api.post('/superadmin/staff', data),
+  update: (id, data) => api.put(`/superadmin/staff/${id}`, data),
+  delete: (id) => api.delete(`/superadmin/staff/${id}`),
+  dashboard: () => api.get('/superadmin/staff/dashboard'),
+  // Attendance
+  listAttendance: (params) => api.get('/superadmin/staff/attendance', { params }),
+  markAttendance: (data) => api.post('/superadmin/staff/attendance/mark', data),
+  attendanceReport: (params) => api.get('/superadmin/staff/attendance/report', { params }),
+  // Payroll
+  listPayroll: (params) => api.get('/superadmin/staff/payroll', { params }),
+  generatePayroll: (data) => api.post('/superadmin/staff/payroll/generate', data),
+  updatePayroll: (id, data) => api.put(`/superadmin/staff/payroll/${id}`, data),
+  // Leave
+  listLeaves: (params) => api.get('/superadmin/staff/leaves', { params }),
+  applyLeave: (data) => api.post('/superadmin/staff/leaves', data),
+  approveLeave: (id, data) => api.put(`/superadmin/staff/leaves/${id}/approve`, data),
+};
+
 export const superAdminAPI = {
   dashboard: () => api.get('/superadmin/dashboard'),
   // Schools
@@ -1080,6 +1117,12 @@ export const superAdminAPI = {
   listSubscriptions: (params) => api.get('/superadmin/subscriptions', { params }),
   createSubscription: (data) => api.post('/superadmin/subscriptions', data),
   updateSubscription: (id, data) => api.put(`/superadmin/subscriptions/${id}`, data),
+  // Subscription Payments
+  listSubscriptionPayments: (subId) => api.get(`/superadmin/subscriptions/${subId}/payments`),
+  recordSubscriptionPayment: (subId, data) => api.post(`/superadmin/subscriptions/${subId}/payments`, data),
+  downloadSubscriptionInvoice: (paymentId) => api.get(`/superadmin/subscriptions/payments/${paymentId}/invoice`, {
+    responseType: 'blob',
+  }),
   // Users
   listUsers: (params) => api.get('/superadmin/users', { params }),
   createUser: (data) => api.post('/superadmin/users', data),
@@ -1090,6 +1133,10 @@ export const superAdminAPI = {
   saveSystemSettings: (data) => api.put('/superadmin/system-settings', data),
   // Audit Logs
   getAuditLogs: (params) => api.get('/superadmin/audit-logs', { params }),
+  // Document Upload
+  uploadDoc: (formData) => api.post('/superadmin/schools/upload-doc', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   // Public
   publicPlans: () => api.get('/superadmin/public/plans'),
 };
