@@ -10,6 +10,7 @@ from app.models.staff import Staff
 from app.models.school import School
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope
+from sqlalchemy import false
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import uuid
@@ -17,6 +18,22 @@ import os
 import io
 
 students_bp = Blueprint('students', __name__)
+
+
+def _verify_student_access(student_id):
+    scope = get_teacher_scope()
+    if not scope:
+        return True
+    if scope.get('no_access'):
+        return False
+    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first()
+    if not student:
+        return False
+    if student.current_class_id in scope['class_ids']:
+        return True
+    if student.current_section_id in scope.get('section_ids', []):
+        return True
+    return False
 
 
 # ===================== STUDENT CRUD =====================
@@ -67,11 +84,10 @@ def list_students():
 
     # Teacher scoping
     scope = get_teacher_scope()
-    if scope:
-        if scope['class_ids']:
-            query = query.filter(Student.current_class_id.in_(scope['class_ids']))
-        else:
-            return success_response(paginate(query.filter(false())))
+    if scope and scope.get('no_access'):
+        return success_response(paginate(query.filter(false())))
+    if scope and scope['class_ids']:
+        query = query.filter(Student.current_class_id.in_(scope['class_ids']))
 
     query = query.order_by(Student.created_at.desc())
     return success_response(paginate(query))
@@ -84,7 +100,10 @@ def search_students_comprehensive():
     if not q:
         return success_response([])
     like = f'%{q}%'
-    students = Student.query.options(
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response([])
+    query = Student.query.options(
         joinedload(Student.current_class),
         joinedload(Student.current_section),
         joinedload(Student.house)
@@ -96,7 +115,10 @@ def search_students_comprehensive():
             Student.admission_no.ilike(like),
             Student.roll_no.ilike(like)
         )
-    ).limit(20).all()
+    )
+    if scope and scope['class_ids']:
+        query = query.filter(Student.current_class_id.in_(scope['class_ids']))
+    students = query.limit(20).all()
     result = []
     for s in students:
         d = s.to_dict()
@@ -119,6 +141,8 @@ def search_students_comprehensive():
 @students_bp.route('/<int:student_id>', methods=['GET'])
 @school_required
 def get_student(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     student = Student.query.options(
         joinedload(Student.current_class),
         joinedload(Student.current_section),
@@ -142,6 +166,8 @@ def get_student(student_id):
 @students_bp.route('/360/<int:student_id>', methods=['GET'])
 @school_required
 def get_student_360(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     student = Student.query.options(
         joinedload(Student.current_class),
         joinedload(Student.current_section),
@@ -300,6 +326,19 @@ def delete_student(student_id):
 @school_required
 def student_dashboard():
     base = Student.query.filter_by(school_id=g.school_id)
+
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response({
+            'total': 0, 'active': 0, 'inactive': 0,
+            'graduated': 0, 'transferred': 0,
+            'male': 0, 'female': 0,
+            'class_distribution': [], 'house_distribution': [],
+            'recent_achievements': [], 'recent_behavior': []
+        })
+    if scope and scope['class_ids']:
+        base = base.filter(Student.current_class_id.in_(scope['class_ids']))
+
     total = base.count()
     active = base.filter_by(status='active').count()
     inactive = base.filter_by(status='inactive').count()
@@ -312,21 +351,33 @@ def student_dashboard():
         Class.name, db.func.count(Student.id)
     ).join(Student, Student.current_class_id == Class.id).filter(
         Student.school_id == g.school_id, Student.status == 'active'
-    ).group_by(Class.name).all()
+    )
+    if scope and scope['class_ids']:
+        class_dist = class_dist.filter(Student.current_class_id.in_(scope['class_ids']))
+    class_dist = class_dist.group_by(Class.name).all()
 
     house_dist = db.session.query(
         StudentHouse.name, db.func.count(Student.id)
     ).join(Student, Student.house_id == StudentHouse.id).filter(
         Student.school_id == g.school_id, Student.status == 'active'
-    ).group_by(StudentHouse.name).all()
+    )
+    if scope and scope['class_ids']:
+        house_dist = house_dist.filter(Student.current_class_id.in_(scope['class_ids']))
+    house_dist = house_dist.group_by(StudentHouse.name).all()
 
     recent_achievements = StudentAchievement.query.filter_by(
         school_id=g.school_id
-    ).order_by(StudentAchievement.created_at.desc()).limit(5).all()
+    )
+    if scope and scope['class_ids']:
+        recent_achievements = recent_achievements.join(Student).filter(Student.current_class_id.in_(scope['class_ids']))
+    recent_achievements = recent_achievements.order_by(StudentAchievement.created_at.desc()).limit(5).all()
 
     recent_behavior = StudentBehavior.query.filter_by(
         school_id=g.school_id, behavior_type='negative'
-    ).order_by(StudentBehavior.created_at.desc()).limit(5).all()
+    )
+    if scope and scope['class_ids']:
+        recent_behavior = recent_behavior.join(Student).filter(Student.current_class_id.in_(scope['class_ids']))
+    recent_behavior = recent_behavior.order_by(StudentBehavior.created_at.desc()).limit(5).all()
 
     return success_response({
         'total': total, 'active': active, 'inactive': inactive,
@@ -547,6 +598,8 @@ def bulk_promote():
 @students_bp.route('/<int:student_id>/achievements', methods=['GET'])
 @school_required
 def list_achievements(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     query = StudentAchievement.query.filter_by(student_id=student_id, school_id=g.school_id)
     category = request.args.get('category')
@@ -559,6 +612,8 @@ def list_achievements(student_id):
 @students_bp.route('/<int:student_id>/achievements', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def add_achievement(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     ach = StudentAchievement(
@@ -594,6 +649,8 @@ def delete_achievement(ach_id):
 @students_bp.route('/<int:student_id>/behavior', methods=['GET'])
 @school_required
 def list_behavior(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     query = StudentBehavior.query.filter_by(student_id=student_id, school_id=g.school_id)
     b_type = request.args.get('type')
@@ -606,6 +663,8 @@ def list_behavior(student_id):
 @students_bp.route('/<int:student_id>/behavior', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 def add_behavior(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     beh = StudentBehavior(
@@ -638,6 +697,8 @@ def add_behavior(student_id):
 @students_bp.route('/<int:student_id>/timeline', methods=['GET'])
 @school_required
 def get_timeline(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     query = StudentTimeline.query.filter_by(student_id=student_id, school_id=g.school_id)
     event_type = request.args.get('event_type')
@@ -650,6 +711,8 @@ def get_timeline(student_id):
 @students_bp.route('/<int:student_id>/timeline', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 def add_timeline(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     tl = StudentTimeline(
@@ -668,6 +731,8 @@ def add_timeline(student_id):
 @students_bp.route('/<int:student_id>/counseling', methods=['GET'])
 @school_required
 def list_counseling(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     query = StudentCounseling.query.filter_by(student_id=student_id, school_id=g.school_id)
     query = query.order_by(StudentCounseling.session_date.desc())
@@ -677,6 +742,8 @@ def list_counseling(student_id):
 @students_bp.route('/<int:student_id>/counseling', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 def add_counseling(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     cs = StudentCounseling(
@@ -717,6 +784,8 @@ def update_counseling(cs_id):
 @students_bp.route('/<int:student_id>/medical', methods=['GET'])
 @school_required
 def list_medical(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     query = StudentMedical.query.filter_by(student_id=student_id, school_id=g.school_id)
     query = query.order_by(StudentMedical.record_date.desc())
@@ -726,6 +795,8 @@ def list_medical(student_id):
 @students_bp.route('/<int:student_id>/medical', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 def add_medical(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     med = StudentMedical(
@@ -751,6 +822,8 @@ def add_medical(student_id):
 @students_bp.route('/<int:student_id>/documents', methods=['GET'])
 @school_required
 def list_documents(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     docs = StudentDocument.query.filter_by(student_id=student_id, school_id=g.school_id).all()
     return success_response([d.to_dict() for d in docs])
@@ -759,6 +832,8 @@ def list_documents(student_id):
 @students_bp.route('/<int:student_id>/documents', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def upload_document(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     doc = StudentDocument(
@@ -800,6 +875,8 @@ def delete_document(doc_id):
 @students_bp.route('/<int:student_id>/documents/upload', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def upload_student_document_file(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     if 'file' not in request.files:
         return error_response('No file provided')
@@ -833,6 +910,8 @@ def upload_student_document_file(student_id):
 @students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents', methods=['GET'])
 @school_required
 def list_parent_documents(student_id, parent_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
     docs = ParentDocument.query.filter_by(parent_id=parent_id, school_id=g.school_id).all()
@@ -842,6 +921,8 @@ def list_parent_documents(student_id, parent_id):
 @students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents/upload', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def upload_parent_document_file(student_id, parent_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
     if 'file' not in request.files:
@@ -954,6 +1035,8 @@ def link_siblings():
 @students_bp.route('/<int:student_id>/siblings', methods=['GET'])
 @school_required
 def get_siblings(student_id):
+    if not _verify_student_access(student_id):
+        return success_response([])
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     if not student.sibling_group_id:
         return success_response([])
@@ -1043,6 +1126,8 @@ def graduate_to_alumni():
 @students_bp.route('/<int:student_id>/id-card', methods=['GET'])
 @school_required
 def get_id_card(student_id):
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
     data = student.to_dict()
     data['parents'] = [p.to_dict() for p in student.parents.limit(2).all()]
@@ -1073,6 +1158,8 @@ def bulk_id_cards():
 @school_required
 def download_id_card_pdf(student_id):
     """Generate and download a professional student ID card PDF"""
+    if not _verify_student_access(student_id):
+        return error_response('Access denied', 403)
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib import colors

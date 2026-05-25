@@ -190,6 +190,27 @@ def student_attendance_report():
     to_date = request.args.get('to_date')
     class_id = request.args.get('class_id', type=int)
 
+    # Teacher scope
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response({'records': [], 'summary': {
+            'total_days': 0, 'present': 0, 'absent': 0,
+            'late': 0, 'half_day': 0, 'leave': 0, 'percentage': 0
+        }})
+    if scope:
+        if class_id and class_id not in scope['class_ids']:
+            return success_response({'records': [], 'summary': {
+                'total_days': 0, 'present': 0, 'absent': 0,
+                'late': 0, 'half_day': 0, 'leave': 0, 'percentage': 0
+            }})
+        if not class_id:
+            class_ids = scope['class_ids']
+            if not class_ids:
+                return success_response({'records': [], 'summary': {
+                    'total_days': 0, 'present': 0, 'absent': 0,
+                    'late': 0, 'half_day': 0, 'leave': 0, 'percentage': 0
+                }})
+
     query = StudentAttendance.query.options(
         joinedload(StudentAttendance.student)
     ).filter_by(school_id=g.school_id)
@@ -199,6 +220,8 @@ def student_attendance_report():
         query = query.filter_by(student_id=student_id)
     if class_id:
         query = query.filter_by(class_id=class_id)
+    if scope and not class_id:
+        query = query.filter(StudentAttendance.class_id.in_(scope['class_ids']))
     if from_date:
         query = query.filter(StudentAttendance.date >= from_date)
     if to_date:
@@ -235,6 +258,15 @@ def get_student_attendance_detail(student_id):
     to_date = request.args.get('to_date')
 
     student = Student.query.get_or_404(student_id)
+
+    # Teacher scope
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response({'student': None, 'records': [], 'summary': {}, 'monthly': {}})
+        if student.current_section_id not in scope['section_ids']:
+            return success_response({'student': None, 'records': [], 'summary': {}, 'monthly': {}})
+
     query = StudentAttendance.query.filter_by(
         student_id=student_id, school_id=g.school_id
     ).filter(StudentAttendance.period.is_(None))
@@ -285,6 +317,28 @@ def get_period_attendance():
 
     if not class_id or not period:
         return error_response('class_id and period required')
+
+    # Teacher scope
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        if scope['section_ids']:
+            if section_id and section_id not in scope['section_ids']:
+                return success_response([])
+            if not section_id:
+                section_id = scope['section_ids']
+                query = StudentAttendance.query.options(
+                    joinedload(StudentAttendance.student)
+                ).filter(
+                    StudentAttendance.school_id == g.school_id,
+                    StudentAttendance.date == att_date,
+                    StudentAttendance.class_id == class_id,
+                    StudentAttendance.period == period,
+                    StudentAttendance.section_id.in_(scope['section_ids'])
+                )
+                records = query.all()
+                return success_response([r.to_dict() for r in records])
 
     query = StudentAttendance.query.options(
         joinedload(StudentAttendance.student)
@@ -799,11 +853,29 @@ def attendance_analytics():
     if not to_date:
         to_date = date.today().isoformat()
 
+    # Teacher scope
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response({
+                'overall': {'total_records': 0, 'present': 0, 'absent': 0, 'late': 0, 'percentage': 0},
+                'daily_trend': {}, 'class_summary': {}
+            })
+        if class_id and class_id not in scope['class_ids']:
+            return success_response({
+                'overall': {'total_records': 0, 'present': 0, 'absent': 0, 'late': 0, 'percentage': 0},
+                'daily_trend': {}, 'class_summary': {}
+            })
+
     query = StudentAttendance.query.filter_by(school_id=g.school_id)
     query = query.filter(StudentAttendance.period.is_(None))
     query = query.filter(StudentAttendance.date >= from_date, StudentAttendance.date <= to_date)
     if class_id:
         query = query.filter_by(class_id=class_id)
+    if scope and not class_id:
+        query = query.filter(StudentAttendance.class_id.in_(scope['class_ids']))
+    if scope and scope['section_ids']:
+        query = query.filter(StudentAttendance.section_id.in_(scope['section_ids']))
 
     records = query.all()
     total = len(records)
@@ -855,9 +927,28 @@ def attendance_alerts():
     from_date = (date.today() - timedelta(days=days_back)).isoformat()
     to_date = date.today().isoformat()
 
-    student_query = Student.query.filter_by(school_id=g.school_id, status='active')
-    if class_id:
-        student_query = student_query.filter_by(current_class_id=class_id)
+    # Teacher scope
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response({'threshold': threshold, 'alerts': []})
+        if scope['section_ids']:
+            section_ids = scope['section_ids']
+            student_query = Student.query.filter(
+                Student.school_id == g.school_id,
+                Student.status == 'active',
+                Student.current_section_id.in_(section_ids)
+            )
+            if class_id:
+                student_query = student_query.filter(Student.current_class_id == class_id)
+        else:
+            student_query = Student.query.filter_by(school_id=g.school_id, status='active')
+            if class_id:
+                student_query = student_query.filter_by(current_class_id=class_id)
+    else:
+        student_query = Student.query.filter_by(school_id=g.school_id, status='active')
+        if class_id:
+            student_query = student_query.filter_by(current_class_id=class_id)
 
     alerts = []
     for student in student_query.all():
@@ -896,12 +987,35 @@ def attendance_dashboard():
     """Overview: today stats + recent trends"""
     today = date.today()
 
-    # Today's student attendance
-    today_records = StudentAttendance.query.filter_by(
-        school_id=g.school_id, date=today
-    ).filter(StudentAttendance.period.is_(None)).all()
+    # Teacher scope
+    scope = get_teacher_scope()
+    section_filter = None
+    section_ids = None
+    if scope:
+        if scope.get('no_access'):
+            return success_response({
+                'today': {'total_students': 0, 'present': 0, 'absent': 0,
+                          'late': 0, 'on_leave': 0, 'unmarked': 0, 'percentage': 0},
+                'staff': {'total': 0, 'present': 0, 'absent': 0, 'percentage': 0},
+                'pending_leaves': 0, 'late_arrivals_today': 0, 'weekly_trend': []
+            })
+        section_ids = scope['section_ids']
+        if section_ids:
+            section_filter = StudentAttendance.section_id.in_(section_ids)
 
-    total_students = Student.query.filter_by(school_id=g.school_id, status='active').count()
+    # Today's student attendance
+    query = StudentAttendance.query.filter_by(school_id=g.school_id, date=today).filter(
+        StudentAttendance.period.is_(None)
+    )
+    if section_filter is not None:
+        query = query.filter(section_filter)
+    today_records = query.all()
+
+    student_query = Student.query.filter_by(school_id=g.school_id, status='active')
+    if section_ids:
+        student_query = student_query.filter(Student.current_section_id.in_(section_ids))
+    total_students = student_query.count()
+
     present_today = sum(1 for r in today_records if r.status in ('present', 'late'))
     absent_today = sum(1 for r in today_records if r.status == 'absent')
     late_today = sum(1 for r in today_records if r.status == 'late')
@@ -927,9 +1041,12 @@ def attendance_dashboard():
     weekly = []
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
-        day_records = StudentAttendance.query.filter_by(
+        day_query = StudentAttendance.query.filter_by(
             school_id=g.school_id, date=d
-        ).filter(StudentAttendance.period.is_(None)).all()
+        ).filter(StudentAttendance.period.is_(None))
+        if section_filter is not None:
+            day_query = day_query.filter(section_filter)
+        day_records = day_query.all()
         t = len(day_records)
         p = sum(1 for r in day_records if r.status in ('present', 'late'))
         weekly.append({

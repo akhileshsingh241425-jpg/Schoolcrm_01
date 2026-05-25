@@ -184,6 +184,12 @@ def get_timetable():
             if staff:
                 teacher_id = staff.id
 
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response([])
+    if scope and not teacher_id and not class_id and not section_id:
+        return success_response([])
+
     if class_id:
         query = query.filter_by(class_id=class_id)
     if section_id:
@@ -474,6 +480,13 @@ def list_exams():
 @school_required
 def get_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return error_response('Access denied', 403)
+        has_access = any(s.class_id in scope.get('class_ids', []) for s in exam.schedules)
+        if not has_access:
+            return error_response('Access denied', 403)
     return success_response(exam.to_detail_dict())
 
 
@@ -865,6 +878,12 @@ def bulk_marks_entry():
     exam_schedule_id = data['exam_schedule_id']
 
     schedule = ExamSchedule.query.filter_by(id=exam_schedule_id, school_id=g.school_id).first_or_404()
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return error_response('Access denied', 403)
+        if schedule.subject_id not in scope.get('subject_ids', []) or schedule.class_id not in scope.get('class_ids', []):
+            return error_response('Access denied', 403)
     if schedule.is_marks_locked:
         return error_response('Marks are locked for this subject', 403)
 
@@ -953,13 +972,21 @@ def get_marks_sheet():
     else:
         return error_response('exam_schedule_id or (exam_id + class_id) required')
 
+    # Teacher scoping on schedules
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response({'students': [], 'schedules': []})
+        if scope.get('class_ids'):
+            schedules = [s for s in schedules if s.class_id in scope['class_ids']]
+        if not schedules:
+            return success_response({'students': [], 'schedules': []})
+
     # Get students for this class
     student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=class_id or schedules[0].class_id, status='active')
     if section_id:
         student_query = student_query.filter_by(current_section_id=section_id)
-    # Teacher scoping
-    scope = get_teacher_scope()
-    if scope and scope['section_ids']:
+    if scope and scope.get('section_ids'):
         student_query = student_query.filter(Student.current_section_id.in_(scope['section_ids']))
     students = student_query.order_by(Student.first_name).all()
 
@@ -1046,8 +1073,16 @@ def add_results():
     data = request.get_json()
     results_data = data.get('results', [])
 
+    scope = get_teacher_scope()
+
     created = []
     for r in results_data:
+        if scope:
+            if scope.get('no_access'):
+                return error_response('Access denied', 403)
+            schedule = ExamSchedule.query.get(r['exam_schedule_id'])
+            if not schedule or schedule.subject_id not in scope.get('subject_ids', []) or schedule.class_id not in scope.get('class_ids', []):
+                return error_response('Access denied', 403)
         result = ExamResult(
             exam_schedule_id=r['exam_schedule_id'],
             student_id=r['student_id'],
@@ -1070,6 +1105,13 @@ def get_student_results(student_id):
     query = ExamResult.query.filter_by(student_id=student_id, school_id=g.school_id)
     if exam_id:
         query = query.join(ExamSchedule).filter(ExamSchedule.exam_id == exam_id)
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        student = Student.query.get(student_id)
+        if not student or student.current_section_id not in scope.get('section_ids', []):
+            return success_response([])
     results = query.all()
     return success_response([r.to_dict() for r in results])
 
@@ -1083,6 +1125,12 @@ def get_class_results():
     section_id = request.args.get('section_id', type=int)
     if not exam_id or not class_id:
         return error_response('exam_id and class_id required')
+
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response([])
+    if scope and class_id not in scope.get('class_ids', []):
+        return error_response('Access denied', 403)
 
     schedules = ExamSchedule.query.filter_by(
         exam_id=exam_id, school_id=g.school_id, class_id=class_id
@@ -2281,17 +2329,37 @@ def update_incident(incident_id):
 @school_required
 def exam_dashboard():
     """Overview dashboard for examination module"""
-    total_exams = Exam.query.filter_by(school_id=g.school_id).count()
-    upcoming = Exam.query.filter_by(school_id=g.school_id, status='upcoming').count()
-    ongoing = Exam.query.filter_by(school_id=g.school_id, status='ongoing').count()
-    completed = Exam.query.filter_by(school_id=g.school_id, status='completed').count()
-    results_published = Exam.query.filter_by(school_id=g.school_id, status='results_published').count()
+    scope = get_teacher_scope()
+
+    if scope and scope.get('no_access'):
+        return success_response({
+            'stats': {
+                'total_exams': 0, 'upcoming': 0, 'ongoing': 0, 'completed': 0,
+                'results_published': 0, 'total_subjects': 0, 'total_halls': 0,
+                'total_report_cards': 0, 'grading_systems': 0, 'exam_types': 0,
+            },
+            'recent_exams': [],
+        })
+
+    base_exam = Exam.query.filter_by(school_id=g.school_id)
+    if scope and scope.get('class_ids'):
+        scoped_ids = db.session.query(ExamSchedule.exam_id).filter(
+            ExamSchedule.class_id.in_(scope['class_ids'])
+        ).distinct().subquery()
+        base_exam = base_exam.filter(Exam.id.in_(scoped_ids))
+        recent_exams = base_exam.order_by(Exam.created_at.desc()).limit(5).all()
+    else:
+        recent_exams = Exam.query.filter_by(school_id=g.school_id).order_by(Exam.created_at.desc()).limit(5).all()
+
+    total_exams = base_exam.count()
+    upcoming = base_exam.filter(Exam.status == 'upcoming').count()
+    ongoing = base_exam.filter(Exam.status == 'ongoing').count()
+    completed = base_exam.filter(Exam.status == 'completed').count()
+    results_published = base_exam.filter(Exam.status == 'results_published').count()
 
     total_subjects = Subject.query.filter_by(school_id=g.school_id, is_active=True).count()
     total_halls = ExamHall.query.filter_by(school_id=g.school_id, is_active=True).count()
     total_report_cards = ReportCard.query.filter_by(school_id=g.school_id).count()
-
-    recent_exams = Exam.query.filter_by(school_id=g.school_id).order_by(Exam.created_at.desc()).limit(5).all()
 
     # Grading systems count
     grading_systems = GradingSystem.query.filter_by(school_id=g.school_id, is_active=True).count()
@@ -2340,9 +2408,11 @@ def get_syllabus():
     # Teacher scoping
     scope = get_teacher_scope()
     if scope:
-        if scope['class_ids']:
+        if scope.get('no_access'):
+            return success_response([])
+        if scope.get('class_ids'):
             query = query.filter(Syllabus.class_id.in_(scope['class_ids']))
-        if scope['subject_ids']:
+        if scope.get('subject_ids'):
             query = query.filter(Syllabus.subject_id.in_(scope['subject_ids']))
 
     syllabus = query.order_by(Syllabus.class_id, Syllabus.subject_id, Syllabus.chapter_number).all()
@@ -2527,6 +2597,12 @@ def get_lesson_plans():
     if date_to:
         query = query.filter(LessonPlan.date <= date_to)
 
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        query = query.filter(LessonPlan.class_id.in_(scope.get('class_ids', [])))
+
     plans = query.order_by(LessonPlan.date.desc()).all()
     return success_response([p.to_dict() for p in plans])
 
@@ -2536,6 +2612,12 @@ def get_lesson_plans():
 def create_lesson_plan():
     """Create a lesson plan"""
     data = request.get_json()
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return error_response('Access denied', 403)
+        if data.get('class_id') not in scope.get('class_ids', []) or data.get('subject_id') not in scope.get('subject_ids', []):
+            return error_response('Access denied', 403)
     plan = LessonPlan(
         school_id=g.school_id,
         teacher_id=data.get('teacher_id'),
@@ -2660,6 +2742,12 @@ def get_homework():
     if homework_type:
         query = query.filter_by(homework_type=homework_type)
 
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        query = query.filter(Homework.class_id.in_(scope.get('class_ids', [])))
+
     homework_list = query.order_by(Homework.due_date.desc()).all()
     return success_response([h.to_dict() for h in homework_list])
 
@@ -2669,6 +2757,12 @@ def get_homework():
 def create_homework():
     """Create homework assignment"""
     data = request.get_json()
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return error_response('Access denied', 403)
+        if data.get('class_id') not in scope.get('class_ids', []):
+            return error_response('Access denied', 403)
     hw = Homework(
         school_id=g.school_id,
         teacher_id=data.get('teacher_id'),
@@ -2806,6 +2900,12 @@ def get_study_materials():
     if material_type:
         query = query.filter_by(material_type=material_type)
 
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        query = query.filter(StudyMaterial.class_id.in_(scope.get('class_ids', [])))
+
     materials = query.order_by(StudyMaterial.created_at.desc()).all()
     return success_response([m.to_dict() for m in materials])
 
@@ -2815,6 +2915,12 @@ def get_study_materials():
 def create_study_material():
     """Upload/create study material"""
     data = request.get_json()
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return error_response('Access denied', 403)
+        if data.get('class_id') not in scope.get('class_ids', []):
+            return error_response('Access denied', 403)
     material = StudyMaterial(
         school_id=g.school_id,
         class_id=data['class_id'],
@@ -2991,6 +3097,12 @@ def get_teacher_subjects():
         query = query.filter_by(class_id=class_id)
     if subject_id:
         query = query.filter_by(subject_id=subject_id)
+
+    scope = get_teacher_scope()
+    if scope:
+        if scope.get('no_access'):
+            return success_response([])
+        query = query.filter(TeacherSubject.teacher_id == scope['staff_id'])
 
     allocations = query.all()
     return success_response([a.to_dict() for a in allocations])
@@ -3338,26 +3450,52 @@ def select_elective():
 @school_required
 def curriculum_dashboard():
     """Overview dashboard for curriculum module"""
-    total_syllabus = Syllabus.query.filter_by(school_id=g.school_id).count()
-    syllabus_completed = Syllabus.query.filter_by(school_id=g.school_id, status='completed').count()
-    syllabus_progress = Syllabus.query.filter_by(school_id=g.school_id, status='in_progress').count()
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response({
+            'stats': {
+                'total_syllabus': 0, 'syllabus_completed': 0, 'syllabus_in_progress': 0,
+                'total_lesson_plans': 0, 'pending_approval': 0, 'approved_plans': 0,
+                'total_homework': 0, 'active_homework': 0, 'total_submissions': 0,
+                'total_materials': 0, 'teacher_allocations': 0,
+            },
+            'upcoming_events': [],
+        })
 
-    total_lesson_plans = LessonPlan.query.filter_by(school_id=g.school_id).count()
-    pending_approval = LessonPlan.query.filter_by(school_id=g.school_id, status='submitted').count()
-    approved_plans = LessonPlan.query.filter_by(school_id=g.school_id, status='approved').count()
+    base_syllabus = Syllabus.query.filter_by(school_id=g.school_id)
+    base_plans = LessonPlan.query.filter_by(school_id=g.school_id)
+    base_hw = Homework.query.filter_by(school_id=g.school_id)
+    base_materials = StudyMaterial.query.filter_by(school_id=g.school_id, is_active=True)
+    base_calendar = AcademicCalendar.query.filter(AcademicCalendar.school_id == g.school_id)
+    base_ts = TeacherSubject.query.filter_by(school_id=g.school_id, status='active')
 
-    total_homework = Homework.query.filter_by(school_id=g.school_id).count()
-    active_homework = Homework.query.filter_by(school_id=g.school_id, status='published').count()
+    if scope and scope.get('class_ids'):
+        base_syllabus = base_syllabus.filter(Syllabus.class_id.in_(scope['class_ids']))
+        base_plans = base_plans.filter(LessonPlan.class_id.in_(scope['class_ids']))
+        base_hw = base_hw.filter(Homework.class_id.in_(scope['class_ids']))
+        base_materials = base_materials.filter(StudyMaterial.class_id.in_(scope['class_ids']))
+        base_calendar = base_calendar.filter(AcademicCalendar.class_id.in_(scope['class_ids']))
+        base_ts = base_ts.filter(TeacherSubject.class_id.in_(scope['class_ids']))
+
+    total_syllabus = base_syllabus.count()
+    syllabus_completed = base_syllabus.filter(Syllabus.status == 'completed').count()
+    syllabus_progress = base_syllabus.filter(Syllabus.status == 'in_progress').count()
+
+    total_lesson_plans = base_plans.count()
+    pending_approval = base_plans.filter(LessonPlan.status == 'submitted').count()
+    approved_plans = base_plans.filter(LessonPlan.status == 'approved').count()
+
+    total_homework = base_hw.count()
+    active_homework = base_hw.filter(Homework.status == 'published').count()
     total_submissions = HomeworkSubmission.query.filter_by(school_id=g.school_id).count()
 
-    total_materials = StudyMaterial.query.filter_by(school_id=g.school_id, is_active=True).count()
+    total_materials = base_materials.count()
 
-    upcoming_events = AcademicCalendar.query.filter(
-        AcademicCalendar.school_id == g.school_id,
+    upcoming_events = base_calendar.filter(
         AcademicCalendar.start_date >= date.today()
     ).order_by(AcademicCalendar.start_date).limit(5).all()
 
-    teacher_alloc = TeacherSubject.query.filter_by(school_id=g.school_id, status='active').count()
+    teacher_alloc = base_ts.count()
 
     return success_response({
         'stats': {

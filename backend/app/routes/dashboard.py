@@ -26,6 +26,7 @@ def get_dashboard():
 
     # Teacher scoping
     scope = get_teacher_scope()
+    teacher_scope = bool(scope and (scope.get('no_access') or scope['class_ids'] or scope['section_ids']))
     
     try:
         if scope and scope['section_ids']:
@@ -68,55 +69,62 @@ def get_dashboard():
         total_marked = 0
         present_today = 0
     
-    try:
-        # Fees this month
-        monthly_collection = db.session.query(
-            func.coalesce(func.sum(FeePayment.amount_paid), 0)
-        ).filter(
-            FeePayment.school_id == school_id,
-            FeePayment.status == 'completed',
-            FeePayment.payment_date >= month_start,
-            FeePayment.payment_date <= today
-        ).scalar()
-    except Exception:
-        db.session.rollback()
+    if not teacher_scope:
+        try:
+            # Fees this month
+            monthly_collection = db.session.query(
+                func.coalesce(func.sum(FeePayment.amount_paid), 0)
+            ).filter(
+                FeePayment.school_id == school_id,
+                FeePayment.status == 'completed',
+                FeePayment.payment_date >= month_start,
+                FeePayment.payment_date <= today
+            ).scalar()
+        except Exception:
+            db.session.rollback()
+            monthly_collection = 0
+        
+        try:
+            # Leads + Admissions in fewer round trips
+            new_leads = Lead.query.filter(
+                Lead.school_id == school_id,
+                Lead.created_at >= month_start
+            ).count()
+        except Exception:
+            new_leads = 0
+        
+        try:
+            pending_admissions = Admission.query.filter(
+                Admission.school_id == school_id,
+                Admission.status.notin_(['enrolled', 'rejected'])
+            ).count()
+        except Exception:
+            pending_admissions = 0
+        
+        try:
+            # Recent leads (no relationship lazy-loads needed — Lead.to_dict() is lightweight)
+            recent_leads = Lead.query.filter_by(school_id=school_id).order_by(
+                Lead.created_at.desc()
+            ).limit(5).all()
+        except Exception:
+            db.session.rollback()
+            recent_leads = []
+        
+        try:
+            # Recent payments - eager load student to avoid N+1
+            recent_payments = FeePayment.query.options(
+                joinedload(FeePayment.student)
+            ).filter_by(
+                school_id=school_id, status='completed'
+            ).order_by(FeePayment.created_at.desc()).limit(5).all()
+        except Exception:
+            db.session.rollback()
+            recent_payments = []
+    else:
         monthly_collection = 0
-    
-    try:
-        # Leads + Admissions in fewer round trips
-        new_leads = Lead.query.filter(
-            Lead.school_id == school_id,
-            Lead.created_at >= month_start
-        ).count()
-    except Exception:
         new_leads = 0
-    
-    try:
-        pending_admissions = Admission.query.filter(
-            Admission.school_id == school_id,
-            Admission.status.notin_(['enrolled', 'rejected'])
-        ).count()
-    except Exception:
         pending_admissions = 0
-    
-    try:
-        # Recent leads (no relationship lazy-loads needed — Lead.to_dict() is lightweight)
-        recent_leads = Lead.query.filter_by(school_id=school_id).order_by(
-            Lead.created_at.desc()
-        ).limit(5).all()
-    except Exception:
-        db.session.rollback()
         recent_leads = []
-    
-    try:
-        # Recent payments - eager load student to avoid N+1
-        recent_payments = FeePayment.query.options(
-            joinedload(FeePayment.student)
-        ).filter_by(
-            school_id=school_id, status='completed'
-        ).order_by(FeePayment.created_at.desc()).limit(5).all()
-    except Exception:
-        db.session.rollback()
         recent_payments = []
     
     return success_response({

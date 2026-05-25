@@ -184,6 +184,15 @@ def get_teacher_scope():
         section_ids.add(sec.id)
         class_ids.add(sec.class_id)
 
+    if not class_ids and not section_ids and not subject_ids:
+        return {
+            'class_ids': [],
+            'section_ids': [],
+            'subject_ids': [],
+            'is_teacher': True,
+            'no_access': True,
+        }
+
     return {
         'staff': staff,
         'class_ids': list(class_ids),
