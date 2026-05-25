@@ -13,6 +13,14 @@ def get_current_user():
     return user
 
 
+def get_user_and_school(user_id):
+    user = User.query.get(int(user_id))
+    if not user:
+        return None, None
+    school = School.query.get(user.school_id) if user.school_id else None
+    return user, school
+
+
 def school_required(f):
     """Decorator to ensure user belongs to an active school"""
     @wraps(f)
@@ -23,6 +31,13 @@ def school_required(f):
         
         if not user:
             return jsonify({'error': 'User not found'}), 404
+        
+        # Super admin bypasses school checks
+        if user.role and user.role.name == 'super_admin':
+            g.current_user = user
+            g.school_id = user.school_id
+            g.school = None
+            return f(*args, **kwargs)
         
         school = School.query.get(user.school_id)
         if not school or not school.is_active:
@@ -52,6 +67,13 @@ def role_required(*roles):
             
             if user.role.name not in roles:
                 return jsonify({'error': 'Insufficient permissions'}), 403
+            
+            # Super admin bypasses school checks
+            if user.role.name == 'super_admin':
+                g.current_user = user
+                g.school_id = user.school_id
+                g.school = None
+                return f(*args, **kwargs)
             
             school = School.query.get(user.school_id)
             if not school or not school.is_active:
