@@ -132,6 +132,7 @@ export const studentsAPI = {
   // ID Card
   getIdCard: (id) => api.get(`/students/${id}/id-card`),
   bulkIdCards: (data) => api.post('/students/bulk-id-cards', data),
+  getIdCardPdf: (id) => api.get(`/students/${id}/id-card/pdf`, { responseType: 'blob' }),
   // Transfer
   transfer: (id, data) => api.post(`/students/${id}/transfer`, data),
   // Smart allocation
@@ -173,6 +174,7 @@ export const staffAPI = {
   generatePayroll: (data) => api.post('/staff/payroll/generate', data),
   updatePayroll: (id, data) => api.put(`/staff/payroll/${id}`, data),
   createPayroll: (data) => api.post('/staff/payroll', data),
+  downloadPayslip: (id) => api.get(`/staff/payroll/${id}/payslip`, { responseType: 'blob' }),
   // Leave
   listLeaves: (params) => api.get('/staff/leaves', { params }),
   applyLeave: (data) => api.post('/staff/leaves', data),

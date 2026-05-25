@@ -10,7 +10,7 @@ import {
 import {
   Add, Search, Person, Payment, EventNote, Star, Work, School, Assignment,
   Description, Edit, Delete, Check, Close, Visibility, Download, Upload,
-  Business, Group, TrendingUp, Warning, AccessTime, CalendarMonth
+  Business, Group, TrendingUp, Warning, AccessTime, CalendarMonth, PictureAsPdf
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { staffAPI } from '../../services/api';
@@ -164,6 +164,17 @@ function PayrollTab() {
     } catch (err) { toast.error('Error'); }
   };
 
+  const downloadPayslip = async (id) => {
+    try {
+      const res = await staffAPI.downloadPayslip(id);
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url; link.setAttribute('download', `Payslip_${id}.pdf`);
+      document.body.appendChild(link); link.click(); link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch { toast.error('Failed to download payslip'); }
+  };
+
   return (
     <Box>
       <Box display="flex" gap={2} mb={2} alignItems="center" flexWrap="wrap">
@@ -196,9 +207,16 @@ function PayrollTab() {
                 <TableCell align="right"><strong>₹{p.net_salary?.toLocaleString()}</strong></TableCell>
                 <TableCell><Chip label={p.payment_status} size="small" color={p.payment_status === 'paid' ? 'success' : 'warning'} /></TableCell>
                 <TableCell>
-                  {p.payment_status === 'pending' && (
-                    <Button size="small" onClick={() => markPaid(p.id)}>Mark Paid</Button>
-                  )}
+                  <Box display="flex" gap={0.5}>
+                    <Tooltip title="Download Payslip">
+                      <IconButton size="small" color="primary" onClick={() => downloadPayslip(p.id)}>
+                        <PictureAsPdf fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    {p.payment_status === 'pending' && (
+                      <Button size="small" onClick={() => markPaid(p.id)}>Mark Paid</Button>
+                    )}
+                  </Box>
                 </TableCell>
               </TableRow>
             ))}

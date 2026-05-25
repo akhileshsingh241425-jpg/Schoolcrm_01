@@ -1,15 +1,17 @@
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, send_file
 from app import db
 from app.models.staff import (
     Staff, StaffPayroll, StaffDocument, SalaryStructure,
     StaffLeave, StaffLeaveBalance, PerformanceReview,
     Recruitment, JobApplication, TrainingRecord, DutyRoster
 )
+from app.models.school import School
 from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
+import io
 
 staff_bp = Blueprint('staff', __name__)
 
@@ -458,6 +460,225 @@ def create_payroll():
     db.session.add(payroll)
     db.session.commit()
     return success_response(payroll.to_dict(), 'Payroll entry created', 201)
+
+
+@staff_bp.route('/payroll/<int:payroll_id>/payslip', methods=['GET'])
+@school_required
+def download_payslip_pdf(payroll_id):
+    """Generate and download a professional salary slip PDF"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+    pr = StaffPayroll.query.filter_by(id=payroll_id, school_id=g.school_id).first_or_404()
+    staff_member = Staff.query.get(pr.staff_id)
+    school = School.query.get(g.school_id)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            topMargin=12*mm, bottomMargin=12*mm,
+                            leftMargin=15*mm, rightMargin=15*mm)
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle('SchoolTitle', parent=styles['Title'],
+        fontSize=20, spaceAfter=2, textColor=colors.HexColor('#1a237e'),
+        fontName='Helvetica-Bold', alignment=TA_CENTER)
+    subtitle_style = ParagraphStyle('SubTitle', parent=styles['Normal'],
+        fontSize=10, spaceAfter=1, textColor=colors.HexColor('#424242'), alignment=TA_CENTER)
+    heading_style = ParagraphStyle('SectionHead', parent=styles['Heading2'],
+        fontSize=12, textColor=colors.HexColor('#1a237e'),
+        fontName='Helvetica-Bold', spaceAfter=6, spaceBefore=10)
+    normal_style = ParagraphStyle('NormalText', parent=styles['Normal'], fontSize=10, leading=14)
+    right_style = ParagraphStyle('RightText', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT)
+    center_style = ParagraphStyle('CenterText', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER)
+    bold_style = ParagraphStyle('BoldText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+    small_style = ParagraphStyle('SmallText', parent=styles['Normal'], fontSize=8, textColor=colors.HexColor('#757575'))
+
+    primary = colors.HexColor('#1a237e')
+    accent = colors.HexColor('#3949ab')
+    light_bg = colors.HexColor('#e8eaf6')
+    border_color = colors.HexColor('#bdbdbd')
+
+    school_name = school.name.upper() if school else 'SCHOOL NAME'
+    school_addr = ', '.join(filter(None, [
+        school.address if school else None, school.city if school else None,
+        school.state if school else None, school.pincode if school else None
+    ])) or ''
+    school_contact = ', '.join(filter(None, [
+        f"Ph: {school.phone}" if school and school.phone else None,
+        f"Email: {school.email}" if school and school.email else None,
+    ])) or ''
+
+    story.append(Paragraph(school_name, title_style))
+    if school_addr:
+        story.append(Paragraph(school_addr, subtitle_style))
+    if school_contact:
+        story.append(Paragraph(school_contact, subtitle_style))
+    story.append(Spacer(1, 2*mm))
+    story.append(HRFlowable(width="100%", thickness=2, color=primary))
+    story.append(Spacer(1, 2*mm))
+
+    month_name = datetime(2000, pr.month, 1).strftime('%B') if pr.month else ''
+    slip_title = ParagraphStyle('SlipTitle', parent=styles['Title'],
+        fontSize=13, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    title_data = [[Paragraph(f"SALARY SLIP - {month_name} {pr.year}", slip_title)]]
+    title_table = Table(title_data, colWidths=[doc.width])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), primary),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(title_table)
+    story.append(Spacer(1, 4*mm))
+
+    # Employee Info
+    emp_info = [
+        [Paragraph('<b>Employee Name:</b>', bold_style),
+         Paragraph(f"{staff_member.first_name} {staff_member.last_name}" if staff_member else '-', normal_style),
+         Paragraph('<b>Employee ID:</b>', bold_style),
+         Paragraph(staff_member.employee_id if staff_member else '-', normal_style)],
+        [Paragraph('<b>Department:</b>', bold_style),
+         Paragraph(staff_member.department if staff_member else '-', normal_style),
+         Paragraph('<b>Designation:</b>', bold_style),
+         Paragraph(staff_member.designation if staff_member else '-', normal_style)],
+        [Paragraph('<b>Payment Status:</b>', bold_style),
+         Paragraph((pr.payment_status or 'pending').title(), normal_style),
+         Paragraph('<b>Pay Date:</b>', bold_style),
+         Paragraph(pr.payment_date.strftime('%d-%m-%Y') if pr.payment_date else '-', normal_style)],
+    ]
+    emp_table = Table(emp_info, colWidths=[doc.width*0.15, doc.width*0.35, doc.width*0.15, doc.width*0.35])
+    emp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), light_bg),
+        ('GRID', (0, 0), (-1, -1), 0.5, border_color),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(emp_table)
+    story.append(Spacer(1, 5*mm))
+
+    # Earnings Table
+    story.append(Paragraph("EARNINGS", heading_style))
+    earn_header = [
+        Paragraph('<b>Component</b>', bold_style),
+        Paragraph('<b>Amount (₹)</b>', right_style),
+    ]
+    earn_data = [earn_header]
+    earn_items = [
+        ('Basic Salary', pr.basic_salary),
+        ('HRA (House Rent Allowance)', pr.hra),
+        ('DA (Dearness Allowance)', pr.da),
+        ('TA (Travel Allowance)', pr.ta),
+        ('Medical Allowance', pr.medical_allowance),
+        ('Special Allowance', pr.special_allowance),
+        ('Other Allowance', pr.other_allowance),
+        ('Overtime Amount', pr.overtime_amount),
+    ]
+    for label, val in earn_items:
+        if val:
+            earn_data.append([Paragraph(label, normal_style), Paragraph(f'{float(val):,.2f}', right_style)])
+
+    earn_data.append([Paragraph('<b>Gross Salary</b>', bold_style),
+                      Paragraph(f'<b>{float(pr.gross_salary or 0):,.2f}</b>', right_style)])
+
+    earn_table = Table(earn_data, colWidths=[doc.width*0.7, doc.width*0.3])
+    earn_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), accent),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, border_color),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (0, -1), (-1, -1), light_bg),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.5, primary),
+    ]))
+    for i in range(1, len(earn_data) - 1):
+        if i % 2 == 0:
+            earn_table._argW[0]  # just to trigger
+            earn_table.setStyle(TableStyle([('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f5f5f5'))]))
+    story.append(earn_table)
+    story.append(Spacer(1, 5*mm))
+
+    # Deductions Table
+    story.append(Paragraph("DEDUCTIONS", heading_style))
+    ded_header = [Paragraph('<b>Component</b>', bold_style), Paragraph('<b>Amount (₹)</b>', right_style)]
+    ded_data = [ded_header]
+    ded_items = [
+        ('PF (Provident Fund)', pr.pf_deduction),
+        ('ESI (Employee Insurance)', pr.esi_deduction),
+        ('TDS (Income Tax)', pr.tds),
+        ('Professional Tax', pr.professional_tax),
+        ('Other Deduction', pr.other_deduction),
+        ('Leave Deduction', pr.leave_deduction),
+    ]
+    for label, val in ded_items:
+        if val:
+            ded_data.append([Paragraph(label, normal_style), Paragraph(f'{float(val):,.2f}', right_style)])
+
+    ded_data.append([Paragraph('<b>Total Deductions</b>', bold_style),
+                     Paragraph(f'<b>{float(pr.total_deductions or 0):,.2f}</b>', right_style)])
+
+    ded_table = Table(ded_data, colWidths=[doc.width*0.7, doc.width*0.3])
+    ded_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#c62828')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, border_color),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#ffebee')),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.5, colors.HexColor('#c62828')),
+    ]))
+    for i in range(1, len(ded_data) - 1):
+        if i % 2 == 0:
+            ded_table.setStyle(TableStyle([('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f5f5f5'))]))
+    story.append(ded_table)
+    story.append(Spacer(1, 5*mm))
+
+    # Net Salary
+    net_data = [[Paragraph('<b>NET SALARY</b>', ParagraphStyle('NetLabel', parent=styles['Normal'],
+        fontSize=14, fontName='Helvetica-Bold', textColor=colors.white)),
+        Paragraph(f'<b>₹ {float(pr.net_salary or 0):,.2f}</b>',
+        ParagraphStyle('NetValue', parent=styles['Normal'], fontSize=16, fontName='Helvetica-Bold', textColor=colors.white, alignment=TA_RIGHT))]]
+    net_table = Table(net_data, colWidths=[doc.width*0.5, doc.width*0.5])
+    net_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#2e7d32')),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    story.append(net_table)
+    story.append(Spacer(1, 10*mm))
+
+    # Signature
+    story.append(HRFlowable(width="100%", thickness=0.5, color=border_color))
+    story.append(Spacer(1, 15*mm))
+    sig_data = [
+        [Paragraph('_____________________', center_style),
+         Paragraph('_____________________', center_style)],
+        [Paragraph('Accounts Officer', center_style),
+         Paragraph('Principal', center_style)],
+    ]
+    sig_table = Table(sig_data, colWidths=[doc.width/2, doc.width/2])
+    sig_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    story.append(sig_table)
+
+    story.append(Spacer(1, 5*mm))
+    gen_date = date.today().strftime('%d-%m-%Y')
+    story.append(Paragraph(f"Generated on: {gen_date} | This is a computer-generated document.", small_style))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    emp_name = f"{staff_member.first_name}_{staff_member.last_name}" if staff_member else "staff"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True,
+                     download_name=f"SalarySlip_{emp_name}_{month_name}_{pr.year}.pdf")
 
 
 # ─── Staff Leave ───────────────────────────────────────────

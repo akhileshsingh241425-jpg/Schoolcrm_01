@@ -1,4 +1,4 @@
-from flask import Blueprint, request, g, current_app
+from flask import Blueprint, request, g, current_app, send_file
 from app import db
 from app.models.student import (
     Student, ParentDetail, StudentDocument, ParentDocument, Class, Section, AcademicYear,
@@ -7,12 +7,14 @@ from app.models.student import (
 )
 from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
+from app.models.school import School
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import uuid
 import os
+import io
 
 students_bp = Blueprint('students', __name__)
 
@@ -1057,6 +1059,153 @@ def bulk_id_cards():
         s.id_card_issued = True
     db.session.commit()
     return success_response(cards, f'{len(cards)} ID cards generated')
+
+
+@students_bp.route('/<int:student_id>/id-card/pdf', methods=['GET'])
+@school_required
+def download_id_card_pdf(student_id):
+    """Generate and download a professional student ID card PDF"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    school = School.query.get(g.school_id)
+    parents = list(student.parents.limit(2).all())
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            topMargin=10*mm, bottomMargin=10*mm,
+                            leftMargin=15*mm, rightMargin=15*mm)
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle('SchoolTitle', parent=styles['Title'],
+        fontSize=20, spaceAfter=2, textColor=colors.HexColor('#1a237e'),
+        fontName='Helvetica-Bold', alignment=TA_CENTER)
+    subtitle_style = ParagraphStyle('SubTitle', parent=styles['Normal'],
+        fontSize=10, spaceAfter=1, textColor=colors.HexColor('#424242'), alignment=TA_CENTER)
+    normal_style = ParagraphStyle('NormalText', parent=styles['Normal'], fontSize=10, leading=14)
+    center_style = ParagraphStyle('CenterText', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER)
+    bold_style = ParagraphStyle('BoldText', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+    label_style = ParagraphStyle('Label', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#666666'))
+    value_style = ParagraphStyle('Value', parent=styles['Normal'], fontSize=11, fontName='Helvetica-Bold', leading=14)
+
+    primary = colors.HexColor('#1a237e')
+    accent = colors.HexColor('#3949ab')
+    light_bg = colors.HexColor('#e8eaf6')
+    border_color = colors.HexColor('#bdbdbd')
+
+    school_name = school.name.upper() if school else 'SCHOOL NAME'
+    school_addr = ', '.join(filter(None, [
+        school.address if school else None, school.city if school else None,
+        school.state if school else None, school.pincode if school else None
+    ])) or ''
+    school_contact = ', '.join(filter(None, [
+        f"Ph: {school.phone}" if school and school.phone else None,
+        f"Email: {school.email}" if school and school.email else None,
+    ])) or ''
+
+    story.append(Paragraph(school_name, title_style))
+    if school_addr:
+        story.append(Paragraph(school_addr, subtitle_style))
+    if school_contact:
+        story.append(Paragraph(school_contact, subtitle_style))
+    story.append(Spacer(1, 4*mm))
+    story.append(HRFlowable(width="100%", thickness=2, color=primary))
+    story.append(Spacer(1, 4*mm))
+
+    # Title Bar
+    card_title = ParagraphStyle('CardTitle', parent=styles['Title'],
+        fontSize=13, textColor=colors.white, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    title_data = [[Paragraph("STUDENT IDENTITY CARD", card_title)]]
+    title_table = Table(title_data, colWidths=[doc.width])
+    title_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), primary),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(title_table)
+    story.append(Spacer(1, 4*mm))
+
+    # Student info
+    father_name = next((p.name for p in parents if p.relation == 'father'), '-')
+    mother_name = next((p.name for p in parents if p.relation == 'mother'), '-')
+    parent_phone = parents[0].phone if parents else '-'
+    class_name = student.current_class.name if student.current_class else '-'
+    section_name = student.current_section.name if student.current_section else '-'
+    dob_str = student.date_of_birth.strftime('%d-%m-%Y') if student.date_of_birth else '-'
+
+    student_info = [
+        [Paragraph('<b>Student Name:</b>', label_style), Paragraph(student.full_name or f"{student.first_name} {student.last_name}", value_style)],
+        [Paragraph('<b>Class / Section:</b>', label_style), Paragraph(f"{class_name} - {section_name}", value_style)],
+        [Paragraph('<b>Roll No:</b>', label_style), Paragraph(student.roll_no or '-', value_style)],
+        [Paragraph('<b>Admission No:</b>', label_style), Paragraph(student.admission_no or '-', value_style)],
+        [Paragraph('<b>Date of Birth:</b>', label_style), Paragraph(dob_str, value_style)],
+        [Paragraph('<b>Blood Group:</b>', label_style), Paragraph(student.blood_group or '-', value_style)],
+        [Paragraph('<b>Gender:</b>', label_style), Paragraph((student.gender or '-').title(), value_style)],
+        [Paragraph('<b>Address:</b>', label_style), Paragraph(student.address or '-', normal_style)],
+        [Paragraph('<b>Father:</b>', label_style), Paragraph(father_name, value_style)],
+        [Paragraph('<b>Mother:</b>', label_style), Paragraph(mother_name, value_style)],
+        [Paragraph('<b>Parent Phone:</b>', label_style), Paragraph(parent_phone, value_style)],
+    ]
+
+    col_w = [doc.width * 0.25, doc.width * 0.75]
+    info_table = Table(student_info, colWidths=col_w)
+    info_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, border_color),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fafafa')),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 8*mm))
+
+    # ID Card Number and Issue Date
+    id_no = student.id_card_no or f"ID-{student.admission_no or student.id}"
+    issue_date = date.today().strftime('%d-%m-%Y')
+    story.append(HRFlowable(width="100%", thickness=0.5, color=border_color))
+    story.append(Spacer(1, 2*mm))
+    footer_data = [
+        [Paragraph(f'<b>ID Card No:</b> {id_no}', center_style),
+         Paragraph(f'<b>Issue Date:</b> {issue_date}', center_style),
+         Paragraph('<b>Valid Till:</b> March 2026', center_style)],
+    ]
+    footer_table = Table(footer_data, colWidths=[doc.width/3, doc.width/3, doc.width/3])
+    footer_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(footer_table)
+
+    story.append(Spacer(1, 8*mm))
+    sig_data = [
+        [Paragraph('_____________________', center_style),
+         Paragraph('_____________________', center_style)],
+        [Paragraph('Student Signature', center_style),
+         Paragraph('Principal Signature', center_style)],
+    ]
+    sig_table = Table(sig_data, colWidths=[doc.width/2, doc.width/2])
+    sig_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+    story.append(sig_table)
+
+    story.append(Spacer(1, 5*mm))
+    story.append(Paragraph("This is a computer-generated document.", ParagraphStyle('Footer', parent=styles['Normal'],
+        fontSize=8, textColor=colors.HexColor('#999999'), alignment=TA_CENTER)))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    student_name = student.full_name or f"{student.first_name}_{student.last_name}"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True,
+                     download_name=f"IDCard_{student_name}.pdf")
 
 
 # ===================== TRANSFER =====================

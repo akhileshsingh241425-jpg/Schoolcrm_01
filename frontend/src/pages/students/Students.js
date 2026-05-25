@@ -12,7 +12,7 @@ import {
   Add, Search, Visibility, Edit, Delete, School, People, TrendingUp,
   EmojiEvents, FilterList, FileDownload, Upload, Badge as BadgeIcon,
   SwapVert, Groups, Psychology, MedicalServices, Timeline,
-  Star, Warning, CheckCircle, Cancel, PersonSearch
+  Star, Warning, CheckCircle, Cancel, PersonSearch, PictureAsPdf
 } from '@mui/icons-material';
 import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
@@ -754,6 +754,22 @@ function IdCardsTab() {
 
   const selectAll = () => setSelected(students.map(s => s.id));
 
+  const downloadIdCard = async (studentId) => {
+    try {
+      const res = await studentsAPI.getIdCardPdf(studentId);
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `IDCard_${studentId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download ID card');
+    }
+  };
+
   return (
     <Box>
       <Box display="flex" gap={2} mb={2} alignItems="center" flexWrap="wrap">
@@ -782,11 +798,16 @@ function IdCardsTab() {
                   <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: 'primary.main' }}>{s.first_name?.[0]}</Avatar>
                   <Typography fontWeight={600} variant="body2">{s.full_name || s.first_name}</Typography>
                   <Typography variant="caption" color="text.secondary">{s.admission_no}</Typography>
-                  <Box sx={{ mt: 1 }}>
+                  <Box sx={{ mt: 1, display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
                     {s.id_card_issued ?
                       <Chip label="ID Issued" color="success" size="small" icon={<CheckCircle />} /> :
                       <Chip label="Not Issued" size="small" variant="outlined" />
                     }
+                    {s.id_card_issued && (
+                      <Chip label="PDF" color="primary" size="small" icon={<PictureAsPdf />}
+                        onClick={(e) => { e.stopPropagation(); downloadIdCard(s.id); }}
+                      />
+                    )}
                   </Box>
                 </CardContent>
               </Card>
