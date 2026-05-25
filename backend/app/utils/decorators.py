@@ -28,27 +28,29 @@ def school_required(f):
         verify_jwt_in_request()
         user_id = get_jwt_identity()
         user = User.query.get(int(user_id))
-        
+
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
+
         # Super admin bypasses school checks
         if user.role and user.role.name == 'super_admin':
             g.current_user = user
+            g.user_id = user.id
             g.school_id = user.school_id
             g.school = None
             return f(*args, **kwargs)
-        
+
         school = School.query.get(user.school_id)
         if not school or not school.is_active:
             return jsonify({'error': 'School is inactive or not found'}), 403
         if not school.has_active_subscription():
             return jsonify({'error': 'School subscription is inactive or expired'}), 403
-        
+
         g.current_user = user
+        g.user_id = user.id
         g.school_id = user.school_id
         g.school = school
-        
+
         return f(*args, **kwargs)
     return decorated
 
@@ -61,30 +63,32 @@ def role_required(*roles):
             verify_jwt_in_request()
             user_id = get_jwt_identity()
             user = User.query.get(int(user_id))
-            
+
             if not user:
                 return jsonify({'error': 'User not found'}), 404
-            
+
             if user.role.name not in roles:
                 return jsonify({'error': 'Insufficient permissions'}), 403
-            
+
             # Super admin bypasses school checks
             if user.role.name == 'super_admin':
                 g.current_user = user
+                g.user_id = user.id
                 g.school_id = user.school_id
                 g.school = None
                 return f(*args, **kwargs)
-            
+
             school = School.query.get(user.school_id)
             if not school or not school.is_active:
                 return jsonify({'error': 'School is inactive'}), 403
             if not school.has_active_subscription():
                 return jsonify({'error': 'School subscription is inactive or expired'}), 403
-            
+
             g.current_user = user
+            g.user_id = user.id
             g.school_id = user.school_id
             g.school = school
-            
+
             return f(*args, **kwargs)
         return decorated
     return decorator
@@ -98,16 +102,16 @@ def feature_required(feature_name):
             school_id = g.get('school_id')
             if not school_id:
                 return jsonify({'error': 'School context not found'}), 400
-            
+
             feature = SchoolFeature.query.filter_by(
                 school_id=school_id,
                 feature_name=feature_name,
                 is_enabled=True
             ).first()
-            
+
             if not feature:
                 return jsonify({'error': f'Feature "{feature_name}" is not enabled for your school'}), 403
-            
+
             return f(*args, **kwargs)
         return decorated
     return decorator
@@ -120,12 +124,13 @@ def super_admin_required(f):
         verify_jwt_in_request()
         user_id = get_jwt_identity()
         user = User.query.get(int(user_id))
-        
+
         if not user or user.role.name != 'super_admin':
             return jsonify({'error': 'Super admin access required'}), 403
-        
+
         g.current_user = user
+        g.user_id = user.id
         g.school_id = user.school_id
-        
+
         return f(*args, **kwargs)
     return decorated

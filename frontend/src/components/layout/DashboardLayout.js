@@ -24,11 +24,12 @@ const DRAWER_WIDTH = 264;
 const menuGroups = [
   {
     label: 'Main',
+    role: ['school_admin', 'super_admin', 'principal'],
     items: [
       { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard', module: 'dashboard' },
-      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
-      { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff' },
-      { text: 'Parents', icon: <FamilyRestroom />, path: '/parents', feature: 'parent_engagement', module: 'parents' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students', role: ['school_admin', 'super_admin', 'principal'] },
+      { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff', role: ['school_admin', 'super_admin', 'principal'] },
+      { text: 'Parents', icon: <FamilyRestroom />, path: '/parents', feature: 'parent_engagement', module: 'parents', role: ['school_admin', 'super_admin', 'principal'] },
     ],
   },
   {
@@ -43,6 +44,7 @@ const menuGroups = [
   },
   {
     label: 'Academic',
+    role: ['school_admin', 'super_admin', 'principal'],
     items: [
       { text: 'Academics', icon: <EventNote />, path: '/academics', feature: 'academic', module: 'academics' },
       { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
@@ -52,6 +54,7 @@ const menuGroups = [
   },
   {
     label: 'Finance & CRM',
+    role: ['school_admin', 'super_admin', 'principal'],
     items: [
       { text: 'Fees', icon: <AttachMoney />, path: '/fees', feature: 'fee_management', module: 'fees' },
       { text: 'Leads (CRM)', icon: <Campaign />, path: '/leads', feature: 'marketing_crm', module: 'leads' },
@@ -60,6 +63,7 @@ const menuGroups = [
   },
   {
     label: 'Services',
+    role: ['school_admin', 'super_admin', 'principal'],
     items: [
       { text: 'Transport', icon: <DirectionsBus />, path: '/transport', feature: 'transport', module: 'transport' },
       { text: 'Hostel', icon: <Hotel />, path: '/hostel', feature: 'hostel', module: 'hostel' },
@@ -71,6 +75,7 @@ const menuGroups = [
   },
   {
     label: 'Admin',
+    role: ['school_admin', 'super_admin', 'principal'],
     items: [
       { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
       { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
