@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dummy School Creation Script
 Run: /var/www/school-crm/backend/venv/bin/python3 create_dummy_school.py
 """
@@ -59,7 +59,7 @@ with app.app_context():
         )
         db.session.add(school)
         db.session.flush()
-        print(f"✓ School created: {school.name} (Code: {school.code}, ID: {school.id})")
+        print(f"[OK] School created: {school.name} (Code: {school.code}, ID: {school.id})")
 
     # 2. Enable all features
     all_features = [
@@ -72,7 +72,7 @@ with app.app_context():
         existing = SchoolFeature.query.filter_by(school_id=school.id, feature_name=feat_name).first()
         if not existing:
             db.session.add(SchoolFeature(school_id=school.id, feature_name=feat_name, is_enabled=True))
-    print("✓ All features enabled")
+    print("[OK] All features enabled")
 
     # 3. Create or get Subscription Plan
     plan = SubscriptionPlan.query.filter_by(name='Premium').first()
@@ -91,7 +91,7 @@ with app.app_context():
         )
         db.session.add(plan)
         db.session.flush()
-        print(f"✓ Plan created: {plan.name}")
+        print(f"[OK] Plan created: {plan.name}")
 
     # 4. Assign subscription
     sub = SchoolSubscription.query.filter_by(school_id=school.id).first()
@@ -109,7 +109,7 @@ with app.app_context():
         )
         db.session.add(sub)
         db.session.flush()
-        print(f"✓ Subscription assigned")
+        print(f"[OK] Subscription assigned")
 
     # 5. Record a payment
     pay = SubscriptionPayment.query.filter_by(subscription_id=sub.id).first()
@@ -126,12 +126,12 @@ with app.app_context():
             notes='Demo school initial payment'
         )
         db.session.add(pay)
-        print("✓ Payment recorded (INV-000001)")
+        print("[OK] Payment recorded (INV-000001)")
 
     # 6. Create admin user
     admin_role = Role.query.filter_by(name='school_admin').first()
     if not admin_role:
-        print("✗ school_admin role not found!")
+        print("[ERR] school_admin role not found!")
         sys.exit(1)
 
     admin = User.query.filter_by(school_id=school.id, email='admin@dreamschool.edu').first()
@@ -149,7 +149,7 @@ with app.app_context():
         )
         admin.set_password('admin123')
         db.session.add(admin)
-        print("✓ Admin user created: admin@dreamschool.edu / admin123")
+        print("[OK] Admin user created: admin@dreamschool.edu / admin123")
 
     db.session.commit()
 
@@ -163,3 +163,4 @@ with app.app_context():
     print(f"Password: admin123")
     print(f"Login at: http://93.127.194.235")
     print("="*50)
+

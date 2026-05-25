@@ -93,7 +93,7 @@ class Timetable(db.Model):
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id', ondelete='CASCADE'), nullable=False)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'))
     teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id'))
     day_of_week = db.Column(db.Enum('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'), nullable=False)
     start_time = db.Column(db.Time, nullable=False)
