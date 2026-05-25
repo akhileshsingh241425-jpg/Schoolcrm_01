@@ -88,6 +88,13 @@ function SuperAdminRoute({ children }) {
   return children;
 }
 
+function RoleRedirect() {
+  const { user } = useAuthStore();
+  if (user?.role?.name === 'teacher') return <Navigate to="/teacher/dashboard" replace />;
+  if (user?.role?.name === 'parent') return <Navigate to="/my-children" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
 function AppLoading() {
   const theme = useTheme();
   return (
@@ -121,7 +128,7 @@ function App() {
           <DashboardLayout />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="/dashboard" />} />
+        <Route index element={<RoleRedirect />} />
         <Route path="dashboard" element={<Dashboard />} />
         
         {/* Teacher Portal */}
