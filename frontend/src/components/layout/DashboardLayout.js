@@ -13,7 +13,7 @@ import {
   FamilyRestroom, HealthAndSafety, Hotel, Restaurant, SportsBasketball,
   CloudUpload, Search, NotificationsNoneOutlined, Palette, Close,
   ChildCare, AdminPanelSettings, Star, Receipt, Brush, Payment, Group,
-  KeyboardArrowDown, KeyboardArrowUp
+  KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -29,6 +29,16 @@ const menuGroups = [
       { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
       { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff' },
       { text: 'Parents', icon: <FamilyRestroom />, path: '/parents', feature: 'parent_engagement', module: 'parents' },
+    ],
+  },
+  {
+    label: 'My Teaching',
+    role: ['teacher'],
+    items: [
+      { text: 'My Dashboard', icon: <Dashboard />, path: '/teacher/dashboard' },
+      { text: 'My Timetable', icon: <Schedule />, path: '/teacher/timetable' },
+      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
+      { text: 'Marks Entry', icon: <MenuBook />, path: '/academics' },
     ],
   },
   {
@@ -92,6 +102,7 @@ export default function DashboardLayout() {
   const location = useLocation();
   const { user, school, features, logout } = useAuthStore();
   const hasModule = useAuthStore(s => s.hasModule);
+  const hasRole = useAuthStore(s => s.hasRole);
   const { colorPresets, selectedColor, setColor } = useThemeStore();
 
   const PRIMARY = theme.palette.primary.main;
@@ -104,6 +115,7 @@ export default function DashboardLayout() {
   const isVisible = (item) => {
     if (item.feature && !features.includes(item.feature)) return false;
     if (item.module && !hasModule(item.module)) return false;
+    if (item.role && !hasRole(...item.role)) return false;
     return true;
   };
 
@@ -162,6 +174,7 @@ export default function DashboardLayout() {
         '&::-webkit-scrollbar': { width: 3 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 } }}>
         {activeMenuGroups.map((group) => {
           if (group.superAdminOnly && !isSuperAdmin) return null;
+          if (group.role && !hasRole(...group.role)) return null;
           const visibleItems = group.superAdminOnly ? group.items : group.items.filter(isVisible);
           if (visibleItems.length === 0) return null;
           const isCollapsed = collapsedGroups[group.label];

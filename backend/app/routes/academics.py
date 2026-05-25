@@ -171,8 +171,19 @@ def get_timetable():
     class_id = request.args.get('class_id', type=int)
     section_id = request.args.get('section_id', type=int)
     teacher_id = request.args.get('teacher_id', type=int)
+    my = request.args.get('my', 'false').lower() == 'true'
 
     query = Timetable.query.filter_by(school_id=g.school_id)
+
+    # Auto-detect teacher from logged-in user
+    if my:
+        from app.models.user import User
+        user = User.query.get(g.user_id)
+        if user and user.role and user.role.name == 'teacher':
+            staff = Staff.query.filter_by(school_id=g.school_id, user_id=g.user_id).first()
+            if staff:
+                teacher_id = staff.id
+
     if class_id:
         query = query.filter_by(class_id=class_id)
     if section_id:

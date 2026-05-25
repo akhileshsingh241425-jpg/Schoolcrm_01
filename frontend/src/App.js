@@ -12,6 +12,8 @@ import SuperAdminLayout from './components/layout/SuperAdminLayout';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import Dashboard from './pages/Dashboard';
+import TeacherDashboard from './pages/teacher/TeacherDashboard';
+import TeacherTimetable from './pages/teacher/TeacherTimetable';
 import Students from './pages/students/Students';
 import StudentDetail from './pages/students/StudentDetail';
 import StudentForm from './pages/students/StudentForm';
@@ -121,6 +123,10 @@ function App() {
       }>
         <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
+        
+        {/* Teacher Portal */}
+        <Route path="teacher/dashboard" element={<TeacherDashboard />} />
+        <Route path="teacher/timetable" element={<TeacherTimetable />} />
         
         {/* Student Management */}
         <Route path="students" element={<ModuleRoute module="students" feature="student_management"><Students /></ModuleRoute>} />

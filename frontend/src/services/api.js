@@ -68,6 +68,7 @@ export const authAPI = {
 // Dashboard
 export const dashboardAPI = {
   get: () => api.get('/dashboard/'),
+  getTeacher: () => api.get('/dashboard/teacher'),
 };
 
 // Students
