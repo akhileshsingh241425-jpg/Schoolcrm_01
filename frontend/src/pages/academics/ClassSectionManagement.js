@@ -21,8 +21,20 @@ export default function ClassSectionManagement() {
   const [editingClass, setEditingClass] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [classForm, setClassForm] = useState({ name: '', numeric_name: '', description: '' });
+  const [classForm, setClassForm] = useState({ name: '', numeric_name: '', description: '', stream: '' });
   const [sectionForm, setSectionForm] = useState({ name: '', capacity: 40 });
+  const [sectionNameOptions] = useState(['A', 'B', 'C', 'D', 'E', 'F']);
+
+  const classOptions = [
+    { label: 'Nursery', num: 0 }, { label: 'KG', num: 0 },
+    { label: 'Class 1', num: 1 }, { label: 'Class 2', num: 2 },
+    { label: 'Class 3', num: 3 }, { label: 'Class 4', num: 4 },
+    { label: 'Class 5', num: 5 }, { label: 'Class 6', num: 6 },
+    { label: 'Class 7', num: 7 }, { label: 'Class 8', num: 8 },
+    { label: 'Class 9', num: 9 }, { label: 'Class 10', num: 10 },
+    { label: 'Class 11', num: 11 }, { label: 'Class 12', num: 12 },
+  ];
+  const streamOptions = ['Science', 'Commerce', 'Arts'];
 
   const fetchClasses = () => {
     setLoading(true);
@@ -35,23 +47,38 @@ export default function ClassSectionManagement() {
   useEffect(() => { fetchClasses(); }, []);
 
   // Class handlers
+  const parseClassForEdit = (name) => {
+    const parts = (name || '').split(' ');
+    if (parts[0] === 'Class') {
+      const num = parts[1];
+      const stream = parts.slice(2).join(' ');
+      return { label: `Class ${num}`, num: parseInt(num), stream: stream || '' };
+    }
+    const found = classOptions.find(c => c.label === name);
+    return found ? { label: name, num: found.num, stream: '' } : { label: '', num: 0, stream: '' };
+  };
+
   const openClassDialog = (cls = null) => {
     if (cls) {
       setEditingClass(cls);
-      setClassForm({ name: cls.name, numeric_name: cls.numeric_name?.toString() || '', description: cls.description || '' });
+      const parsed = parseClassForEdit(cls.name);
+      setClassForm({ name: parsed.label, numeric_name: parsed.num?.toString() || '', description: cls.description || '', stream: parsed.stream });
     } else {
       setEditingClass(null);
-      setClassForm({ name: '', numeric_name: '', description: '' });
+      setClassForm({ name: '', numeric_name: '', description: '', stream: '' });
     }
     setClassDialog(true);
   };
 
   const handleClassSave = async () => {
     if (!classForm.name) { toast.error('Class name is required'); return; }
+    const hasStream = ['Class 11', 'Class 12'].includes(classForm.name);
+    const displayName = hasStream && classForm.stream ? `${classForm.name} ${classForm.stream}` : classForm.name;
+    const numeric = classOptions.find(c => c.label === classForm.name)?.num || 0;
     try {
       const data = {
-        name: classForm.name,
-        numeric_name: classForm.numeric_name ? parseInt(classForm.numeric_name) : undefined,
+        name: displayName,
+        numeric_name: numeric || undefined,
         description: classForm.description || undefined
       };
       if (editingClass) {
@@ -211,15 +238,20 @@ export default function ClassSectionManagement() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Class Name" value={classForm.name}
-                onChange={e => setClassForm({ ...classForm, name: e.target.value })}
-                placeholder="e.g. Class 10" required />
+              <TextField fullWidth select label="Class Name" value={classForm.name}
+                onChange={e => setClassForm({ ...classForm, name: e.target.value, stream: '' })}
+                required>
+                {classOptions.map(c => <MenuItem key={c.label} value={c.label}>{c.label}</MenuItem>)}
+              </TextField>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Numeric Name" type="number" value={classForm.numeric_name}
-                onChange={e => setClassForm({ ...classForm, numeric_name: e.target.value })}
-                placeholder="e.g. 10" />
-            </Grid>
+            {['Class 11', 'Class 12'].includes(classForm.name) && (
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth select label="Stream" value={classForm.stream}
+                  onChange={e => setClassForm({ ...classForm, stream: e.target.value })} required>
+                  {streamOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                </TextField>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField fullWidth label="Description" multiline rows={2} value={classForm.description}
                 onChange={e => setClassForm({ ...classForm, description: e.target.value })} />
@@ -228,7 +260,10 @@ export default function ClassSectionManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setClassDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleClassSave}>{editingClass ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleClassSave}
+            disabled={['Class 11', 'Class 12'].includes(classForm.name) && !classForm.stream}>
+            {editingClass ? 'Update' : 'Create'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -238,9 +273,10 @@ export default function ClassSectionManagement() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <TextField fullWidth label="Section Name" value={sectionForm.name}
-                onChange={e => setSectionForm({ ...sectionForm, name: e.target.value })}
-                placeholder="e.g. A" required />
+              <TextField fullWidth select label="Section Name" value={sectionForm.name}
+                onChange={e => setSectionForm({ ...sectionForm, name: e.target.value })} required>
+                {sectionNameOptions.map(s => <MenuItem key={s} value={s}>Section {s}</MenuItem>)}
+              </TextField>
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Capacity" type="number" value={sectionForm.capacity}
