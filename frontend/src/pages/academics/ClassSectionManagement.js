@@ -21,7 +21,7 @@ export default function ClassSectionManagement() {
   const [editingClass, setEditingClass] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [classForm, setClassForm] = useState({ name: '', numeric_name: '', description: '', stream: '' });
+  const [classForm, setClassForm] = useState({ name: '', numeric_name: '', description: '', stream: '', sections: [] });
   const [sectionForm, setSectionForm] = useState({ name: '', capacity: 40 });
   const [sectionNameOptions] = useState(['A', 'B', 'C', 'D', 'E', 'F']);
 
@@ -62,10 +62,10 @@ export default function ClassSectionManagement() {
     if (cls) {
       setEditingClass(cls);
       const parsed = parseClassForEdit(cls.name);
-      setClassForm({ name: parsed.label, numeric_name: parsed.num?.toString() || '', description: cls.description || '', stream: parsed.stream });
+      setClassForm({ name: parsed.label, numeric_name: parsed.num?.toString() || '', description: cls.description || '', stream: parsed.stream, sections: [] });
     } else {
       setEditingClass(null);
-      setClassForm({ name: '', numeric_name: '', description: '', stream: '' });
+      setClassForm({ name: '', numeric_name: '', description: '', stream: '', sections: [] });
     }
     setClassDialog(true);
   };
@@ -73,6 +73,7 @@ export default function ClassSectionManagement() {
   const handleClassSave = async () => {
     if (!classForm.name) { toast.error('Class name is required'); return; }
     const hasStream = ['Class 11', 'Class 12'].includes(classForm.name);
+    if (hasStream && !classForm.stream) { toast.error('Stream is required for Class 11/12'); return; }
     const displayName = hasStream && classForm.stream ? `${classForm.name} ${classForm.stream}` : classForm.name;
     const numeric = classOptions.find(c => c.label === classForm.name)?.num || 0;
     try {
@@ -85,8 +86,16 @@ export default function ClassSectionManagement() {
         await studentsAPI.updateClass(editingClass.id, data);
         toast.success('Class updated');
       } else {
-        await studentsAPI.createClass(data);
-        toast.success('Class created');
+        const res = await studentsAPI.createClass(data);
+        const newClassId = res.data.data?.id;
+        if (newClassId && classForm.sections.length > 0) {
+          await Promise.all(classForm.sections.map(sec =>
+            studentsAPI.createSection({ class_id: newClassId, name: sec, capacity: 40 })
+          ));
+          toast.success(`Class created with ${classForm.sections.length} sections`);
+        } else {
+          toast.success('Class created');
+        }
       }
       setClassDialog(false);
       fetchClasses();
@@ -256,6 +265,23 @@ export default function ClassSectionManagement() {
               <TextField fullWidth label="Description" multiline rows={2} value={classForm.description}
                 onChange={e => setClassForm({ ...classForm, description: e.target.value })} />
             </Grid>
+            {!editingClass && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>Create Sections</Typography>
+                <Box display="flex" gap={1} flexWrap="wrap">
+                  {sectionNameOptions.map(s => (
+                    <Chip key={s} label={`Section ${s}`} clickable color={classForm.sections.includes(s) ? 'primary' : 'default'}
+                      variant={classForm.sections.includes(s) ? 'filled' : 'outlined'}
+                      onClick={() => setClassForm({
+                        ...classForm,
+                        sections: classForm.sections.includes(s)
+                          ? classForm.sections.filter(x => x !== s)
+                          : [...classForm.sections, s]
+                      })} />
+                  ))}
+                </Box>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>
