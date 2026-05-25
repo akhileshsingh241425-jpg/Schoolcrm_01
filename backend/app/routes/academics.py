@@ -16,7 +16,7 @@ from app.models.student import Student, Class, Section, AcademicYear
 from app.models.school import School
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope
 from sqlalchemy import func, case, and_, or_
 from datetime import datetime, date
 
@@ -449,6 +449,12 @@ def list_exams():
         query = query.filter_by(academic_year_id=academic_year_id)
     if exam_type_id:
         query = query.filter_by(exam_type_id=exam_type_id)
+    # Teacher scoping
+    scope = get_teacher_scope()
+    if scope and scope['class_ids']:
+        query = query.join(ExamSchedule, ExamSchedule.exam_id == Exam.id).filter(
+            ExamSchedule.class_id.in_(scope['class_ids'])
+        ).distinct()
     query = query.order_by(Exam.start_date.desc())
     return success_response(paginate(query))
 
@@ -520,9 +526,11 @@ def update_exam_status(exam_id):
 @academics_bp.route('/exams/<int:exam_id>/schedules', methods=['GET'])
 @school_required
 def list_exam_schedules(exam_id):
-    schedules = ExamSchedule.query.filter_by(
-        exam_id=exam_id, school_id=g.school_id
-    ).order_by(ExamSchedule.exam_date, ExamSchedule.start_time).all()
+    query = ExamSchedule.query.filter_by(exam_id=exam_id, school_id=g.school_id)
+    scope = get_teacher_scope()
+    if scope and scope['class_ids']:
+        query = query.filter(ExamSchedule.class_id.in_(scope['class_ids']))
+    schedules = query.order_by(ExamSchedule.exam_date, ExamSchedule.start_time).all()
     return success_response([s.to_dict() for s in schedules])
 
 
@@ -938,6 +946,10 @@ def get_marks_sheet():
     student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=class_id or schedules[0].class_id, status='active')
     if section_id:
         student_query = student_query.filter_by(current_section_id=section_id)
+    # Teacher scoping
+    scope = get_teacher_scope()
+    if scope and scope['section_ids']:
+        student_query = student_query.filter(Student.current_section_id.in_(scope['section_ids']))
     students = student_query.order_by(Student.first_name).all()
 
     # Build marks matrix
@@ -2313,6 +2325,14 @@ def get_syllabus():
         query = query.filter_by(academic_year_id=academic_year_id)
     if term:
         query = query.filter_by(term=term)
+
+    # Teacher scoping
+    scope = get_teacher_scope()
+    if scope:
+        if scope['class_ids']:
+            query = query.filter(Syllabus.class_id.in_(scope['class_ids']))
+        if scope['subject_ids']:
+            query = query.filter(Syllabus.subject_id.in_(scope['subject_ids']))
 
     syllabus = query.order_by(Syllabus.class_id, Syllabus.subject_id, Syllabus.chapter_number).all()
     return success_response([s.to_dict() for s in syllabus])

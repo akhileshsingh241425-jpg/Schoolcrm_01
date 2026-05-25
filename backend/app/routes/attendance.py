@@ -13,7 +13,7 @@ from app.models.student import Student, Class, Section
 from app.models.academic import Timetable, Subject
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response
+from app.utils.helpers import success_response, error_response, get_teacher_scope
 
 attendance_bp = Blueprint('attendance', __name__)
 
@@ -100,6 +100,11 @@ def get_student_attendance():
         query = query.filter_by(period=period)
     else:
         query = query.filter(StudentAttendance.period.is_(None))
+
+    # Teacher scoping
+    scope = get_teacher_scope()
+    if scope and scope['section_ids']:
+        query = query.filter(StudentAttendance.section_id.in_(scope['section_ids']))
 
     records = query.all()
     return success_response([r.to_dict() for r in records])

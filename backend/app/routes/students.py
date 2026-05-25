@@ -9,7 +9,7 @@ from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.models.school import School
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import uuid
@@ -64,6 +64,14 @@ def list_students():
                 Student.roll_no.ilike(f'%{search}%')
             )
         )
+
+    # Teacher scoping
+    scope = get_teacher_scope()
+    if scope:
+        if scope['class_ids']:
+            query = query.filter(Student.current_class_id.in_(scope['class_ids']))
+        else:
+            return success_response(paginate(query.filter(false())))
 
     query = query.order_by(Student.created_at.desc())
     return success_response(paginate(query))

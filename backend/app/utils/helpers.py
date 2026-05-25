@@ -1,5 +1,9 @@
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, g
 from flask_mail import Message
+from app.models.staff import Staff
+from app.models.student import Section
+from app.models.academic import TeacherSubject
+from sqlalchemy import or_
 
 
 def paginate(query, schema=None):
@@ -140,6 +144,53 @@ def send_whatsapp(phone, message, template_params=None):
         current_app.logger.error(f'WhatsApp send failed: {str(e)}')
         return False, str(e)
 
+
+
+def get_teacher_scope():
+    """Get the classes/sections/subjects a teacher has access to.
+    Returns dict with class_ids, section_ids, subject_ids lists.
+    Returns None if user is admin (no scoping needed).
+    """
+    user = g.get('current_user')
+    if not user:
+        return None
+    if user.role and user.role.name in ('school_admin', 'super_admin', 'principal'):
+        return None
+    school_id = g.get('school_id')
+    staff = Staff.query.filter_by(user_id=user.id, school_id=school_id).first()
+    if not staff:
+        return None
+
+    class_ids = set()
+    section_ids = set()
+    subject_ids = set()
+
+    # From TeacherSubject assignments
+    subjects = TeacherSubject.query.filter_by(
+        teacher_id=staff.id, school_id=school_id, status='active'
+    ).all()
+    for ts in subjects:
+        class_ids.add(ts.class_id)
+        if ts.section_id:
+            section_ids.add(ts.section_id)
+        subject_ids.add(ts.subject_id)
+
+    # From class_teacher / co_class_teacher assignments
+    ct_sections = Section.query.filter(
+        Section.school_id == school_id,
+        or_(Section.class_teacher_id == staff.id, Section.co_class_teacher_id == staff.id)
+    ).all()
+    for sec in ct_sections:
+        section_ids.add(sec.id)
+        class_ids.add(sec.class_id)
+
+    return {
+        'staff': staff,
+        'class_ids': list(class_ids),
+        'section_ids': list(section_ids),
+        'subject_ids': list(subject_ids),
+        'is_teacher': True,
+    }
 
 
 def make_ivr_call(phone):

@@ -9,7 +9,8 @@ from app.models.admission import Admission
 from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.utils.decorators import school_required
-from app.utils.helpers import success_response
+from app.utils.helpers import success_response, get_teacher_scope
+from app.models.academic import TeacherSubject
 from sqlalchemy.orm import joinedload
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -21,10 +22,23 @@ def get_dashboard():
     school_id = g.school_id
     today = date.today()
     month_start = today.replace(day=1)
+
+    # Teacher scoping
+    scope = get_teacher_scope()
     
     try:
-        # Combined counts in fewer queries
-        total_students = Student.query.filter_by(school_id=school_id, status='active').count()
+        if scope and scope['section_ids']:
+            total_students = Student.query.filter(
+                Student.school_id == school_id, Student.status == 'active',
+                Student.current_section_id.in_(scope['section_ids'])
+            ).count()
+        elif scope and scope['class_ids']:
+            total_students = Student.query.filter(
+                Student.school_id == school_id, Student.status == 'active',
+                Student.current_class_id.in_(scope['class_ids'])
+            ).count()
+        else:
+            total_students = Student.query.filter_by(school_id=school_id, status='active').count()
     except Exception:
         total_students = 0
 
@@ -34,12 +48,18 @@ def get_dashboard():
         total_staff = 0
     
     try:
-        # Attendance today - single query with conditional counts
-        att_stats = db.session.query(
+        # Attendance today with teacher scope
+        att_query = db.session.query(
             func.count(StudentAttendance.id),
             func.sum(case((StudentAttendance.status == 'present', 1), else_=0))
-        ).filter_by(school_id=school_id, date=today).first()
+        ).filter(StudentAttendance.school_id == school_id, StudentAttendance.date == today)
         
+        if scope and scope['section_ids']:
+            att_query = att_query.filter(StudentAttendance.section_id.in_(scope['section_ids']))
+        elif scope and scope['class_ids']:
+            att_query = att_query.filter(StudentAttendance.class_id.in_(scope['class_ids']))
+        
+        att_stats = att_query.first()
         total_marked = att_stats[0] or 0
         present_today = int(att_stats[1] or 0)
     except Exception:
