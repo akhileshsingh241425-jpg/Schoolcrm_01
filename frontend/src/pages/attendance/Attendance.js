@@ -13,10 +13,10 @@ import {
 import { attendanceAPI, studentsAPI, staffAPI } from '../../services/api';
 import useAuthStore from '../../store/authStore';
 
-const TABS = [
-  'Dashboard', 'Student Attendance', 'Staff Attendance', 'Period-wise',
-  'Leave Management', 'Late Arrivals', 'Substitutions', 'Rules & Settings', 'Reports'
-];
+const ADMIN_TABS = ['Dashboard', 'Student Attendance', 'Staff Attendance', 'Period-wise',
+  'Leave Management', 'Late Arrivals', 'Substitutions', 'Rules & Settings', 'Reports'];
+const TEACHER_TABS = ['Dashboard', 'Student Attendance', 'Period-wise',
+  'Late Arrivals', 'Reports'];
 
 const statusColors = { present: 'success', absent: 'error', late: 'warning', half_day: 'info', leave: 'secondary' };
 
@@ -139,7 +139,7 @@ function StudentTab({ snack, setSnack }) {
       // Auto-select if teacher has only one class
       if (data.length === 1) {
         setClassId(data[0].id);
-        if (data[0].sections?.length === 1) {
+        if (data[0].sections?.length > 0) {
           setSectionId(data[0].sections[0].id);
         }
       }
@@ -151,18 +151,25 @@ function StudentTab({ snack, setSnack }) {
       const cls = classes.find(c => c.id === classId);
       if (cls?.sections) {
         setSections(cls.sections);
+        if (!isAdmin && cls.sections.length > 0) {
+          setSectionId(cls.sections[0].id);
+        }
       } else {
-        studentsAPI.listSections(classId).then(r => setSections(r.data.data || [])).catch(() => {});
+        studentsAPI.listSections(classId).then(r => {
+          const secs = r.data.data || [];
+          setSections(secs);
+          if (!isAdmin && secs.length > 0) {
+            setSectionId(secs[0].id);
+          }
+        }).catch(() => {});
       }
     }
-  }, [classId, classes]);
+  }, [classId, classes, isAdmin]);
 
   useEffect(() => {
-    if (classId) {
-      const params = { class_id: classId, per_page: 200 };
-      if (sectionId) params.section_id = sectionId;
-      studentsAPI.list(params).then(r => setStudents(r.data.data?.items || [])).catch(() => {});
-      attendanceAPI.getStudent({ date, class_id: classId, ...(sectionId && { section_id: sectionId }) })
+    if (classId && sectionId) {
+      studentsAPI.list({ class_id: classId, section_id: sectionId, per_page: 200 }).then(r => setStudents(r.data.data?.items || [])).catch(() => {});
+      attendanceAPI.getStudent({ date, class_id: classId, section_id: sectionId })
         .then(r => {
           const map = {};
           (r.data.data || []).forEach(a => { map[a.student_id] = a.status; });
@@ -218,13 +225,15 @@ function StudentTab({ snack, setSnack }) {
               {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: { xs: '45%', sm: 150 } }}>
-            <InputLabel>Section</InputLabel>
-            <Select value={sectionId} label="Section" onChange={(e) => setSectionId(e.target.value)}>
-              <MenuItem value="">All</MenuItem>
-              {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          {sections.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: { xs: '45%', sm: 150 } }}>
+              <InputLabel>Section</InputLabel>
+              <Select value={sectionId} label="Section" onChange={(e) => setSectionId(e.target.value)}>
+                {isAdmin && <MenuItem value="">All</MenuItem>}
+                {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
           <Box flex={1} />
           <Button size="small" color="success" variant="outlined" onClick={() => markAll('present')}>All Present</Button>
           <Button size="small" color="error" variant="outlined" onClick={() => markAll('absent')}>All Absent</Button>
@@ -371,8 +380,10 @@ function StaffTab({ snack, setSnack }) {
 function PeriodTab({ snack, setSnack }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState('');
+  const [sectionId, setSectionId] = useState('');
   const [period, setPeriod] = useState(1);
   const [classes, setClasses] = useState([]);
+  const [sections, setSections] = useState([]);
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
   const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
@@ -382,20 +393,47 @@ function PeriodTab({ snack, setSnack }) {
     attendanceAPI.getMyClasses().then(r => {
       const data = r.data.data || [];
       setClasses(data);
-      if (data.length === 1) setClassId(data[0].id);
+      if (data.length === 1) {
+        setClassId(data[0].id);
+        if (data[0].sections?.length > 0) {
+          setSectionId(data[0].sections[0].id);
+        }
+      }
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (classId) {
-      studentsAPI.list({ class_id: classId, per_page: 200 }).then(r => setStudents(r.data.data?.items || [])).catch(() => {});
-      attendanceAPI.getPeriod({ date, class_id: classId, period }).then(r => {
+      const cls = classes.find(c => c.id === classId);
+      if (cls?.sections) {
+        setSections(cls.sections);
+        if (!isAdmin && cls.sections.length > 0) {
+          setSectionId(cls.sections[0].id);
+        }
+      } else {
+        studentsAPI.listSections(classId).then(r => {
+          const secs = r.data.data || [];
+          setSections(secs);
+          if (!isAdmin && secs.length > 0) {
+            setSectionId(secs[0].id);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [classId, classes, isAdmin]);
+
+  useEffect(() => {
+    if (classId && (isAdmin || sectionId)) {
+      const params = { class_id: classId, per_page: 200 };
+      if (sectionId) params.section_id = sectionId;
+      studentsAPI.list(params).then(r => setStudents(r.data.data?.items || [])).catch(() => {});
+      attendanceAPI.getPeriod({ date, class_id: classId, ...(sectionId && { section_id: sectionId }), period }).then(r => {
         const map = {};
         (r.data.data || []).forEach(a => { map[a.student_id] = a.status; });
         setAttendance(map);
       }).catch(() => {});
     }
-  }, [classId, date, period]);
+  }, [classId, sectionId, date, period, isAdmin]);
 
   const save = () => {
     const records = Object.entries(attendance).map(([student_id, status]) => ({
@@ -419,10 +457,19 @@ function PeriodTab({ snack, setSnack }) {
             onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
           <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
             <InputLabel>Class</InputLabel>
-            <Select value={classId} label="Class" onChange={(e) => setClassId(e.target.value)}>
+            <Select value={classId} label="Class" onChange={(e) => { setClassId(e.target.value); setSectionId(''); }}>
               {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </Select>
           </FormControl>
+          {sections.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: { xs: '45%', sm: 120 } }}>
+              <InputLabel>Section</InputLabel>
+              <Select value={sectionId} label="Section" onChange={(e) => setSectionId(e.target.value)}>
+                {isAdmin && <MenuItem value="">All</MenuItem>}
+                {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
           <FormControl size="small" sx={{ minWidth: { xs: '45%', sm: 120 } }}>
             <InputLabel>Period</InputLabel>
             <Select value={period} label="Period" onChange={(e) => setPeriod(e.target.value)}>
@@ -482,6 +529,7 @@ function LeaveTab({ snack, setSnack }) {
   const [typeFilter, setTypeFilter] = useState('');
   const [dialog, setDialog] = useState(false);
   const [typeDialog, setTypeDialog] = useState(false);
+  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
   const [form, setForm] = useState({
     applicant_type: 'student', applicant_id: '', leave_type_id: '',
     from_date: '', to_date: '', reason: ''
@@ -544,7 +592,7 @@ function LeaveTab({ snack, setSnack }) {
           </FormControl>
         </Box>
         <Box display="flex" gap={1}>
-          <Button variant="outlined" startIcon={<Add />} onClick={() => setTypeDialog(true)}>Add Leave Type</Button>
+          {isAdmin && <Button variant="outlined" startIcon={<Add />} onClick={() => setTypeDialog(true)}>Add Leave Type</Button>}
           <Button variant="contained" startIcon={<Add />} onClick={() => setDialog(true)}>Apply Leave</Button>
         </Box>
       </Box>
@@ -553,7 +601,7 @@ function LeaveTab({ snack, setSnack }) {
       <Box display="flex" gap={1} mb={2} flexWrap="wrap">
         {leaveTypes.map(lt => (
           <Chip key={lt.id} label={`${lt.name} (${lt.code})`} variant="outlined"
-            onDelete={() => attendanceAPI.deleteLeaveType(lt.id).then(load)} />
+            onDelete={isAdmin ? () => attendanceAPI.deleteLeaveType(lt.id).then(load) : undefined} />
         ))}
       </Box>
 
@@ -588,7 +636,7 @@ function LeaveTab({ snack, setSnack }) {
                   <Chip label={l.status} size="small" color={statusChipColor[l.status] || 'default'} />
                 </TableCell>
                 <TableCell>
-                  {l.status === 'pending' && (
+                  {l.status === 'pending' && isAdmin && (
                     <Box display="flex" gap={0.5}>
                       <Tooltip title="Approve">
                         <IconButton size="small" color="success" onClick={() => approveReject(l.id, 'approve')}>
@@ -1402,6 +1450,8 @@ function SubstitutionTab({ snack, setSnack }) {
 export default function Attendance() {
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
+  const TABS = isAdmin ? ADMIN_TABS : TEACHER_TABS;
 
   return (
     <Box>
@@ -1412,13 +1462,13 @@ export default function Attendance() {
 
       {tab === 0 && <DashboardTab snack={snack} setSnack={setSnack} />}
       {tab === 1 && <StudentTab snack={snack} setSnack={setSnack} />}
-      {tab === 2 && <StaffTab snack={snack} setSnack={setSnack} />}
-      {tab === 3 && <PeriodTab snack={snack} setSnack={setSnack} />}
-      {tab === 4 && <LeaveTab snack={snack} setSnack={setSnack} />}
-      {tab === 5 && <LateArrivalsTab snack={snack} setSnack={setSnack} />}
-      {tab === 6 && <SubstitutionTab snack={snack} setSnack={setSnack} />}
-      {tab === 7 && <RulesTab snack={snack} setSnack={setSnack} />}
-      {tab === 8 && <ReportsTab snack={snack} setSnack={setSnack} />}
+      {tab === 2 && (isAdmin ? <StaffTab snack={snack} setSnack={setSnack} /> : <PeriodTab snack={snack} setSnack={setSnack} />)}
+      {tab === 3 && (isAdmin ? <PeriodTab snack={snack} setSnack={setSnack} /> : <LateArrivalsTab snack={snack} setSnack={setSnack} />)}
+      {tab === 4 && (isAdmin ? <LeaveTab snack={snack} setSnack={setSnack} /> : <ReportsTab snack={snack} setSnack={setSnack} />)}
+      {isAdmin && tab === 5 && <LateArrivalsTab snack={snack} setSnack={setSnack} />}
+      {isAdmin && tab === 6 && <SubstitutionTab snack={snack} setSnack={setSnack} />}
+      {isAdmin && tab === 7 && <RulesTab snack={snack} setSnack={setSnack} />}
+      {isAdmin && tab === 8 && <ReportsTab snack={snack} setSnack={setSnack} />}
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack({ ...snack, open: false })}>
         <Alert severity={snack.severity}>{snack.message}</Alert>

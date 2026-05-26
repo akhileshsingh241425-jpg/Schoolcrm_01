@@ -14,14 +14,18 @@ import {
 } from '@mui/icons-material';
 import { academicsAPI, studentsAPI, staffAPI } from '../../services/api';
 import { SyllabusTab, HomeworkTab, LessonPlansTab, CalendarTab, MaterialsTab } from './CurriculumTabs';
+import useAuthStore from '../../store/authStore';
 
-const TABS = ['Dashboard', 'Exams', 'Marks Entry', 'Report Cards', 'Subjects', 'Timetable', 'Grading', 'Halls', 'Class Teachers', 'Syllabus', 'Homework', 'Lesson Plans', 'Calendar', 'Materials', 'Settings'];
+const ADMIN_TABS = ['Dashboard', 'Exams', 'Marks Entry', 'Report Cards', 'Subjects', 'Timetable', 'Grading', 'Halls', 'Class Teachers', 'Syllabus', 'Homework', 'Lesson Plans', 'Calendar', 'Materials', 'Settings'];
+const TEACHER_TABS = ['Marks Entry', 'Syllabus', 'Homework', 'Lesson Plans'];
 
 export default function Academics() {
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
+  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
+  const TABS = isAdmin ? ADMIN_TABS : TEACHER_TABS;
 
   // Shared data
   const [classes, setClasses] = useState([]);
@@ -45,21 +49,21 @@ export default function Academics() {
         {TABS.map((t, i) => <Tab key={i} label={t} />)}
       </Tabs>
 
-      {tab === 0 && <DashboardTab classes={classes} showSnack={showSnack} />}
-      {tab === 1 && <ExamsTab classes={classes} subjects={subjects} examTypes={examTypes} gradingSystems={gradingSystems} academicYears={academicYears} showSnack={showSnack} />}
-      {tab === 2 && <MarksEntryTab classes={classes} showSnack={showSnack} />}
-      {tab === 3 && <ReportCardsTab classes={classes} showSnack={showSnack} />}
-      {tab === 4 && <SubjectsTab subjects={subjects} setSubjects={setSubjects} showSnack={showSnack} />}
-      {tab === 5 && <TimetableTab classes={classes} subjects={subjects} showSnack={showSnack} />}
-      {tab === 6 && <GradingTab gradingSystems={gradingSystems} setGradingSystems={setGradingSystems} showSnack={showSnack} />}
-      {tab === 7 && <HallsTab showSnack={showSnack} />}
-      {tab === 8 && <ClassTeachersTab classes={classes} showSnack={showSnack} />}
-      {tab === 9 && <SyllabusTab classes={classes} subjects={subjects} academicYears={academicYears} showSnack={showSnack} />}
-      {tab === 10 && <HomeworkTab classes={classes} subjects={subjects} showSnack={showSnack} />}
-      {tab === 11 && <LessonPlansTab classes={classes} subjects={subjects} showSnack={showSnack} />}
-      {tab === 12 && <CalendarTab classes={classes} showSnack={showSnack} />}
-      {tab === 13 && <MaterialsTab classes={classes} subjects={subjects} showSnack={showSnack} />}
-      {tab === 14 && <SettingsTab examTypes={examTypes} setExamTypes={setExamTypes} showSnack={showSnack} />}
+      {isAdmin && tab === 0 && <DashboardTab classes={classes} showSnack={showSnack} />}
+      {isAdmin && tab === 1 && <ExamsTab classes={classes} subjects={subjects} examTypes={examTypes} gradingSystems={gradingSystems} academicYears={academicYears} showSnack={showSnack} />}
+      {tab === (isAdmin ? 2 : 0) && <MarksEntryTab classes={classes} showSnack={showSnack} />}
+      {isAdmin && tab === 3 && <ReportCardsTab classes={classes} showSnack={showSnack} />}
+      {isAdmin && tab === 4 && <SubjectsTab subjects={subjects} setSubjects={setSubjects} showSnack={showSnack} />}
+      {isAdmin && tab === 5 && <TimetableTab classes={classes} subjects={subjects} showSnack={showSnack} />}
+      {isAdmin && tab === 6 && <GradingTab gradingSystems={gradingSystems} setGradingSystems={setGradingSystems} showSnack={showSnack} />}
+      {isAdmin && tab === 7 && <HallsTab showSnack={showSnack} />}
+      {isAdmin && tab === 8 && <ClassTeachersTab classes={classes} showSnack={showSnack} />}
+      {(!isAdmin ? tab === 1 : tab === 9) && <SyllabusTab classes={classes} subjects={subjects} academicYears={academicYears} showSnack={showSnack} />}
+      {(!isAdmin ? tab === 2 : tab === 10) && <HomeworkTab classes={classes} subjects={subjects} showSnack={showSnack} />}
+      {(!isAdmin ? tab === 3 : tab === 11) && <LessonPlansTab classes={classes} subjects={subjects} showSnack={showSnack} />}
+      {isAdmin && tab === 12 && <CalendarTab classes={classes} showSnack={showSnack} />}
+      {isAdmin && tab === 13 && <MaterialsTab classes={classes} subjects={subjects} showSnack={showSnack} />}
+      {isAdmin && tab === 14 && <SettingsTab examTypes={examTypes} setExamTypes={setExamTypes} showSnack={showSnack} />}
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack({ ...snack, open: false })}>
         <Alert severity={snack.severity}>{snack.message}</Alert>

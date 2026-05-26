@@ -667,6 +667,10 @@ def get_late_arrivals():
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
 
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response([])
+
     query = LateArrival.query.filter_by(school_id=g.school_id)
     if att_date:
         query = query.filter_by(date=att_date)
@@ -676,6 +680,22 @@ def get_late_arrivals():
         query = query.filter(LateArrival.date >= from_date)
     if to_date:
         query = query.filter(LateArrival.date <= to_date)
+
+    # Teacher scoping: only show late arrivals for students in their sections
+    if scope and scope['section_ids']:
+        allowed_student_ids = [s[0] for s in db.session.query(Student.id).filter(
+            Student.school_id == g.school_id,
+            Student.current_section_id.in_(scope['section_ids'])
+        ).all()]
+        if allowed_student_ids:
+            query = query.filter(
+                db.or_(
+                    LateArrival.person_type != 'student',
+                    LateArrival.person_id.in_(allowed_student_ids)
+                )
+            )
+        else:
+            query = query.filter(LateArrival.person_type != 'student')
 
     records = query.order_by(LateArrival.date.desc()).all()
     results = []
@@ -695,6 +715,16 @@ def get_late_arrivals():
 @role_required('school_admin', 'teacher')
 def record_late_arrival():
     data = request.get_json()
+
+    # Teacher scoping: only allow recording for students in their sections
+    scope = get_teacher_scope()
+    if scope and data.get('person_type') == 'student':
+        student = Student.query.filter_by(id=data['person_id'], school_id=g.school_id).first()
+        if not student:
+            return error_response('Student not found', 404)
+        if student.current_section_id not in scope['section_ids']:
+            return error_response('You can only record late arrivals for students in your assigned sections', 403)
+
     la = LateArrival(
         school_id=g.school_id,
         person_type=data['person_type'],
@@ -802,11 +832,28 @@ def delete_device(id):
 def get_event_attendance():
     event_date = request.args.get('date')
     event_type = request.args.get('event_type')
+
+    scope = get_teacher_scope()
+    if scope and scope.get('no_access'):
+        return success_response([])
+
     query = EventAttendance.query.filter_by(school_id=g.school_id)
     if event_date:
         query = query.filter_by(event_date=event_date)
     if event_type:
         query = query.filter_by(event_type=event_type)
+
+    # Teacher scoping: only show events for students in their sections
+    if scope and scope['section_ids']:
+        allowed_ids = [s[0] for s in db.session.query(Student.id).filter(
+            Student.school_id == g.school_id,
+            Student.current_section_id.in_(scope['section_ids'])
+        ).all()]
+        if allowed_ids:
+            query = query.filter(EventAttendance.student_id.in_(allowed_ids))
+        else:
+            query = query.filter(EventAttendance.student_id.is_(None))
+
     records = query.order_by(EventAttendance.event_date.desc()).all()
     return success_response([r.to_dict() for r in records])
 

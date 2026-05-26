@@ -10,7 +10,7 @@ from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.utils.decorators import school_required
 from app.utils.helpers import success_response, error_response, get_teacher_scope
-from app.models.academic import TeacherSubject, Timetable, Subject, ExamSchedule
+from app.models.academic import TeacherSubject, Timetable, Subject, ExamSchedule, ExamResult
 from app.models.student import Section
 from sqlalchemy.orm import joinedload
 
@@ -229,6 +229,88 @@ def get_teacher_dashboard():
             ExamSchedule.exam_date <= today + timedelta(days=7)
         ).order_by(ExamSchedule.exam_date).all()
 
+    # Students in teacher's sections with attendance & marks
+    from app.models.student import ParentDetail
+    class_students = []
+    if my_section_ids:
+        students_query = Student.query.filter(
+            Student.school_id == school_id,
+            Student.section_id.in_(my_section_ids),
+            Student.status == 'active'
+        ).options(
+            joinedload(Student.class_ref),
+            joinedload(Student.section_ref)
+        ).all()
+
+        for s in students_query:
+            # Recent attendance percentage
+            recent_att = db.session.query(
+                func.count(StudentAttendance.id),
+                func.sum(case((StudentAttendance.status == 'present', 1), else_=0))
+            ).filter(
+                StudentAttendance.student_id == s.id,
+                StudentAttendance.school_id == school_id
+            ).first()
+            total_att = recent_att[0] or 0
+            present_att = int(recent_att[1] or 0)
+            att_pct = round((present_att / total_att * 100), 1) if total_att > 0 else 0
+
+            # Latest marks
+            latest_mark = db.session.query(ExamResult.marks_obtained).filter(
+                ExamResult.student_id == s.id,
+                ExamResult.school_id == school_id
+            ).order_by(ExamResult.id.desc()).first()
+            marks = latest_mark[0] if latest_mark else None
+
+            # Parent contact
+            parent = ParentDetail.query.filter_by(
+                student_id=s.id, school_id=school_id
+            ).first()
+            parent_phone = parent.phone if parent else None
+            parent_email = parent.email if parent else None
+
+            class_students.append({
+                'id': s.id,
+                'first_name': s.first_name,
+                'last_name': s.last_name,
+                'roll_no': s.roll_no,
+                'class_id': s.class_id,
+                'class_name': s.class_ref.name if s.class_ref else None,
+                'section_id': s.section_id,
+                'section_name': s.section_ref.name if s.section_ref else None,
+                'status': s.status,
+                'attendance_percentage': att_pct,
+                'marks': marks,
+                'parent_phone': parent_phone,
+                'parent_email': parent_email,
+            })
+
+    # Performance overview
+    perf_student_ids = [s.id for s in (students_query if my_section_ids else [])]
+    perf_average = 0
+    topper_count = 0
+    low_performer_count = 0
+    if perf_student_ids:
+        perf_data = db.session.query(
+            func.avg(ExamResult.marks_obtained)
+        ).filter(
+            ExamResult.student_id.in_(perf_student_ids),
+            ExamResult.school_id == school_id
+        ).scalar()
+        perf_average = round(perf_data, 1) if perf_data else 0
+
+        topper_count = db.session.query(func.count(func.distinct(ExamResult.student_id))).filter(
+            ExamResult.student_id.in_(perf_student_ids),
+            ExamResult.school_id == school_id,
+            ExamResult.marks_obtained >= 85
+        ).scalar() or 0
+
+        low_performer_count = db.session.query(func.count(func.distinct(ExamResult.student_id))).filter(
+            ExamResult.student_id.in_(perf_student_ids),
+            ExamResult.school_id == school_id,
+            ExamResult.marks_obtained < 40
+        ).scalar() or 0
+
     return success_response({
         'teacher': staff.to_dict(),
         'my_classes': [{
@@ -278,4 +360,10 @@ def get_teacher_dashboard():
             'start_time': e.start_time.strftime('%H:%M') if e.start_time else None,
             'end_time': e.end_time.strftime('%H:%M') if e.end_time else None,
         } for e in upcoming_exams],
+        'class_students': class_students,
+        'performance': {
+            'average': perf_average,
+            'toppers': [{'count': topper_count}],
+            'low_performers': [{'count': low_performer_count}],
+        },
     })

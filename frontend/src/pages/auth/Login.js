@@ -1,9 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box, Typography, TextField, Button, Alert, CircularProgress, InputAdornment,
-  alpha, Fade, Grow, Divider, Chip
+  alpha, Fade, Grow, Divider, Chip, Collapse, Card, CardActionArea
 } from '@mui/material';
-import { Email, Lock, School, Visibility, VisibilityOff, ArrowForward, CheckCircle } from '@mui/icons-material';
+import {
+  Email, Lock, School, Visibility, VisibilityOff, ArrowForward, CheckCircle,
+  AdminPanelSettings, Person, LocalLibrary, AccountBalance, Group, KeyboardArrowDown,
+  Face
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
 import { brandingAPI } from '../../services/api';
@@ -24,6 +28,34 @@ export default function Login() {
   const [schoolBrand, setSchoolBrand] = useState(null);
   const [brandLoading, setBrandLoading] = useState(false);
   const [step, setStep] = useState(1);
+  const [showDevPanel, setShowDevPanel] = useState(false);
+
+  const DEV_ACCOUNTS = [
+    { role: 'Super Admin', email: 'admin@schoolcrm.com', pass: 'superadmin123', school: 'admin', icon: <AdminPanelSettings />, color: '#ef4444' },
+    { role: 'School Admin', email: 'admin@school.edu', pass: 'password123', school: 'demo', icon: <Person />, color: '#3b82f6' },
+    { role: 'Principal', email: 'principal@school.edu', pass: 'password123', school: 'demo', icon: <Group />, color: '#8b5cf6' },
+    { role: 'Teacher', email: 'amit.sharma@school.edu', pass: 'password123', school: 'demo', icon: <Face />, color: '#10b981' },
+    { role: 'Librarian', email: 'librarian@school.edu', pass: 'password123', school: 'demo', icon: <LocalLibrary />, color: '#f59e0b' },
+    { role: 'Accountant', email: 'accountant@school.edu', pass: 'password123', school: 'demo', icon: <AccountBalance />, color: '#06b6d4' },
+  ];
+
+  const quickLogin = async (acct) => {
+    if (step === 1) {
+      setForm({ ...form, school_code: acct.school });
+      setStep(2);
+      return;
+    }
+    setForm({ ...form, email: acct.email, password: acct.pass });
+    setError('');
+    setLoading(true);
+    try {
+      const res = await login({ email: acct.email, password: acct.pass, school_code: form.school_code || acct.school });
+      const userRole = res?.data?.user?.role?.name;
+      navigate(userRole === 'parent' ? '/my-children' : userRole === 'super_admin' ? '/super-admin' : '/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed - ' + acct.role);
+    } finally { setLoading(false); }
+  };
 
   const fetchBranding = useCallback(async (code) => {
     if (!code || code.length < 2) { setSchoolBrand(null); return; }
@@ -258,6 +290,41 @@ export default function Login() {
                     backdropFilter: 'blur(10px)',
                     '&:hover': { borderColor: alpha('#fff', 0.25), bgcolor: alpha('#fff', 0.05) } }}>
                   Login as Super Admin</Button>
+
+                {/* Dev Quick Login */}
+                <Box sx={{ mt: 2 }}>
+                  <Button fullWidth size="small"
+                    onClick={() => setShowDevPanel(!showDevPanel)}
+                    sx={{ textTransform: 'none', color: alpha('#fff', 0.3), fontSize: '0.75rem',
+                      '&:hover': { color: alpha('#fff', 0.6) } }}>
+                    <KeyboardArrowDown sx={{ fontSize: 16, transform: showDevPanel ? 'rotate(180deg)' : 'none', transition: '0.2s', mr: 0.5 }} />
+                    Dev Quick Login
+                  </Button>
+                  <Collapse in={showDevPanel}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8, mt: 1 }}>
+                      {DEV_ACCOUNTS.map((acct) => (
+                        <Card key={acct.role}
+                          sx={{ bgcolor: alpha(acct.color, 0.08), borderRadius: 2,
+                            border: '1px solid', borderColor: alpha(acct.color, 0.15),
+                            transition: 'all 0.2s', cursor: 'pointer',
+                            '&:hover': { bgcolor: alpha(acct.color, 0.15), transform: 'translateY(-1px)' } }}>
+                          <CardActionArea onClick={() => { setForm({ ...form, school_code: acct.school }); setStep(2); }}
+                            sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ color: acct.color, display: 'flex' }}>{acct.icon}</Box>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
+                                {acct.role}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.6rem', display: 'block' }}>
+                                {acct.email}
+                              </Typography>
+                            </Box>
+                          </CardActionArea>
+                        </Card>
+                      ))}
+                    </Box>
+                  </Collapse>
+                </Box>
               </Box>
             ) : (
               <form onSubmit={handleSubmit}>
@@ -286,6 +353,41 @@ export default function Login() {
                   sx={{ ...btnSx(PRIMARY),
                     '&:disabled': { background: alpha('#fff', 0.08), color: alpha('#fff', 0.25) } }}>
                   {loading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : 'Sign In'}</Button>
+
+                {/* Dev Quick Login Step 2 */}
+                <Box sx={{ mt: 2.5 }}>
+                  <Button fullWidth size="small"
+                    onClick={() => setShowDevPanel(!showDevPanel)}
+                    sx={{ textTransform: 'none', color: alpha('#fff', 0.3), fontSize: '0.75rem', mb: 1,
+                      '&:hover': { color: alpha('#fff', 0.6) } }}>
+                    <KeyboardArrowDown sx={{ fontSize: 16, transform: showDevPanel ? 'rotate(180deg)' : 'none', transition: '0.2s', mr: 0.5 }} />
+                    One Click Login
+                  </Button>
+                  <Collapse in={showDevPanel}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8 }}>
+                      {DEV_ACCOUNTS.map((acct) => (
+                        <Card key={acct.role}
+                          sx={{ bgcolor: alpha(acct.color, 0.08), borderRadius: 2,
+                            border: '1px solid', borderColor: alpha(acct.color, 0.15),
+                            transition: 'all 0.2s', cursor: 'pointer',
+                            '&:hover': { bgcolor: alpha(acct.color, 0.15), transform: 'translateY(-1px)' } }}>
+                          <CardActionArea onClick={() => quickLogin(acct)}
+                            sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ color: acct.color, display: 'flex' }}>{acct.icon}</Box>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
+                                {acct.role}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.6rem', display: 'block' }}>
+                                {acct.email}
+                              </Typography>
+                            </Box>
+                          </CardActionArea>
+                        </Card>
+                      ))}
+                    </Box>
+                  </Collapse>
+                </Box>
               </form>
             )}
 

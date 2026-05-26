@@ -41,8 +41,7 @@ ROLE_MODULE_MAP = {
     'school_admin': ALL_MODULES,
     'principal': ALL_MODULES,
     'teacher': [
-        'dashboard', 'academics', 'attendance', 'students', 'communication',
-        'reports', 'parents', 'library'
+        'dashboard', 'academics', 'attendance'
     ],
     'accountant': [
         'dashboard', 'fees', 'reports', 'inventory', 'students'

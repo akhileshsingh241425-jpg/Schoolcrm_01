@@ -13,7 +13,8 @@ import {
   FamilyRestroom, HealthAndSafety, Hotel, Restaurant, SportsBasketball,
   CloudUpload, Search, NotificationsNoneOutlined, Palette, Close,
   ChildCare, AdminPanelSettings, Star, Receipt, Brush, Payment, Group,
-  KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook
+  KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook,
+  Email, Sms, Message, Profile, Edit, Lock, AccountBalance, Store, RateReview
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -33,13 +34,51 @@ const menuGroups = [
     ],
   },
   {
-    label: 'My Teaching',
+    label: 'Academic',
     role: ['teacher'],
     items: [
       { text: 'My Dashboard', icon: <Dashboard />, path: '/teacher/dashboard' },
+      { text: 'My Classes', icon: <Class />, path: '/teacher/classes' },
       { text: 'My Timetable', icon: <Schedule />, path: '/teacher/timetable' },
+      { text: 'Subjects', icon: <Book />, path: '/teacher/subjects' },
       { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
-      { text: 'Marks Entry', icon: <MenuBook />, path: '/academics' },
+    ],
+  },
+  {
+    label: 'Exams & Marks',
+    role: ['teacher'],
+    items: [
+      { text: 'Exam Schedule', icon: <EventNote />, path: '/teacher/exams' },
+      { text: 'Enter Marks', icon: <MenuBook />, path: '/teacher/marks' },
+      { text: 'View Results', icon: <Assessment />, path: '/teacher/results' },
+      { text: 'Performance Analytics', icon: <Star />, path: '/teacher/analytics' },
+    ],
+  },
+  {
+    label: 'Communication',
+    role: ['teacher'],
+    items: [
+      { text: 'Send SMS/Email', icon: <Sms />, path: '/teacher/communication' },
+      { text: 'Create Announcements', icon: <Announcement />, path: '/teacher/announcements' },
+      { text: 'Message History', icon: <Message />, path: '/teacher/messages' },
+      { text: 'Parent Contacts', icon: <People />, path: '/teacher/parents' },
+    ],
+  },
+  {
+    label: 'Library',
+    role: ['teacher'],
+    items: [
+      { text: 'Book Catalog', icon: <LocalLibrary />, path: '/library', feature: 'library', module: 'library' },
+      { text: 'Issue Management', icon: <Receipt />, path: '/library/issues', feature: 'library', module: 'library' },
+    ],
+  },
+  {
+    label: 'My Profile',
+    role: ['teacher'],
+    items: [
+      { text: 'Edit Profile', icon: <Edit />, path: '/teacher/profile' },
+      { text: 'Change Password', icon: <Lock />, path: '/settings' },
+      { text: 'Payroll', icon: <AccountBalance />, path: '/teacher/payroll' },
     ],
   },
   {

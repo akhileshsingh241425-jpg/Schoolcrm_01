@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   Grid, Card, CardContent, Typography, Box, Paper, List, ListItem, ListItemText,
   Chip, Avatar, ListItemAvatar, Skeleton, alpha, useTheme, IconButton, Tooltip,
-  Button, Divider, LinearProgress
+  Button, Divider, LinearProgress, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Rating
 } from '@mui/material';
 import {
   School, People, CalendarMonth, Book, Class, Schedule,
   TrendingUp, ArrowForwardIos, Refresh, AccessTime, Event,
-  CheckCircle, HourglassEmpty
+  CheckCircle, HourglassEmpty, Phone, Email, Star,
+  Assignment, Grade, Assessment, BarChart
 } from '@mui/icons-material';
 import { dashboardAPI } from '../../services/api';
 import useAuthStore from '../../store/authStore';
@@ -40,6 +42,11 @@ const StatCard = ({ title, value, icon, gradient, shadowColor, delay = 0 }) => (
   </Card>
 );
 
+const AttendanceChip = ({ percentage }) => {
+  const color = percentage >= 90 ? '#10b981' : percentage >= 75 ? '#f59e0b' : '#ef4444';
+  return <Chip label={`${percentage}%`} size="small" sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600, bgcolor: alpha(color, 0.12), color }} />;
+};
+
 const LoadingSkeleton = () => (
   <Box>
     <Skeleton variant="rounded" height={120} sx={{ mb: 3, borderRadius: 4 }} />
@@ -70,6 +77,7 @@ export default function TeacherDashboard() {
     warning: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
     info: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',
     error: 'linear-gradient(135deg, #ef4444 0%, #f87171 100%)',
+    analytics: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
   };
 
   const loadData = () => {
@@ -85,11 +93,16 @@ export default function TeacherDashboard() {
   if (loading) return <LoadingSkeleton />;
   if (!data) return <Typography color="error">Failed to load dashboard</Typography>;
 
-  const { teacher, my_classes, my_subjects, today_timetable, today_attendance, upcoming_exams } = data;
+  const { teacher, my_classes, my_subjects, today_timetable, today_attendance, upcoming_exams, class_students, performance } = data;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
   const todayName = DAY_NAMES[new Date().getDay()];
   const schoolLogo = school?.branding?.logo_url;
+
+  const activeStudents = class_students?.filter(s => s.status !== 'inactive') || [];
+  const avgPerformance = performance?.average || 0;
+  const topperCount = performance?.toppers?.length || 0;
+  const lowPerformerCount = performance?.low_performers?.length || 0;
 
   return (
     <Box>
@@ -136,7 +149,7 @@ export default function TeacherDashboard() {
           <StatCard title="My Subjects" value={my_subjects?.length || 0} icon={<Book />} gradient={GRADIENTS.secondary} shadowColor={alpha(SECONDARY, 0.25)} delay={80} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="Total Students" value={today_attendance?.student_count || 0} icon={<People />} gradient={GRADIENTS.info} shadowColor={alpha('#3b82f6', 0.25)} delay={160} />
+          <StatCard title="Total Students" value={activeStudents.length || today_attendance?.student_count || 0} icon={<People />} gradient={GRADIENTS.info} shadowColor={alpha('#3b82f6', 0.25)} delay={160} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Attendance Today" value={`${today_attendance?.percentage || 0}%`} icon={<CalendarMonth />} gradient={GRADIENTS.success} shadowColor={alpha('#10b981', 0.25)} delay={240} />
@@ -155,15 +168,20 @@ export default function TeacherDashboard() {
           sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 600 }}>
           My Timetable
         </Button>
-        <Button variant="outlined" startIcon={<Book />}
-          onClick={() => navigate('/academics')}
+        <Button variant="outlined" startIcon={<Assignment />}
+          onClick={() => navigate('/teacher/marks')}
           sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 600 }}>
-          Marks Entry
+          Enter Marks
         </Button>
-        <Button variant="outlined" startIcon={<Event />}
-          onClick={() => navigate('/academics')}
+        <Button variant="outlined" startIcon={<Grade />}
+          onClick={() => navigate('/teacher/exams')}
           sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 600 }}>
-          Exams & Homework
+          Exams Schedule
+        </Button>
+        <Button variant="outlined" startIcon={<Email />}
+          onClick={() => navigate('/teacher/communication')}
+          sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 600 }}>
+          Message Parents
         </Button>
       </Box>
 
@@ -274,6 +292,53 @@ export default function TeacherDashboard() {
           </Paper>
         </Grid>
 
+        {/* Performance Analytics */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ overflow: 'hidden' }}>
+            <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <BarChart sx={{ color: '#8b5cf6', fontSize: 20 }} />
+                <Typography variant="subtitle1" fontWeight={700}>Performance Overview</Typography>
+              </Box>
+              <Chip label={`Avg: ${avgPerformance}%`} size="small"
+                sx={{ height: 22, bgcolor: alpha('#8b5cf6', 0.1), color: '#8b5cf6', fontWeight: 600 }} />
+            </Box>
+            <Box sx={{ p: 2.5 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Box sx={{ textAlign: 'center', p: 2, borderRadius: 3, bgcolor: alpha('#10b981', 0.06) }}>
+                    <Typography variant="h4" sx={{ color: '#10b981', fontWeight: 800 }}>{topperCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">Top Performers</Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Box sx={{ textAlign: 'center', p: 2, borderRadius: 3, bgcolor: alpha('#f59e0b', 0.06) }}>
+                    <Typography variant="h4" sx={{ color: '#f59e0b', fontWeight: 800 }}>{lowPerformerCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">Need Attention</Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+              {avgPerformance > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary">Class Average</Typography>
+                    <Typography variant="caption" fontWeight={600}>{avgPerformance}%</Typography>
+                  </Box>
+                  <LinearProgress variant="determinate" value={avgPerformance}
+                    sx={{ height: 8, borderRadius: 4, bgcolor: alpha('#8b5cf6', 0.12),
+                      '& .MuiLinearProgress-bar': { background: `linear-gradient(90deg, #8b5cf6, #a78bfa)`, borderRadius: 4 } }} />
+                </Box>
+              )}
+              <Button fullWidth variant="outlined" size="small"
+                onClick={() => navigate('/teacher/analytics')}
+                sx={{ mt: 2, borderRadius: 2, textTransform: 'none' }}>
+                View Detailed Analytics
+              </Button>
+            </Box>
+          </Paper>
+        </Grid>
+
         {/* My Subjects */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ overflow: 'hidden' }}>
@@ -359,6 +424,81 @@ export default function TeacherDashboard() {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Student List Preview */}
+      {class_students && class_students.length > 0 && (
+        <Paper sx={{ mt: 3, overflow: 'hidden' }}>
+          <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <People sx={{ color: 'primary.main', fontSize: 20 }} />
+              <Typography variant="subtitle1" fontWeight={700}>My Students</Typography>
+            </Box>
+            <Button size="small" onClick={() => navigate('/teacher/classes')}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+              View All <ArrowForwardIos sx={{ fontSize: 12, ml: 0.5 }} />
+            </Button>
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: alpha('#000', 0.02) }}>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Roll No</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Student Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Class</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Attendance</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Marks</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Parent Contact</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {class_students.slice(0, 10).map((student) => (
+                  <TableRow key={student.id} hover sx={{ '&:hover': { bgcolor: alpha(PRIMARY, 0.03) }, cursor: 'pointer' }}
+                    onClick={() => navigate(`/students/${student.id}`)}>
+                    <TableCell sx={{ fontSize: '0.8rem' }}>{student.roll_no || '-'}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar sx={{ width: 28, height: 28, fontSize: '0.7rem', bgcolor: alpha(PRIMARY, 0.1), color: PRIMARY }}>
+                          {student.first_name?.[0] || 'S'}
+                        </Avatar>
+                        <Typography variant="body2" fontWeight={600}>{student.first_name} {student.last_name}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: '0.8rem' }}>{student.class_name} - {student.section_name}</TableCell>
+                    <TableCell><AttendanceChip percentage={student.attendance_percentage || 0} /></TableCell>
+                    <TableCell>
+                      <Chip label={student.marks ? `${student.marks}/100` : 'N/A'} size="small"
+                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: 600,
+                          bgcolor: student.marks >= 85 ? alpha('#10b981', 0.12) : student.marks >= 60 ? alpha('#f59e0b', 0.12) : alpha('#ef4444', 0.12),
+                          color: student.marks >= 85 ? '#10b981' : student.marks >= 60 ? '#f59e0b' : '#ef4444' }} />
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton size="small" sx={{ color: '#3b82f6', bgcolor: alpha('#3b82f6', 0.08), width: 26, height: 26 }}
+                          onClick={(e) => { e.stopPropagation(); window.open(`tel:${student.parent_phone}`); }}>
+                          <Phone sx={{ fontSize: 14 }} />
+                        </IconButton>
+                        <IconButton size="small" sx={{ color: '#ef4444', bgcolor: alpha('#ef4444', 0.08), width: 26, height: 26 }}
+                          onClick={(e) => { e.stopPropagation(); window.open(`mailto:${student.parent_email}`); }}>
+                          <Email sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          {class_students.length > 10 && (
+            <Box sx={{ p: 1.5, textAlign: 'center', borderTop: '1px solid', borderColor: 'divider' }}>
+              <Button onClick={() => navigate('/teacher/classes')}
+                sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2 }}>
+                View All {class_students.length} Students
+              </Button>
+            </Box>
+          )}
+        </Paper>
+      )}
     </Box>
   );
 }

@@ -14,6 +14,16 @@ import Register from './pages/auth/Register';
 import Dashboard from './pages/Dashboard';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import TeacherTimetable from './pages/teacher/TeacherTimetable';
+import TeacherClasses from './pages/teacher/TeacherClasses';
+import TeacherSubjects from './pages/teacher/TeacherSubjects';
+import TeacherExams from './pages/teacher/TeacherExams';
+import TeacherCommunication from './pages/teacher/TeacherCommunication';
+import TeacherAnnouncements from './pages/teacher/TeacherAnnouncements';
+import TeacherMessages from './pages/teacher/TeacherMessages';
+import TeacherParents from './pages/teacher/TeacherParents';
+import TeacherProfile from './pages/teacher/TeacherProfile';
+import TeacherPayroll from './pages/teacher/TeacherPayroll';
+import TeacherAnalytics from './pages/teacher/TeacherAnalytics';
 import Students from './pages/students/Students';
 import StudentDetail from './pages/students/StudentDetail';
 import StudentForm from './pages/students/StudentForm';
@@ -134,6 +144,18 @@ function App() {
         {/* Teacher Portal */}
         <Route path="teacher/dashboard" element={<TeacherDashboard />} />
         <Route path="teacher/timetable" element={<TeacherTimetable />} />
+        <Route path="teacher/classes" element={<TeacherClasses />} />
+        <Route path="teacher/subjects" element={<TeacherSubjects />} />
+        <Route path="teacher/exams" element={<TeacherExams />} />
+        <Route path="teacher/marks" element={<TeacherExams />} />
+        <Route path="teacher/results" element={<TeacherExams />} />
+        <Route path="teacher/analytics" element={<TeacherAnalytics />} />
+        <Route path="teacher/communication" element={<TeacherCommunication />} />
+        <Route path="teacher/announcements" element={<TeacherAnnouncements />} />
+        <Route path="teacher/messages" element={<TeacherMessages />} />
+        <Route path="teacher/parents" element={<TeacherParents />} />
+        <Route path="teacher/profile" element={<TeacherProfile />} />
+        <Route path="teacher/payroll" element={<TeacherPayroll />} />
         
         {/* Student Management */}
         <Route path="students" element={<ModuleRoute module="students" feature="student_management"><Students /></ModuleRoute>} />
