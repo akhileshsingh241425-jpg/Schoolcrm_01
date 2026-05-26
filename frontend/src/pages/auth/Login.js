@@ -31,12 +31,13 @@ export default function Login() {
   const [showDevPanel, setShowDevPanel] = useState(false);
 
   const DEV_ACCOUNTS = [
-    { role: 'Super Admin', email: 'admin@schoolcrm.com', pass: 'superadmin123', school: 'admin', icon: <AdminPanelSettings />, color: '#ef4444' },
-    { role: 'School Admin', email: 'admin@school.edu', pass: 'password123', school: 'demo', icon: <Person />, color: '#3b82f6' },
-    { role: 'Principal', email: 'principal@school.edu', pass: 'password123', school: 'demo', icon: <Group />, color: '#8b5cf6' },
-    { role: 'Teacher', email: 'amit.sharma@school.edu', pass: 'password123', school: 'demo', icon: <Face />, color: '#10b981' },
-    { role: 'Librarian', email: 'librarian@school.edu', pass: 'password123', school: 'demo', icon: <LocalLibrary />, color: '#f59e0b' },
-    { role: 'Accountant', email: 'accountant@school.edu', pass: 'password123', school: 'demo', icon: <AccountBalance />, color: '#06b6d4' },
+    { role: 'Super Admin', email: 'admin@schoolcrm.com', pass: 'superadmin123', school: '', icon: <AdminPanelSettings />, color: '#ef4444' },
+    { role: 'School Admin', email: 'admin@dreamschool.edu', pass: 'password123', school: 'DEMO001', icon: <Person />, color: '#3b82f6' },
+    { role: 'Principal', email: 'principal@school.edu', pass: 'password123', school: 'DEMO001', icon: <Group />, color: '#8b5cf6' },
+    { role: 'Teacher', email: 'sunita.sharma@school.edu', pass: 'password123', school: 'DEMO001', icon: <Face />, color: '#10b981' },
+    { role: 'Librarian', email: 'librarian@school.edu', pass: 'password123', school: 'DEMO001', icon: <LocalLibrary />, color: '#f59e0b' },
+    { role: 'Accountant', email: 'accountant@school.edu', pass: 'password123', school: 'DEMO001', icon: <AccountBalance />, color: '#06b6d4' },
+    { role: 'HR Manager', email: 'hr@school.edu', pass: 'password123', school: 'DEMO001', icon: <Group />, color: '#ec4899' },
   ];
 
   const quickLogin = async (acct) => {
@@ -291,39 +292,36 @@ export default function Login() {
                     '&:hover': { borderColor: alpha('#fff', 0.25), bgcolor: alpha('#fff', 0.05) } }}>
                   Login as Super Admin</Button>
 
-                {/* Dev Quick Login */}
-                <Box sx={{ mt: 2 }}>
-                  <Button fullWidth size="small"
-                    onClick={() => setShowDevPanel(!showDevPanel)}
-                    sx={{ textTransform: 'none', color: alpha('#fff', 0.3), fontSize: '0.75rem',
-                      '&:hover': { color: alpha('#fff', 0.6) } }}>
-                    <KeyboardArrowDown sx={{ fontSize: 16, transform: showDevPanel ? 'rotate(180deg)' : 'none', transition: '0.2s', mr: 0.5 }} />
-                    Dev Quick Login
-                  </Button>
-                  <Collapse in={showDevPanel}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8, mt: 1 }}>
-                      {DEV_ACCOUNTS.map((acct) => (
-                        <Card key={acct.role}
-                          sx={{ bgcolor: alpha(acct.color, 0.08), borderRadius: 2,
-                            border: '1px solid', borderColor: alpha(acct.color, 0.15),
-                            transition: 'all 0.2s', cursor: 'pointer',
-                            '&:hover': { bgcolor: alpha(acct.color, 0.15), transform: 'translateY(-1px)' } }}>
-                          <CardActionArea onClick={() => { setForm({ ...form, school_code: acct.school }); setStep(2); }}
-                            sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Box sx={{ color: acct.color, display: 'flex' }}>{acct.icon}</Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
-                                {acct.role}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.6rem', display: 'block' }}>
-                                {acct.email}
-                              </Typography>
-                            </Box>
-                          </CardActionArea>
-                        </Card>
-                      ))}
-                    </Box>
-                  </Collapse>
+                {/* Dev Panel - Always Visible */}
+                <Box sx={{ mt: 2.5, p: 1.5, borderRadius: 3,
+                  border: '1px dashed', borderColor: alpha('#fff', 0.15),
+                  bgcolor: alpha('#fff', 0.03) }}>
+                  <Typography variant="caption" fontWeight={700}
+                    sx={{ color: alpha('#fff', 0.4), display: 'block', mb: 1.2, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem' }}>
+                    ⚡ Dev Quick Login (Click to proceed)
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8 }}>
+                    {DEV_ACCOUNTS.map((acct) => (
+                      <Card key={acct.role}
+                        sx={{ bgcolor: alpha(acct.color, 0.12), borderRadius: 2,
+                          border: '1px solid', borderColor: alpha(acct.color, 0.2),
+                          transition: 'all 0.2s', cursor: 'pointer',
+                          '&:hover': { bgcolor: alpha(acct.color, 0.22), transform: 'translateY(-1px)' } }}>
+                        <CardActionArea onClick={() => { setForm({ ...form, school_code: acct.school }); setStep(2); }}
+                          sx={{ p: 1, display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                          <Box sx={{ color: acct.color, display: 'flex', fontSize: '1.1rem' }}>{acct.icon}</Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
+                              {acct.role}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.58rem', display: 'block' }}>
+                              {acct.school}
+                            </Typography>
+                          </Box>
+                        </CardActionArea>
+                      </Card>
+                    ))}
+                  </Box>
                 </Box>
               </Box>
             ) : (
@@ -354,39 +352,36 @@ export default function Login() {
                     '&:disabled': { background: alpha('#fff', 0.08), color: alpha('#fff', 0.25) } }}>
                   {loading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : 'Sign In'}</Button>
 
-                {/* Dev Quick Login Step 2 */}
-                <Box sx={{ mt: 2.5 }}>
-                  <Button fullWidth size="small"
-                    onClick={() => setShowDevPanel(!showDevPanel)}
-                    sx={{ textTransform: 'none', color: alpha('#fff', 0.3), fontSize: '0.75rem', mb: 1,
-                      '&:hover': { color: alpha('#fff', 0.6) } }}>
-                    <KeyboardArrowDown sx={{ fontSize: 16, transform: showDevPanel ? 'rotate(180deg)' : 'none', transition: '0.2s', mr: 0.5 }} />
-                    One Click Login
-                  </Button>
-                  <Collapse in={showDevPanel}>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8 }}>
-                      {DEV_ACCOUNTS.map((acct) => (
-                        <Card key={acct.role}
-                          sx={{ bgcolor: alpha(acct.color, 0.08), borderRadius: 2,
-                            border: '1px solid', borderColor: alpha(acct.color, 0.15),
-                            transition: 'all 0.2s', cursor: 'pointer',
-                            '&:hover': { bgcolor: alpha(acct.color, 0.15), transform: 'translateY(-1px)' } }}>
-                          <CardActionArea onClick={() => quickLogin(acct)}
-                            sx={{ p: 1.2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Box sx={{ color: acct.color, display: 'flex' }}>{acct.icon}</Box>
-                            <Box sx={{ minWidth: 0 }}>
-                              <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
-                                {acct.role}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.6rem', display: 'block' }}>
-                                {acct.email}
-                              </Typography>
-                            </Box>
-                          </CardActionArea>
-                        </Card>
-                      ))}
-                    </Box>
-                  </Collapse>
+                {/* Dev Panel Step 2 - Always Visible */}
+                <Box sx={{ mt: 2.5, p: 1.5, borderRadius: 3,
+                  border: '1px dashed', borderColor: alpha('#fff', 0.15),
+                  bgcolor: alpha('#fff', 0.03) }}>
+                  <Typography variant="caption" fontWeight={700}
+                    sx={{ color: alpha('#fff', 0.4), display: 'block', mb: 1.2, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem' }}>
+                    ⚡ One Click Login
+                  </Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.8 }}>
+                    {DEV_ACCOUNTS.map((acct) => (
+                      <Card key={acct.role}
+                        sx={{ bgcolor: alpha(acct.color, 0.12), borderRadius: 2,
+                          border: '1px solid', borderColor: alpha(acct.color, 0.2),
+                          transition: 'all 0.2s', cursor: 'pointer',
+                          '&:hover': { bgcolor: alpha(acct.color, 0.22), transform: 'translateY(-1px)' } }}>
+                        <CardActionArea onClick={() => quickLogin(acct)}
+                          sx={{ p: 1, display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                          <Box sx={{ color: acct.color, display: 'flex', fontSize: '1.1rem' }}>{acct.icon}</Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="caption" fontWeight={700} color="white" sx={{ display: 'block', fontSize: '0.68rem' }}>
+                              {acct.role}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: alpha('#fff', 0.35), fontSize: '0.58rem', display: 'block' }}>
+                              {acct.email}
+                            </Typography>
+                          </Box>
+                        </CardActionArea>
+                      </Card>
+                    ))}
+                  </Box>
                 </Box>
               </form>
             )}
