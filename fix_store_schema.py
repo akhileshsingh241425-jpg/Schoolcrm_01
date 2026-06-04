@@ -10,6 +10,20 @@ This script handles:
 
 import os, pymysql, sys
 
+# Load .env from backend directory
+try:
+    from dotenv import load_dotenv
+    # Try loading from backend/.env first (when run from project root)
+    backend_env = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend', '.env')
+    if os.path.exists(backend_env):
+        load_dotenv(backend_env)
+        print(f"Loaded .env from {backend_env}")
+    else:
+        load_dotenv()  # fallback: load from current directory
+        print("Loaded .env from current directory")
+except ImportError:
+    print("python-dotenv not installed, using environment variables only")
+
 # DB config from environment variables
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
