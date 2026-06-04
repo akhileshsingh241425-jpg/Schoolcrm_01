@@ -2,15 +2,14 @@
 Migration: Add payment gateway columns to fee_payments table
 Adds: gateway, razorpay_signature, paytm_order_id, paytm_txn_id
 """
-import pymysql
-import sys
+import os, pymysql, sys
 
 DB_CONFIG = {
-    'host': 'localhost',
-    'port': 3306,
-    'user': 'root',
-    'password': 'root',
-    'database': 'school_crm'
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': int(os.getenv('DB_PORT', '3306')),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', ''),
+    'database': os.getenv('DB_NAME', 'school_crm'),
 }
 
 MIGRATIONS = [

@@ -7,12 +7,13 @@ Super Admin account (admin@schoolcrm.com) safe rahega.
 Roles aur permissions bhi safe rahenge.
 """
 
-import pymysql
+import os, pymysql
 
 # ─── DB Connection ───────────────────────────────────────────────────
 conn = pymysql.connect(
-    host='localhost', user='root', password='root', database='school_crm',
-    port=3306, autocommit=False, charset='utf8mb4'
+    host=os.getenv('DB_HOST','localhost'), port=int(os.getenv('DB_PORT','3306')),
+    user=os.getenv('DB_USER','root'), password=os.getenv('DB_PASSWORD',''),
+    database=os.getenv('DB_NAME','school_crm'), autocommit=False, charset='utf8mb4'
 )
 cur = conn.cursor()
 

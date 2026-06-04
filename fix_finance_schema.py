@@ -1,6 +1,9 @@
-import pymysql
+import os, pymysql
 
-conn = pymysql.connect(host='localhost', user='root', password='root', database='school_crm')
+conn = pymysql.connect(
+    host=os.getenv('DB_HOST','localhost'), port=int(os.getenv('DB_PORT','3306')),
+    user=os.getenv('DB_USER','root'), password=os.getenv('DB_PASSWORD',''),
+    database=os.getenv('DB_NAME','school_crm'), charset='utf8mb4')
 cur = conn.cursor()
 
 # --- ALTER TABLE fee_structures (existing) ---
@@ -51,7 +54,10 @@ with app.app_context():
     print("db.create_all() completed - new tables created!")
 
 # Verify
-conn2 = pymysql.connect(host='localhost', user='root', password='root', database='school_crm')
+conn2 = pymysql.connect(
+    host=os.getenv('DB_HOST','localhost'), port=int(os.getenv('DB_PORT','3306')),
+    user=os.getenv('DB_USER','root'), password=os.getenv('DB_PASSWORD',''),
+    database=os.getenv('DB_NAME','school_crm'), charset='utf8mb4')
 cur2 = conn2.cursor()
 cur2.execute("SHOW TABLES")
 tables = [r[0] for r in cur2.fetchall()]

@@ -154,7 +154,7 @@ def get_teacher_scope():
     user = g.get('current_user')
     if not user:
         return None
-    if user.role and user.role.name in ('school_admin', 'super_admin', 'principal'):
+    if user.role and user.role.name in ('school_admin', 'super_admin', 'principal', 'exam_controller', 'academic_controller'):
         return None
     school_id = g.get('school_id')
     staff = Staff.query.filter_by(user_id=user.id, school_id=school_id).first()

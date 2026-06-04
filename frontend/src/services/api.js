@@ -282,9 +282,13 @@ export const academicsAPI = {
   // Timetable
   getTimetable: (params) => api.get('/academics/timetable', { params }),
   createTimetable: (data) => api.post('/academics/timetable', data),
+  createTimetableEntry: (data) => api.post('/academics/timetable', data),
   updateTimetable: (id, data) => api.put(`/academics/timetable/${id}`, data),
   deleteTimetable: (id) => api.delete(`/academics/timetable/${id}`),
+  deleteTimetableEntry: (id) => api.delete(`/academics/timetable/${id}`),
   bulkCreateTimetable: (data) => api.post('/academics/timetable/bulk', data),
+  autoGenerateTimetable: (data) => api.post('/academics/timetable/auto-generate', data),
+  checkTimetableConflicts: (data) => api.post('/academics/timetable/check-conflicts', data),
   // Exam Types
   listExamTypes: () => api.get('/academics/exam-types'),
   createExamType: (data) => api.post('/academics/exam-types', data),
@@ -407,6 +411,9 @@ export const academicsAPI = {
   assignClassTeacher: (data) => api.post('/academics/class-teachers/assign', data),
   getClassTeacherResponsibilities: () => api.get('/academics/class-teachers/responsibilities'),
   getMyClass: () => api.get('/academics/class-teachers/my-class'),
+  // Class Teacher — per-student subject enrollment for own section
+  getClassTeacherRoster: () => api.get('/academics/class-teacher/roster'),
+  setStudentSubjects: (data) => api.post('/academics/class-teacher/enrollments', data),
   // Elective Management
   listElectiveGroups: (params) => api.get('/academics/elective-groups', { params }),
   createElectiveGroup: (data) => api.post('/academics/elective-groups', data),
@@ -670,6 +677,57 @@ export const parentAPI = {
   listMyChildren: (params) => api.get('/parent/my-children', { params }),
 };
 
+// Student self-service portal (logged-in student)
+export const studentPortalAPI = {
+  me: () => api.get('/student/me'),
+  dashboard: () => api.get('/student/dashboard'),
+  attendance: () => api.get('/student/attendance'),
+  timetable: () => api.get('/student/timetable'),
+  homework: (params) => api.get('/student/homework', { params }),
+  exams: () => api.get('/student/exams'),
+  fees: () => api.get('/student/fees'),
+  announcements: () => api.get('/student/announcements'),
+  activities: () => api.get('/student/activities'),
+  lectures: (params) => api.get('/academics/study-materials', { params }),
+};
+
+// File Upload
+export const uploadAPI = {
+  upload: (file, category = 'homework') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', category);
+    return api.post('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
+  // Principal
+export const principalAPI = {
+  dashboard: () => api.get('/principal/dashboard'),
+  teacherPerformance: () => api.get('/principal/teacher-performance'),
+  listObservations: (params) => api.get('/principal/observations', { params }),
+  createObservation: (data) => api.post('/principal/observations', data),
+  updateObservation: (id, data) => api.put(`/principal/observations/${id}`, data),
+  listDiscipline: (params) => api.get('/principal/discipline', { params }),
+  createDiscipline: (data) => api.post('/principal/discipline', data),
+  updateDiscipline: (id, data) => api.put(`/principal/discipline/${id}`, data),
+  pendingLeaves: () => api.get('/principal/pending-leaves'),
+  approveLeave: (id, data) => api.put(`/principal/approve-leave/${id}`, data),
+  examApprovals: () => api.get('/principal/exam-approvals'),
+  updateExamApproval: (id, data) => api.put(`/principal/exam-approvals/${id}`, data),
+  studyMaterials: (params) => api.get('/academics/study-materials', { params }),
+  createStudyMaterial: (data) => api.post('/academics/study-materials', data),
+  reportCards: (params) => api.get('/principal/report-cards', { params }),
+  timetables: () => api.get('/principal/timetables'),
+};
+
+// Notices / Broadcast (principal, exam_controller, academic_controller, school_admin)
+export const noticesAPI = {
+  broadcast: (data) => api.post('/communication/notices/broadcast', data),
+};
+
 // Reports
 export const reportsAPI = {
   admission: (params) => api.get('/reports/admission', { params }),
@@ -734,6 +792,23 @@ export const inventoryAPI = {
   updateDisposal: (id, data) => api.put(`/inventory/disposals/${id}`, data),
 };
 
+// Store Management
+export const storeAPI = {
+  getDashboard: () => api.get('/store/dashboard'),
+  listItems: (params) => api.get('/store/items', { params }),
+  getItem: (id) => api.get(`/store/items/${id}`),
+  createItem: (data) => api.post('/store/items', data),
+  updateItem: (id, data) => api.put(`/store/items/${id}`, data),
+  listCategories: () => api.get('/store/categories'),
+  createCategory: (data) => api.post('/store/categories', data),
+  allocate: (data) => api.post('/store/allocate', data),
+  returnItem: (data) => api.post('/store/return', data),
+  adjustStock: (data) => api.post('/store/adjust-stock', data),
+  getTransactions: (params) => api.get('/store/transactions', { params }),
+  getStaffList: () => api.get('/store/staff-list'),
+  getStudentList: () => api.get('/store/student-list'),
+};
+
 // Transport
 export const transportAPI = {
   // Dashboard
@@ -759,10 +834,12 @@ export const transportAPI = {
   // Stops
   listStops: (routeId) => api.get(`/transport/routes/${routeId}/stops`),
   addStop: (routeId, data) => api.post(`/transport/routes/${routeId}/stops`, data),
+  addStopByName: (data) => api.post('/transport/stops/add-by-name', data),
   updateStop: (id, data) => api.put(`/transport/stops/${id}`, data),
   deleteStop: (id) => api.delete(`/transport/stops/${id}`),
   // Student Transport
   listStudents: (params) => api.get('/transport/students', { params }),
+  studentLookup: (admission_no) => api.get('/transport/student-lookup', { params: { admission_no } }),
   assign: (data) => api.post('/transport/assign', data),
   updateAssignment: (id, data) => api.put(`/transport/assign/${id}`, data),
   // GPS
@@ -797,6 +874,11 @@ export const transportAPI = {
   listSpeedAlerts: (params) => api.get('/transport/speed-alerts', { params }),
   createSpeedAlert: (data) => api.post('/transport/speed-alerts', data),
   acknowledgeSpeedAlert: (id) => api.put(`/transport/speed-alerts/${id}`, { acknowledged: true }),
+  // Emergency alert (sound + auto-popup) & normal transport notifications
+  emergencyAlert: (data) => api.post('/transport/emergency-alert', data),
+  notify: (data) => api.post('/transport/notify', data),
+  // Student-facing bus & driver details
+  myTransport: (params) => api.get('/transport/my-transport', { params }),
 };
 
 // Library
@@ -1163,4 +1245,26 @@ export const paymentAPI = {
   // Payment gateway settings (admin)
   getSettings: () => api.get('/payments/settings'),
   saveSettings: (data) => api.post('/payments/settings', data),
+};
+
+// Marks Entry System
+export const marksEntryAPI = {
+  // Assignments
+  bulkAssign: (data) => api.post('/marks-entry/assignments/bulk', data),
+  manualAssign: (data) => api.post('/marks-entry/assignments', data),
+  listAssignments: (params) => api.get('/marks-entry/assignments', { params }),
+  revokeAssignment: (id) => api.delete(`/marks-entry/assignments/${id}`),
+  myAssignments: (params) => api.get('/marks-entry/my-assignments', { params }),
+  // Deadlines
+  setDeadlines: (data) => api.post('/marks-entry/deadlines', data),
+  updateDeadline: (id, data) => api.put(`/marks-entry/deadlines/${id}`, data),
+  listDeadlines: (params) => api.get('/marks-entry/deadlines', { params }),
+  checkExpiredDeadlines: () => api.post('/marks-entry/deadlines/check-expired'),
+  // Marks Submission & Locking
+  submitMarks: (data) => api.post('/marks-entry/submit', data),
+  lockMarks: (data) => api.post('/marks-entry/lock', data),
+  unlockMarks: (data) => api.post('/marks-entry/unlock', data),
+  // Status & Dashboard
+  checkExamStatus: (data) => api.post('/marks-entry/check-exam-status', data),
+  getDashboard: (params) => api.get('/marks-entry/dashboard', { params }),
 };

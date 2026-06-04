@@ -19,8 +19,8 @@ DB_NAME = os.getenv('DB_NAME', 'rohit0101')
 DB_USER = os.getenv('DB_USER', 'rohit')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'rohit0101')
 
-SUPER_ADMIN_EMAIL = 'admin@schoolcrm.com'
-SUPER_ADMIN_PASSWORD = 'superadmin123'
+SUPER_ADMIN_EMAIL = input('Enter email for super admin (default: admin@schoolcrm.com): ') or 'admin@schoolcrm.com'
+SUPER_ADMIN_PASSWORD = input('Enter password for super admin: ')
 
 try:
     import pymysql
@@ -43,9 +43,7 @@ except Exception as e:
     print("\nTrying with common credentials...")
     # Try alternative credentials
     for creds in [
-        {'user': 'root', 'password': 'root', 'db': 'school_crm'},
         {'user': 'root', 'password': '', 'db': 'school_crm'},
-        {'user': 'rohit', 'password': 'rohit0101', 'db': 'rohit0101'},
     ]:
         try:
             conn = pymysql.connect(
@@ -131,10 +129,10 @@ except Exception as e:
 conn.close()
 
 print("\n" + "=" * 50)
-print("SUPER ADMIN LOGIN CREDENTIALS:")
+print("SUPER ADMIN SETUP COMPLETE:")
 print("=" * 50)
 print(f"  Email:    {SUPER_ADMIN_EMAIL}")
-print(f"  Password: {SUPER_ADMIN_PASSWORD}")
+print(f"  Password: [set via input]")
 print(f"  School:   Not required (Super Admin)")
 print("=" * 50)
 print("\nOn the login page, click 'Login as Super Admin' button")

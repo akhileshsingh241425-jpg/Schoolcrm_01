@@ -147,9 +147,10 @@ with app.app_context():
             phone='+91-9876543210',
             is_active=True
         )
-        admin.set_password('admin123')
+        admin_password = input('Enter password for admin user: ')
+        admin.set_password(admin_password)
         db.session.add(admin)
-        print("[OK] Admin user created: admin@dreamschool.edu / admin123")
+        print("[OK] Admin user created: admin@dreamschool.edu")
 
     db.session.commit()
 
@@ -160,7 +161,7 @@ with app.app_context():
     print(f"Code:     {school.code}")
     print(f"Plan:     {plan.name} (₹{plan.yearly_price}/year)")
     print(f"Email:    admin@dreamschool.edu")
-    print(f"Password: admin123")
+    print(f"Password: [set via input]")
     print(f"Login at: http://93.127.194.235")
     print("="*50)
 

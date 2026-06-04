@@ -66,13 +66,29 @@ class FeeInstallment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     student = db.relationship('Student', backref='installments')
+    structure = db.relationship('FeeStructure', backref='installments')
 
     def to_dict(self):
+        category_name = None
+        frequency = None
+        try:
+            if self.structure:
+                frequency = self.structure.frequency
+                if self.structure.category:
+                    category_name = self.structure.category.name
+        except Exception:
+            pass
+        description = category_name or 'Fee'
+        if self.installment_no:
+            description = f"{description} - Installment {self.installment_no}"
         return {
             'id': self.id, 'student_id': self.student_id,
             'student_name': f"{self.student.first_name} {self.student.last_name or ''}".strip() if self.student else '',
             'fee_structure_id': self.fee_structure_id,
             'installment_no': self.installment_no,
+            'description': description,
+            'fee_type': category_name,
+            'frequency': frequency,
             'amount': float(self.amount),
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'paid_amount': float(self.paid_amount or 0),

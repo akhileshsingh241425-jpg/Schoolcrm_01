@@ -59,8 +59,8 @@ const useAuthStore = create((set, get) => ({
 
   hasModule: (moduleName) => {
     const { allowedModules, user } = get();
-    // Admin always has access
-    if (user?.role?.name === 'super_admin' || user?.role?.name === 'school_admin') return true;
+    // Admin and principal always have access
+    if (user?.role?.name === 'super_admin' || user?.role?.name === 'school_admin' || user?.role?.name === 'principal') return true;
     return allowedModules.includes(moduleName);
   },
 }));

@@ -11,6 +11,10 @@ import {
 import { transportAPI } from '../../services/api';
 
 const init = (keys) => keys.reduce((o, k) => ({ ...o, [k]: '' }), {});
+// strip blank values so backend never receives '' for number/date columns
+const clean = (obj) => Object.fromEntries(
+  Object.entries(obj || {}).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+);
 
 export default function Transport() {
   const [tab, setTab] = useState(0);
@@ -31,10 +35,10 @@ export default function Transport() {
   const [routeForm, setRouteForm] = useState(init(['route_name','route_code','description','vehicle_id','driver_id','helper_name','helper_phone','start_location','end_location','total_distance_km','estimated_time_min','shift','status']));
   const [editRouteId, setEditRouteId] = useState(null);
   const [openStop, setOpenStop] = useState(false);
-  const [stopForm, setStopForm] = useState(init(['route_id','stop_name','latitude','longitude','pickup_time','drop_time','fare','stop_order','radius_meters']));
+  const [stopForm, setStopForm] = useState(init(['route_name','stop_name','pickup_time','drop_time','fare']));
   const [students, setStudents] = useState([]);
   const [openAssign, setOpenAssign] = useState(false);
-  const [assignForm, setAssignForm] = useState(init(['student_id','route_id','stop_id','pickup_type','rfid_card_no']));
+  const [assignForm, setAssignForm] = useState(init(['admission_no','student_name','father_name','route_name','stop_name','monthly_fee','pickup_type','rfid_card_no']));
   const [gps, setGps] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
   const [openMaint, setOpenMaint] = useState(false);
@@ -45,10 +49,10 @@ export default function Transport() {
   const [fuelForm, setFuelForm] = useState(init(['vehicle_id','fill_date','fuel_type','quantity_liters','rate_per_liter','total_cost','odometer_reading','pump_name','receipt_no','filled_by','notes']));
   const [fees, setFees] = useState([]);
   const [openFee, setOpenFee] = useState(false);
-  const [feeForm, setFeeForm] = useState(init(['route_id','stop_id','academic_year','fee_type','amount','distance_based','distance_km','rate_per_km','effective_from','effective_to']));
+  const [feeForm, setFeeForm] = useState(init(['admission_no','student_name','father_name','distance_km','fee_type','amount','paid_date','academic_year']));
   const [sosAlerts, setSosAlerts] = useState([]);
   const [openSOS, setOpenSOS] = useState(false);
-  const [sosForm, setSOSForm] = useState(init(['vehicle_id','route_id','driver_id','alert_type','description','latitude','longitude']));
+  const [sosForm, setSOSForm] = useState(init(['vehicle_id','route_id','driver_id','alert_type','description']));
   const [trips, setTrips] = useState([]);
   const [openTrip, setOpenTrip] = useState(false);
   const [tripForm, setTripForm] = useState(init(['trip_name','trip_type','destination','vehicle_id','driver_id','departure_datetime','return_datetime','total_students','total_staff','estimated_cost','notes','status']));
@@ -57,6 +61,71 @@ export default function Transport() {
   const [openReq, setOpenReq] = useState(false);
   const [reqForm, setReqForm] = useState(init(['student_id','current_route_id','requested_route_id','current_stop_id','requested_stop_id','reason','effective_date']));
   const [speedAlerts, setSpeedAlerts] = useState([]);
+
+  // Emergency alert + notification dialogs (principal/admin only)
+  const [openEmergency, setOpenEmergency] = useState(false);
+  const [emgForm, setEmgForm] = useState({ title: '', message: '', route_id: '', audience: 'all_transport' });
+  const [emgSaving, setEmgSaving] = useState(false);
+  const [openNotify, setOpenNotify] = useState(false);
+  const [notifyForm, setNotifyForm] = useState({ title: '', message: '', route_id: '' });
+  const [notifySaving, setNotifySaving] = useState(false);
+
+  const sendEmergency = () => {
+    if (!emgForm.title.trim()) { msg('Title required', 'error'); return; }
+    setEmgSaving(true);
+    const payload = { ...emgForm };
+    if (!payload.route_id) delete payload.route_id;
+    transportAPI.emergencyAlert(payload)
+      .then(r => { msg(`Emergency sent to ${r.data?.data?.notified_users ?? 0} users`); setOpenEmergency(false); fetchSOS(); })
+      .catch(e => msg(e.response?.data?.message || 'Failed', 'error'))
+      .finally(() => setEmgSaving(false));
+  };
+
+  const sendNotify = () => {
+    if (!notifyForm.title.trim()) { msg('Title required', 'error'); return; }
+    setNotifySaving(true);
+    const payload = { ...notifyForm };
+    if (!payload.route_id) delete payload.route_id;
+    transportAPI.notify(payload)
+      .then(r => { msg(`Notification sent to ${r.data?.data?.notified_users ?? 0} users`); setOpenNotify(false); })
+      .catch(e => msg(e.response?.data?.message || 'Failed', 'error'))
+      .finally(() => setNotifySaving(false));
+  };
+
+  const NOTIFY_PRESETS = [
+    'Bus has reached school',
+    'Bus has left school',
+    'Bus will not come today',
+    'Bus is running late',
+  ];
+
+  // Auto-fill student name + father name when admission number is entered
+  const lookupStudent = (adm) => {
+    const a = (adm || '').trim();
+    if (!a) { setAssignForm(f => ({ ...f, student_name: '', father_name: '' })); return; }
+    transportAPI.studentLookup(a)
+      .then(r => {
+        const d = r.data?.data || {};
+        setAssignForm(f => ({ ...f, student_name: d.student_name || '', father_name: d.father_name || '' }));
+      })
+      .catch(() => {
+        setAssignForm(f => ({ ...f, student_name: 'Not found', father_name: '' }));
+      });
+  };
+
+  // Same lookup for the Fee form
+  const lookupFeeStudent = (adm) => {
+    const a = (adm || '').trim();
+    if (!a) { setFeeForm(f => ({ ...f, student_name: '', father_name: '' })); return; }
+    transportAPI.studentLookup(a)
+      .then(r => {
+        const d = r.data?.data || {};
+        setFeeForm(f => ({ ...f, student_name: d.student_name || '', father_name: d.father_name || '' }));
+      })
+      .catch(() => {
+        setFeeForm(f => ({ ...f, student_name: 'Not found', father_name: '' }));
+      });
+  };
 
   const ex = (d) => d?.data?.data?.items || d?.data?.data || d?.data?.items || [];
 
@@ -75,6 +144,7 @@ export default function Transport() {
   const fetchSpeed = useCallback(() => transportAPI.listSpeedAlerts({}).then(r => setSpeedAlerts(ex(r))).catch(() => {}), []);
 
   useEffect(() => { fetchDash(); }, [fetchDash]);
+  useEffect(() => { fetchRoutes(); fetchVehicles(); fetchDrivers(); }, [fetchRoutes, fetchVehicles, fetchDrivers]); // for route/assign dropdowns
   useEffect(() => {
     const fetchers = [null, fetchVehicles, fetchDrivers, fetchRoutes, fetchStudents, fetchGPS, fetchMaintenance, fetchFuel, fetchFees, fetchSOS, fetchTrips, fetchRequests, fetchSpeed];
     if (fetchers[tab]) fetchers[tab]();
@@ -106,7 +176,15 @@ export default function Transport() {
 
   return (
     <Box>
-      <Typography variant="h5" mb={2}>Transport & Fleet Management</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5">Transport & Fleet Management</Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" startIcon={<DirectionsBus />} onClick={() => { setNotifyForm({ title: '', message: '', route_id: '' }); setOpenNotify(true); }}
+            sx={{ textTransform: 'none' }}>Send Notification</Button>
+          <Button variant="contained" color="error" startIcon={<Warning />} onClick={() => { setEmgForm({ title: '', message: '', route_id: '', audience: 'all_transport' }); setOpenEmergency(true); }}
+            sx={{ textTransform: 'none', fontWeight: 700 }}>Emergency Alert</Button>
+        </Box>
+      </Box>
       <Tabs value={tab} onChange={(e, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
         {tabLabels.map((l, i) => <Tab key={i} label={l} icon={[<DirectionsBus fontSize="small"/>,<DirectionsBus fontSize="small"/>,<Person fontSize="small"/>,<Map fontSize="small"/>,<Person fontSize="small"/>,<Map fontSize="small"/>,<Build fontSize="small"/>,<LocalGasStation fontSize="small"/>,<AttachMoney fontSize="small"/>,<Warning fontSize="small"/>,<FlightTakeoff fontSize="small"/>,<SwapHoriz fontSize="small"/>,<Speed fontSize="small"/>][i]} iconPosition="start" sx={{ minHeight: 48, textTransform: 'none' }} />)}
       </Tabs>
@@ -221,7 +299,7 @@ export default function Transport() {
       {tab === 3 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
-            <Button variant="outlined" onClick={() => { setStopForm(init(['route_id','stop_name','latitude','longitude','pickup_time','drop_time','fare','stop_order','radius_meters'])); setOpenStop(true); }}>Add Stop</Button>
+            <Button variant="outlined" onClick={() => { setStopForm(init(['route_name','stop_name','pickup_time','drop_time','fare'])); setOpenStop(true); }}>Add Stop</Button>
             <Button variant="contained" startIcon={<Add />} onClick={() => { setRouteForm(init(['route_name','route_code','description','vehicle_id','driver_id','helper_name','helper_phone','start_location','end_location','total_distance_km','estimated_time_min','shift','status'])); setEditRouteId(null); setOpenRoute(true); }}>Add Route</Button>
           </Box>
           {routes.map(route => (
@@ -256,23 +334,24 @@ export default function Transport() {
       {tab === 4 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={2}>
-            <Button variant="contained" startIcon={<Add />} onClick={() => { setAssignForm(init(['student_id','route_id','stop_id','pickup_type','rfid_card_no'])); setOpenAssign(true); }}>Assign Student</Button>
+            <Button variant="contained" startIcon={<Add />} onClick={() => { setAssignForm(init(['admission_no','student_name','father_name','route_name','stop_name','monthly_fee','pickup_type','rfid_card_no'])); setOpenAssign(true); }}>Assign Student</Button>
           </Box>
           <TableContainer component={Paper}>
             <Table size="small">
-              <TableHead><TableRow><TableCell>Student ID</TableCell><TableCell>Route</TableCell><TableCell>Stop</TableCell><TableCell>Type</TableCell><TableCell>RFID</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
+              <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Adm No</TableCell><TableCell>Route</TableCell><TableCell>Stop</TableCell><TableCell>Fee (₹)</TableCell><TableCell>Type</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
               <TableBody>
                 {students.map(s => (
                   <TableRow key={s.id}>
-                    <TableCell>{s.student_id}</TableCell>
+                    <TableCell>{s.student_name || `#${s.student_id}`}</TableCell>
+                    <TableCell>{s.admission_no || '-'}</TableCell>
                     <TableCell>{s.route?.route_name || '-'}</TableCell>
                     <TableCell>{s.stop?.stop_name || '-'}</TableCell>
+                    <TableCell>{s.fare != null ? `₹${s.fare}` : '-'}</TableCell>
                     <TableCell>{s.pickup_type}</TableCell>
-                    <TableCell>{s.rfid_card_no || '-'}</TableCell>
                     <TableCell><Chip size="small" label={s.status || 'active'} color={statColor(s.status || 'active')} /></TableCell>
                   </TableRow>
                 ))}
-                {students.length === 0 && <TableRow><TableCell colSpan={6} align="center">No assignments</TableCell></TableRow>}
+                {students.length === 0 && <TableRow><TableCell colSpan={7} align="center">No assignments</TableCell></TableRow>}
               </TableBody>
             </Table>
           </TableContainer>
@@ -356,22 +435,24 @@ export default function Transport() {
       {tab === 8 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={2}>
-            <Button variant="contained" startIcon={<Add />} onClick={() => { setFeeForm(init(['route_id','stop_id','academic_year','fee_type','amount','distance_based','distance_km','rate_per_km','effective_from','effective_to'])); setOpenFee(true); }}>Add Fee Structure</Button>
+            <Button variant="contained" startIcon={<Add />} onClick={() => { setFeeForm(init(['admission_no','student_name','father_name','distance_km','fee_type','amount','paid_date','academic_year'])); setOpenFee(true); }}>Collect Transport Fee</Button>
           </Box>
           <TableContainer component={Paper}>
             <Table size="small">
-              <TableHead><TableRow><TableCell>Route</TableCell><TableCell>Stop</TableCell><TableCell>Year</TableCell><TableCell>Type</TableCell><TableCell>Amount</TableCell><TableCell>Distance</TableCell><TableCell>From</TableCell><TableCell>To</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
+              <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Adm No</TableCell><TableCell>Distance</TableCell><TableCell>Type</TableCell><TableCell>Amount</TableCell><TableCell>Payment Date</TableCell><TableCell>Year</TableCell></TableRow></TableHead>
               <TableBody>
                 {fees.map(f => (
                   <TableRow key={f.id}>
-                    <TableCell>{f.route_id || 'All'}</TableCell><TableCell>{f.stop_id || 'All'}</TableCell>
-                    <TableCell>{f.academic_year || '-'}</TableCell><TableCell>{f.fee_type}</TableCell>
-                    <TableCell>₹{f.amount}</TableCell><TableCell>{f.distance_based ? `${f.distance_km} km` : 'N/A'}</TableCell>
-                    <TableCell>{f.effective_from || '-'}</TableCell><TableCell>{f.effective_to || '-'}</TableCell>
-                    <TableCell><Chip size="small" label={f.status} color={statColor(f.status)} /></TableCell>
+                    <TableCell>{f.student_name || '-'}</TableCell>
+                    <TableCell>{f.admission_no || '-'}</TableCell>
+                    <TableCell>{f.distance_km != null ? `${f.distance_km} km` : '-'}</TableCell>
+                    <TableCell>{f.fee_type}</TableCell>
+                    <TableCell>₹{f.amount}</TableCell>
+                    <TableCell>{f.paid_date || '-'}</TableCell>
+                    <TableCell>{f.academic_year || '-'}</TableCell>
                   </TableRow>
                 ))}
-                {fees.length === 0 && <TableRow><TableCell colSpan={9} align="center">No fee structures</TableCell></TableRow>}
+                {fees.length === 0 && <TableRow><TableCell colSpan={7} align="center">No fee records yet</TableCell></TableRow>}
               </TableBody>
             </Table>
           </TableContainer>
@@ -382,17 +463,19 @@ export default function Transport() {
       {tab === 9 && (
         <Box>
           <Box display="flex" justifyContent="flex-end" mb={2}>
-            <Button variant="contained" color="error" startIcon={<Warning />} onClick={() => { setSOSForm(init(['vehicle_id','route_id','driver_id','alert_type','description','latitude','longitude'])); setOpenSOS(true); }}>Trigger SOS</Button>
+            <Button variant="contained" color="error" startIcon={<Warning />} onClick={() => { setSOSForm(init(['vehicle_id','route_id','driver_id','alert_type','description'])); setOpenSOS(true); }}>Trigger SOS</Button>
           </Box>
           <TableContainer component={Paper}>
             <Table size="small">
-              <TableHead><TableRow><TableCell>ID</TableCell><TableCell>Type</TableCell><TableCell>Vehicle</TableCell><TableCell>Description</TableCell><TableCell>Location</TableCell><TableCell>Status</TableCell><TableCell>Created</TableCell><TableCell>Actions</TableCell></TableRow></TableHead>
+              <TableHead><TableRow><TableCell>Type</TableCell><TableCell>Bus</TableCell><TableCell>Route</TableCell><TableCell>Driver</TableCell><TableCell>Description</TableCell><TableCell>Status</TableCell><TableCell>Created</TableCell><TableCell>Actions</TableCell></TableRow></TableHead>
               <TableBody>
                 {sosAlerts.map(s => (
                   <TableRow key={s.id} sx={{ bgcolor: s.status === 'active' ? '#fff3e0' : 'inherit' }}>
-                    <TableCell>{s.id}</TableCell><TableCell><Chip size="small" label={s.alert_type} color="error" /></TableCell>
-                    <TableCell>{s.vehicle_id || '-'}</TableCell><TableCell>{s.description || '-'}</TableCell>
-                    <TableCell>{s.latitude && s.longitude ? `${s.latitude}, ${s.longitude}` : '-'}</TableCell>
+                    <TableCell><Chip size="small" label={s.alert_type} color="error" /></TableCell>
+                    <TableCell>{s.vehicle_number || '-'}</TableCell>
+                    <TableCell>{s.route_name || '-'}</TableCell>
+                    <TableCell>{s.driver_name || '-'}</TableCell>
+                    <TableCell>{s.description || '-'}</TableCell>
                     <TableCell><Chip size="small" label={s.status} color={statColor(s.status)} /></TableCell>
                     <TableCell>{s.created_at ? new Date(s.created_at).toLocaleString() : '-'}</TableCell>
                     <TableCell>
@@ -524,8 +607,8 @@ export default function Transport() {
         <DialogActions>
           <Button onClick={() => setOpenVehicle(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            const fn = editVehicleId ? transportAPI.updateVehicle(editVehicleId, vehicleForm) : transportAPI.createVehicle(vehicleForm);
-            fn.then(() => { msg(editVehicleId ? 'Updated' : 'Created'); setOpenVehicle(false); fetchVehicles(); }).catch(() => msg('Failed','error'));
+            const fn = editVehicleId ? transportAPI.updateVehicle(editVehicleId, clean(vehicleForm)) : transportAPI.createVehicle(clean(vehicleForm));
+            fn.then(() => { msg(editVehicleId ? 'Updated' : 'Created'); setOpenVehicle(false); fetchVehicles(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>{editVehicleId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
@@ -552,8 +635,8 @@ export default function Transport() {
         <DialogActions>
           <Button onClick={() => setOpenDriver(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            const fn = editDriverId ? transportAPI.updateDriver(editDriverId, driverForm) : transportAPI.createDriver(driverForm);
-            fn.then(() => { msg(editDriverId ? 'Updated' : 'Created'); setOpenDriver(false); fetchDrivers(); }).catch(() => msg('Failed','error'));
+            const fn = editDriverId ? transportAPI.updateDriver(editDriverId, clean(driverForm)) : transportAPI.createDriver(clean(driverForm));
+            fn.then(() => { msg(editDriverId ? 'Updated' : 'Created'); setOpenDriver(false); fetchDrivers(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>{editDriverId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
@@ -564,24 +647,26 @@ export default function Transport() {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {F(routeForm, setRouteForm, 'Route Name *', 'route_name')}
             {F(routeForm, setRouteForm, 'Route Code', 'route_code')}
-            {F(routeForm, setRouteForm, 'Vehicle ID', 'vehicle_id', { type: 'number' })}
-            {F(routeForm, setRouteForm, 'Driver ID', 'driver_id', { type: 'number' })}
+            {Sel(routeForm, setRouteForm, 'Vehicle', 'vehicle_id',
+              [{ value: '', label: '— None —' }, ...vehicles.map(v => ({ value: v.id, label: `${v.vehicle_number}${v.vehicle_type ? ' (' + v.vehicle_type + ')' : ''}` }))])}
+            {Sel(routeForm, setRouteForm, 'Driver', 'driver_id',
+              [{ value: '', label: '— None —' }, ...drivers.map(d => ({ value: d.id, label: `${d.name}${d.phone ? ' • ' + d.phone : ''}` }))])}
             {F(routeForm, setRouteForm, 'Helper Name', 'helper_name')}
             {F(routeForm, setRouteForm, 'Helper Phone', 'helper_phone')}
             {F(routeForm, setRouteForm, 'Start Location', 'start_location')}
             {F(routeForm, setRouteForm, 'End Location', 'end_location')}
-            {F(routeForm, setRouteForm, 'Distance (km)', 'total_distance_km', { type: 'number' })}
-            {F(routeForm, setRouteForm, 'Time (min)', 'estimated_time_min', { type: 'number' })}
             {Sel(routeForm, setRouteForm, 'Shift', 'shift', ['morning','afternoon','both'])}
             {Sel(routeForm, setRouteForm, 'Status', 'status', ['active','inactive'])}
-            {F(routeForm, setRouteForm, 'Description', 'description', { xs: 12, multiline: true, rows: 2 })}
           </Grid>
+          {vehicles.length === 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>Pehle "Vehicles" tab me bus add karo, tabhi yahan select kar paoge.</Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRoute(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            const fn = editRouteId ? transportAPI.updateRoute(editRouteId, routeForm) : transportAPI.createRoute(routeForm);
-            fn.then(() => { msg(editRouteId ? 'Updated' : 'Created'); setOpenRoute(false); fetchRoutes(); }).catch(() => msg('Failed','error'));
+            const fn = editRouteId ? transportAPI.updateRoute(editRouteId, clean(routeForm)) : transportAPI.createRoute(clean(routeForm));
+            fn.then(() => { msg(editRouteId ? 'Updated' : 'Created'); setOpenRoute(false); fetchRoutes(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>{editRouteId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
@@ -589,33 +674,46 @@ export default function Transport() {
       <Dialog open={openStop} onClose={() => setOpenStop(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Stop</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>Route ka naam likho (jo aapne banaya hai), ID ki zarurat nahi.</Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            {F(stopForm, setStopForm, 'Route ID *', 'route_id', { type: 'number' })}
-            {F(stopForm, setStopForm, 'Stop Name *', 'stop_name')}
-            {F(stopForm, setStopForm, 'Latitude', 'latitude')}
-            {F(stopForm, setStopForm, 'Longitude', 'longitude')}
+            {F(stopForm, setStopForm, 'Route Name *', 'route_name', { xs: 12 })}
+            {F(stopForm, setStopForm, 'Stop Name *', 'stop_name', { xs: 12 })}
             {F(stopForm, setStopForm, 'Pickup Time', 'pickup_time', { type: 'time', InputLabelProps: { shrink: true } })}
             {F(stopForm, setStopForm, 'Drop Time', 'drop_time', { type: 'time', InputLabelProps: { shrink: true } })}
-            {F(stopForm, setStopForm, 'Fare', 'fare', { type: 'number' })}
-            {F(stopForm, setStopForm, 'Stop Order', 'stop_order', { type: 'number' })}
-            {F(stopForm, setStopForm, 'Radius (m)', 'radius_meters', { type: 'number' })}
+            {F(stopForm, setStopForm, 'Fare (₹)', 'fare', { type: 'number' })}
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenStop(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            transportAPI.addStop(stopForm.route_id, stopForm).then(() => { msg('Stop added'); setOpenStop(false); fetchRoutes(); }).catch(() => msg('Failed','error'));
+            transportAPI.addStopByName(clean(stopForm)).then(() => { msg('Stop added'); setOpenStop(false); fetchRoutes(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>Add</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openAssign} onClose={() => setOpenAssign(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Student</DialogTitle>
+        <DialogTitle>Assign Student to Transport</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>Admission Number likhte hi student ka naam aur father ka naam auto-fill ho jayega. Route ka naam likho, naya stop apne aap ban jayega.</Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            {F(assignForm, setAssignForm, 'Student ID *', 'student_id', { type: 'number' })}
-            {F(assignForm, setAssignForm, 'Route ID *', 'route_id', { type: 'number' })}
-            {F(assignForm, setAssignForm, 'Stop ID *', 'stop_id', { type: 'number' })}
+            <Grid item xs={12}>
+              <TextField fullWidth size="small" label="Student Admission No *" value={assignForm.admission_no || ''}
+                onChange={e => setAssignForm({ ...assignForm, admission_no: e.target.value })}
+                onBlur={e => lookupStudent(e.target.value)} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Student Name" value={assignForm.student_name || ''}
+                InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }}
+                placeholder="auto-filled" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Father Name" value={assignForm.father_name || ''}
+                InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }}
+                placeholder="auto-filled" />
+            </Grid>
+            {F(assignForm, setAssignForm, 'Route Name *', 'route_name', { xs: 12 })}
+            {F(assignForm, setAssignForm, 'Stop Name *', 'stop_name')}
+            {F(assignForm, setAssignForm, 'Monthly Transport Fee (₹)', 'monthly_fee', { type: 'number' })}
             {Sel(assignForm, setAssignForm, 'Pickup Type', 'pickup_type', ['both','pickup_only','drop_only'])}
             {F(assignForm, setAssignForm, 'RFID Card No', 'rfid_card_no')}
           </Grid>
@@ -623,7 +721,8 @@ export default function Transport() {
         <DialogActions>
           <Button onClick={() => setOpenAssign(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            transportAPI.assign(assignForm).then(() => { msg('Assigned'); setOpenAssign(false); fetchStudents(); }).catch(() => msg('Failed','error'));
+            const { student_name, father_name, ...payload } = assignForm;
+            transportAPI.assign(clean(payload)).then(() => { msg('Assigned'); setOpenAssign(false); fetchStudents(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>Assign</Button>
         </DialogActions>
       </Dialog>
@@ -681,45 +780,68 @@ export default function Transport() {
       </Dialog>
 
       <Dialog open={openFee} onClose={() => setOpenFee(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Fee Structure</DialogTitle>
+        <DialogTitle>Collect Transport Fee</DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>Admission Number likhte hi student aur father ka naam auto-fill ho jayega.</Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            {F(feeForm, setFeeForm, 'Route ID', 'route_id', { type: 'number' })}
-            {F(feeForm, setFeeForm, 'Stop ID', 'stop_id', { type: 'number' })}
-            {F(feeForm, setFeeForm, 'Academic Year', 'academic_year')}
-            {Sel(feeForm, setFeeForm, 'Fee Type', 'fee_type', ['monthly','quarterly','yearly'])}
-            {F(feeForm, setFeeForm, 'Amount *', 'amount', { type: 'number' })}
+            <Grid item xs={12}>
+              <TextField fullWidth size="small" label="Student Admission No *" value={feeForm.admission_no || ''}
+                onChange={e => setFeeForm({ ...feeForm, admission_no: e.target.value })}
+                onBlur={e => lookupFeeStudent(e.target.value)} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Student Name" value={feeForm.student_name || ''}
+                InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} placeholder="auto-filled" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth size="small" label="Father Name" value={feeForm.father_name || ''}
+                InputProps={{ readOnly: true }} InputLabelProps={{ shrink: true }} placeholder="auto-filled" />
+            </Grid>
             {F(feeForm, setFeeForm, 'Distance (km)', 'distance_km', { type: 'number' })}
-            {F(feeForm, setFeeForm, 'Rate/km', 'rate_per_km', { type: 'number' })}
-            {F(feeForm, setFeeForm, 'From', 'effective_from', { type: 'date', InputLabelProps: { shrink: true } })}
-            {F(feeForm, setFeeForm, 'To', 'effective_to', { type: 'date', InputLabelProps: { shrink: true } })}
+            {Sel(feeForm, setFeeForm, 'Fee Type', 'fee_type', ['monthly','quarterly','yearly'])}
+            {F(feeForm, setFeeForm, 'Amount (₹) *', 'amount', { type: 'number' })}
+            {F(feeForm, setFeeForm, 'Payment Date *', 'paid_date', { type: 'date', InputLabelProps: { shrink: true } })}
+            {F(feeForm, setFeeForm, 'Academic Year', 'academic_year', { xs: 12 })}
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenFee(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => {
-            transportAPI.createFee(feeForm).then(() => { msg('Created'); setOpenFee(false); fetchFees(); }).catch(() => msg('Failed','error'));
-          }}>Create</Button>
+            if (!feeForm.admission_no) { msg('Admission number required', 'error'); return; }
+            if (!feeForm.amount) { msg('Amount required', 'error'); return; }
+            if (!feeForm.paid_date) { msg('Payment date required', 'error'); return; }
+            const { student_name, father_name, ...payload } = feeForm;
+            transportAPI.createFee(clean(payload)).then(() => { msg('Fee recorded'); setOpenFee(false); fetchFees(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
+          }}>Submit</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openSOS} onClose={() => setOpenSOS(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Trigger SOS Alert</DialogTitle>
+        <DialogTitle sx={{ color: '#d32f2f', fontWeight: 700 }}>🚨 Trigger SOS Alert</DialogTitle>
         <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>Bus, Route ya Driver select karo aur kya hua wo likho.</Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            {Sel(sosForm, setSOSForm, 'Alert Type *', 'alert_type', ['panic','accident','breakdown','medical','overspeed'])}
-            {F(sosForm, setSOSForm, 'Vehicle ID', 'vehicle_id', { type: 'number' })}
-            {F(sosForm, setSOSForm, 'Route ID', 'route_id', { type: 'number' })}
-            {F(sosForm, setSOSForm, 'Driver ID', 'driver_id', { type: 'number' })}
-            {F(sosForm, setSOSForm, 'Latitude', 'latitude')}
-            {F(sosForm, setSOSForm, 'Longitude', 'longitude')}
-            {F(sosForm, setSOSForm, 'Description', 'description', { xs: 12, multiline: true, rows: 3 })}
+            {Sel(sosForm, setSOSForm, 'Alert Type *', 'alert_type', [
+              { value: 'panic', label: 'Panic / Emergency' },
+              { value: 'accident', label: 'Accident' },
+              { value: 'breakdown', label: 'Breakdown' },
+              { value: 'medical', label: 'Medical' },
+              { value: 'overspeed', label: 'Overspeeding' },
+            ], { xs: 12 })}
+            {Sel(sosForm, setSOSForm, 'Bus', 'vehicle_id',
+              [{ value: '', label: '— Select —' }, ...vehicles.map(v => ({ value: v.id, label: v.vehicle_number }))])}
+            {Sel(sosForm, setSOSForm, 'Route', 'route_id',
+              [{ value: '', label: '— Select —' }, ...routes.map(r => ({ value: r.id, label: r.route_name }))])}
+            {Sel(sosForm, setSOSForm, 'Driver', 'driver_id',
+              [{ value: '', label: '— Select —' }, ...drivers.map(d => ({ value: d.id, label: d.name }))], { xs: 12 })}
+            {F(sosForm, setSOSForm, 'What happened? (Description)', 'description', { xs: 12, multiline: true, rows: 3 })}
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenSOS(false)}>Cancel</Button>
           <Button variant="contained" color="error" onClick={() => {
-            transportAPI.createSOSAlert(sosForm).then(() => { msg('SOS Triggered!'); setOpenSOS(false); fetchSOS(); }).catch(() => msg('Failed','error'));
+            if (!sosForm.alert_type) { msg('Alert type select karo', 'error'); return; }
+            transportAPI.createSOSAlert(clean(sosForm)).then(() => { msg('SOS Triggered!'); setOpenSOS(false); fetchSOS(); }).catch((e) => msg(e.response?.data?.message || 'Failed','error'));
           }}>Trigger SOS</Button>
         </DialogActions>
       </Dialog>
@@ -775,6 +897,58 @@ export default function Transport() {
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack({ ...snack, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
         <Alert severity={snack.severity} onClose={() => setSnack({ ...snack, open: false })}>{snack.message}</Alert>
       </Snackbar>
+
+      {/* Emergency Alert dialog */}
+      <Dialog open={openEmergency} onClose={() => setOpenEmergency(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: '#d32f2f', fontWeight: 700 }}>🚨 Send Emergency Alert</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Ye alert recipients ki screen par aawaz ke saath turant popup ban kar khulega.
+          </Alert>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {F(emgForm, setEmgForm, 'Title *', 'title')}
+            {Sel(emgForm, setEmgForm, 'Send To', 'audience', [
+              { value: 'all_transport', label: 'All Transport Students & Parents' },
+              { value: 'route', label: 'Specific Route Only' },
+              { value: 'everyone', label: 'Everyone in School' },
+            ])}
+            {emgForm.audience === 'route' && Sel(emgForm, setEmgForm, 'Route', 'route_id',
+              routes.map(r => ({ value: r.id, label: r.route_name })), { xs: 12 })}
+            {F(emgForm, setEmgForm, 'Message', 'message', { xs: 12, multiline: true, rows: 3 })}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEmergency(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={sendEmergency} disabled={emgSaving}>
+            {emgSaving ? 'Sending...' : 'Broadcast Emergency'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Normal Notification dialog */}
+      <Dialog open={openNotify} onClose={() => setOpenNotify(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>🚌 Send Transport Notification</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1, mb: 1 }}>
+            {NOTIFY_PRESETS.map(p => (
+              <Chip key={p} label={p} size="small" onClick={() => setNotifyForm(f => ({ ...f, title: p }))}
+                variant={notifyForm.title === p ? 'filled' : 'outlined'} color="primary" />
+            ))}
+          </Box>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {F(notifyForm, setNotifyForm, 'Title *', 'title')}
+            {Sel(notifyForm, setNotifyForm, 'Route (optional)', 'route_id',
+              [{ value: '', label: 'All Transport Students' }, ...routes.map(r => ({ value: r.id, label: r.route_name }))])}
+            {F(notifyForm, setNotifyForm, 'Message', 'message', { xs: 12, multiline: true, rows: 3 })}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenNotify(false)}>Cancel</Button>
+          <Button variant="contained" onClick={sendNotify} disabled={notifySaving}>
+            {notifySaving ? 'Sending...' : 'Send Notification'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

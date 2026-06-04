@@ -64,6 +64,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (user?.role?.name === 'parent') navigate('/my-children', { replace: true });
     if (user?.role?.name === 'teacher') navigate('/teacher/dashboard', { replace: true });
+    if (user?.role?.name === 'student') navigate('/my-portal', { replace: true });
   }, [user, navigate]);
 
   const GRADIENTS = {

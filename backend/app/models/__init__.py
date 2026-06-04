@@ -25,7 +25,8 @@ from app.models.academic import (
     Syllabus, SyllabusProgress, LessonPlan,
     Homework, HomeworkSubmission, StudyMaterial,
     AcademicCalendar, TeacherSubject,
-    ElectiveGroup, ElectiveSubject, StudentElective
+    ElectiveGroup, ElectiveSubject, StudentElective,
+    Term, TimetableSubstitution, PromotionCriteria, PromotionRecord, AcademicPolicy
 )
 from app.models.attendance import (
     StudentAttendance, StaffAttendance,
@@ -81,3 +82,9 @@ from app.models.sports import (
 from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment
 from app.models.audit import AuditLog
 from app.models.platform_staff import PlatformStaff, PlatformStaffAttendance, PlatformStaffPayroll, PlatformStaffLeave
+from app.models.principal import ClassObservation, DisciplineCase, TeacherPerformanceScore
+from app.models.exam_extended import (
+    ExamDateSheet, QuestionPaper, MarksEntryDeadline, GraceMarks,
+    ReExam, ReExamStudent, ExamNotification, ExamGrievance,
+    ExamAttendanceRecord, SpecialArrangement, MarksVerification
+)

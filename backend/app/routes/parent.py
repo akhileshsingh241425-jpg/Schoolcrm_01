@@ -10,7 +10,7 @@ from app.models.parent import (
 from app.models.student import Student, ParentDetail, Section
 from app.models.attendance import StudentAttendance
 from app.models.fee import FeeInstallment, FeePayment
-from app.models.academic import ExamResult, ReportCard, Homework, Timetable
+from app.models.academic import ExamResult, ExamSchedule, Exam, ReportCard, Homework, Timetable
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate
@@ -793,10 +793,12 @@ def get_child_overview(student_id):
         'recent_payments': [p.to_dict() for p in recent_payments]
     }
 
-    # --- EXAM RESULTS ---
+    # --- EXAM RESULTS --- (only show locked/published marks)
     results = ExamResult.query.filter_by(
         student_id=student_id, school_id=g.school_id
-    ).order_by(ExamResult.entered_at.desc()).all()
+    ).join(ExamSchedule).filter(
+        ExamSchedule.is_marks_locked == True
+    ).order_by(ExamSchedule.exam_date.desc()).all()
 
     # Group by exam
     exams_map = {}
@@ -804,7 +806,24 @@ def get_child_overview(student_id):
         exam_name = r.schedule.exam.name if r.schedule and r.schedule.exam else 'Unknown'
         if exam_name not in exams_map:
             exams_map[exam_name] = {'exam': exam_name, 'subjects': [], 'total_marks': 0, 'obtained': 0}
-        exams_map[exam_name]['subjects'].append(r.to_dict())
+
+        # Build subject result with percentage, grade, and pass/fail
+        subject_result = r.to_dict()
+        max_marks = float(r.schedule.max_marks) if r.schedule and r.schedule.max_marks else None
+        marks = float(r.marks_obtained) if r.marks_obtained is not None else None
+        passing_marks = float(r.schedule.passing_marks) if r.schedule and r.schedule.passing_marks else None
+
+        subject_result['percentage'] = round(marks / max_marks * 100, 2) if marks is not None and max_marks else None
+        subject_result['grade'] = r.grade
+        subject_result['grade_point'] = float(r.grade_point) if r.grade_point else None
+        subject_result['pass_fail'] = (
+            'pass' if marks is not None and passing_marks is not None and marks >= passing_marks
+            else 'fail' if marks is not None and passing_marks is not None
+            else 'absent' if r.is_absent
+            else None
+        )
+
+        exams_map[exam_name]['subjects'].append(subject_result)
         if r.marks_obtained:
             exams_map[exam_name]['obtained'] += float(r.marks_obtained)
         if r.schedule and r.schedule.max_marks:
@@ -863,9 +882,25 @@ def get_child_overview(student_id):
 
     # --- TRANSPORT ---
     try:
-        from app.models.transport import TransportStudent
-        transport = TransportStudent.query.filter_by(student_id=student_id).first()
-        data['transport'] = transport.to_dict() if transport else None
+        from app.models.transport import StudentTransport, TransportRoute, TransportStop, Vehicle
+        st = StudentTransport.query.filter_by(student_id=student_id, school_id=g.school_id).first()
+        if st:
+            tdict = st.to_dict() if hasattr(st, 'to_dict') else {
+                'id': st.id, 'student_id': st.student_id,
+                'route_id': st.route_id, 'stop_id': st.stop_id,
+            }
+            route = TransportRoute.query.get(st.route_id) if st.route_id else None
+            stop = TransportStop.query.get(st.stop_id) if st.stop_id else None
+            tdict['route_name'] = route.route_name if route else None
+            tdict['stop_name'] = stop.stop_name if stop else None
+            if route and route.vehicle_id:
+                veh = Vehicle.query.get(route.vehicle_id)
+                tdict['vehicle_no'] = veh.vehicle_number if veh else None
+            elif route and getattr(route, 'vehicle_no', None):
+                tdict['vehicle_no'] = route.vehicle_no
+            data['transport'] = tdict
+        else:
+            data['transport'] = None
     except Exception:
         data['transport'] = None
 
@@ -890,7 +925,6 @@ def get_child_overview(student_id):
 
     # --- UPCOMING EXAMS ---
     try:
-        from app.models.academic import ExamSchedule, Exam
         upcoming_query = ExamSchedule.query.filter(
             ExamSchedule.school_id == g.school_id,
             ExamSchedule.exam_date >= datetime.utcnow().date()

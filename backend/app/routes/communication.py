@@ -754,3 +754,54 @@ def test_whatsapp():
         return success_response({'result': str(result)}, 'WhatsApp test message sent successfully')
     else:
         return error_response(f'WhatsApp test failed: {result}', 500)
+
+
+@communication_bp.route('/notices/broadcast', methods=['POST'])
+@school_required
+@role_required('principal', 'exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+def broadcast_notice():
+    """Post a notice and create an in-app notification for every active user in the school."""
+    from app.models.user import User
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    message = (data.get('message') or '').strip()
+    target_audience = data.get('target_audience', 'all')  # all, teachers, students, parents, staff
+    if not title:
+        return error_response('Title is required', 400)
+
+    # Also save as an Announcement (published)
+    ann = Announcement(
+        school_id=g.school_id, title=title, message=message,
+        target_audience=target_audience if target_audience in ('all','students','parents','teachers','staff') else 'all',
+        is_published=True, published_at=datetime.utcnow(), created_by=g.current_user.id,
+    )
+    db.session.add(ann)
+
+    # Determine recipient users
+    users_q = User.query.filter_by(school_id=g.school_id, is_active=True)
+    # Optional audience filtering by role name
+    role_map = {
+        'teachers': ['teacher'],
+        'students': ['student'],
+        'parents': ['parent'],
+        'staff': ['teacher','accountant','librarian','counselor','receptionist','staff'],
+    }
+    if target_audience in role_map:
+        from app.models.user import Role
+        role_ids = [r.id for r in Role.query.filter(Role.name.in_(role_map[target_audience])).all()]
+        if role_ids:
+            users_q = users_q.filter(User.role_id.in_(role_ids))
+    recipients = users_q.all()
+
+    posted_by = f"{g.current_user.first_name or ''} {g.current_user.last_name or ''}".strip() or 'Administration'
+    count = 0
+    for u in recipients:
+        db.session.add(Notification(
+            school_id=g.school_id, user_id=u.id,
+            title=f"📢 {title}",
+            message=(message[:480] if message else '') + (f"\n— {posted_by}"),
+            type='in_app', status='sent', sent_at=datetime.utcnow(),
+        ))
+        count += 1
+    db.session.commit()
+    return success_response({'notified_users': count, 'announcement_id': ann.id}, 'Notice broadcast successfully', 201)

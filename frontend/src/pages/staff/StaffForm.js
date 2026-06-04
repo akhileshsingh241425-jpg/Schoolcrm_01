@@ -17,7 +17,7 @@ export default function StaffForm() {
     pf_number: '', esi_number: '', uan_number: '',
     emergency_contact: '', emergency_person: '',
     blood_group: '', marital_status: '', spouse_name: '',
-    create_login: false, role: 'teacher', password: 'Welcome@123'
+    create_login: false, role: 'teacher', password: ''
   });
 
   const handleChange = (field) => (e) => setForm({ ...form, [field]: e.target.value });

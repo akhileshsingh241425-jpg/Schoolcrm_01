@@ -30,7 +30,7 @@ function StudentList({ navigate }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const [filters, setFilters] = useState({ search: '', class_id: '', section_id: '', status: '', gender: '' });
+  const [filters, setFilters] = useState({ search: '', class_id: '', section_id: '', roll_no: '', status: '', gender: '' });
   const [loading, setLoading] = useState(false);
   const [deepSearchOpen, setDeepSearchOpen] = useState(false);
   const [deepQuery, setDeepQuery] = useState('');
@@ -55,6 +55,7 @@ function StudentList({ navigate }) {
       if (filters.search) params.search = filters.search;
       if (filters.class_id) params.class_id = filters.class_id;
       if (filters.section_id) params.section_id = filters.section_id;
+      if (filters.roll_no) params.roll_no = filters.roll_no;
       if (filters.status) params.status = filters.status;
       if (filters.gender) params.gender = filters.gender;
       const res = await studentsAPI.list(params);
@@ -93,7 +94,7 @@ function StudentList({ navigate }) {
           </Grid>
           <Grid item xs={6} sm={3} md={2}>
             <TextField fullWidth size="small" select label="Class" value={filters.class_id}
-              onChange={e => setFilters({ ...filters, class_id: e.target.value, section_id: '' })}>
+              onChange={e => setFilters({ ...filters, class_id: e.target.value, section_id: '', roll_no: '' })}>
               <MenuItem value="">All</MenuItem>
               {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </TextField>
@@ -104,6 +105,12 @@ function StudentList({ navigate }) {
               <MenuItem value="">All</MenuItem>
               {(selectedClass?.sections || []).map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
             </TextField>
+          </Grid>
+          <Grid item xs={6} sm={3} md={2}>
+            <TextField fullWidth size="small" label="Roll No" value={filters.roll_no}
+              onChange={e => setFilters({ ...filters, roll_no: e.target.value })}
+              disabled={!filters.class_id}
+              helperText={!filters.class_id ? 'Select a class first' : 'Unique in class'} />
           </Grid>
           <Grid item xs={6} sm={3} md={2}>
             <TextField fullWidth size="small" select label="Status" value={filters.status}
@@ -122,7 +129,7 @@ function StudentList({ navigate }) {
             </TextField>
           </Grid>
           <Grid item xs={6} md={1}>
-            <Button size="small" onClick={() => setFilters({ search: '', class_id: '', section_id: '', status: '', gender: '' })}>Clear</Button>
+            <Button size="small" onClick={() => setFilters({ search: '', class_id: '', section_id: '', roll_no: '', status: '', gender: '' })}>Clear</Button>
           </Grid>
           <Grid item xs={6} md={1}>
             <Button size="small" variant="outlined" startIcon={<PersonSearch />} onClick={async () => {
@@ -371,12 +378,26 @@ function Promotions() {
   const [bulkForm, setBulkForm] = useState({
     from_class_id: '', to_class_id: '', from_academic_year_id: '', to_academic_year_id: '', promotion_type: 'promoted'
   });
+  // Students of the selected "From Class" — loaded in the background so the
+  // promotion always operates on that specific class's actual roster.
+  const [fromClassStudents, setFromClassStudents] = useState([]);
+  const [fromClassLoading, setFromClassLoading] = useState(false);
 
   useEffect(() => {
     studentsAPI.listClasses().then(r => setClasses(r.data.data || []));
     studentsAPI.listAcademicYears().then(r => setAcademicYears(r.data.data || []));
     studentsAPI.listPromotions({}).then(r => setPromotions(r.data.data?.items || r.data.data || [])).catch(() => {});
   }, []);
+
+  // Background-load the specific class's students whenever "From Class" changes.
+  useEffect(() => {
+    if (!bulkForm.from_class_id) { setFromClassStudents([]); return; }
+    setFromClassLoading(true);
+    studentsAPI.list({ class_id: bulkForm.from_class_id, status: 'active', page_size: 500 })
+      .then(r => setFromClassStudents(r.data.data?.items || r.data.data || []))
+      .catch(() => setFromClassStudents([]))
+      .finally(() => setFromClassLoading(false));
+  }, [bulkForm.from_class_id]);
 
   const handleBulkPromote = async () => {
     if (!bulkForm.from_class_id || !bulkForm.to_class_id || !bulkForm.from_academic_year_id || !bulkForm.to_academic_year_id) {
@@ -462,6 +483,25 @@ function Promotions() {
                 <MenuItem value="graduated">Graduated</MenuItem>
               </TextField>
             </Grid>
+            {bulkForm.from_class_id && (
+              <Grid item xs={12}>
+                <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'grey.50' }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    {fromClassLoading
+                      ? 'Loading students from selected class...'
+                      : `${fromClassStudents.length} student(s) in this class will be affected`}
+                  </Typography>
+                  {!fromClassLoading && fromClassStudents.length > 0 && (
+                    <Box sx={{ maxHeight: 140, overflow: 'auto', display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                      {fromClassStudents.map(s => (
+                        <Chip key={s.id} size="small" variant="outlined"
+                          label={`${s.admission_no || '—'} · ${s.full_name || s.first_name}`} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>

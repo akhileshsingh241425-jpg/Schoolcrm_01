@@ -62,7 +62,7 @@ def list_vehicles():
 
 
 @transport_bp.route('/vehicles', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_vehicle():
     data = request.get_json()
     v = Vehicle(school_id=g.school_id, vehicle_number=data['vehicle_number'])
@@ -88,7 +88,7 @@ def get_vehicle(vid):
 
 
 @transport_bp.route('/vehicles/<int:vid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_vehicle(vid):
     v = Vehicle.query.filter_by(id=vid, school_id=g.school_id).first()
     if not v:
@@ -105,7 +105,7 @@ def update_vehicle(vid):
 
 
 @transport_bp.route('/vehicles/<int:vid>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def delete_vehicle(vid):
     v = Vehicle.query.filter_by(id=vid, school_id=g.school_id).first()
     if not v:
@@ -131,7 +131,7 @@ def list_drivers():
 
 
 @transport_bp.route('/drivers', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_driver():
     data = request.get_json()
     d = Driver(school_id=g.school_id, name=data['name'])
@@ -157,7 +157,7 @@ def get_driver(did):
 
 
 @transport_bp.route('/drivers/<int:did>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_driver(did):
     d = Driver.query.filter_by(id=did, school_id=g.school_id).first()
     if not d:
@@ -174,7 +174,7 @@ def update_driver(did):
 
 
 @transport_bp.route('/drivers/<int:did>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def delete_driver(did):
     d = Driver.query.filter_by(id=did, school_id=g.school_id).first()
     if not d:
@@ -193,8 +193,7 @@ def delete_driver(did):
 def list_routes():
     query = TransportRoute.query.options(
         joinedload(TransportRoute.vehicle),
-        joinedload(TransportRoute.driver),
-        subqueryload(TransportRoute.stops)
+        joinedload(TransportRoute.driver)
     ).filter_by(school_id=g.school_id)
     status = request.args.get('status')
     if status:
@@ -204,7 +203,7 @@ def list_routes():
 
 
 @transport_bp.route('/routes', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_route():
     data = request.get_json()
     route = TransportRoute(school_id=g.school_id, route_name=data['route_name'])
@@ -229,7 +228,7 @@ def get_route(route_id):
 
 
 @transport_bp.route('/routes/<int:route_id>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_route(route_id):
     route = TransportRoute.query.filter_by(id=route_id, school_id=g.school_id).first()
     if not route:
@@ -246,7 +245,7 @@ def update_route(route_id):
 
 
 @transport_bp.route('/routes/<int:route_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def delete_route(route_id):
     route = TransportRoute.query.filter_by(id=route_id, school_id=g.school_id).first()
     if not route:
@@ -266,7 +265,7 @@ def list_stops(route_id):
 
 
 @transport_bp.route('/routes/<int:route_id>/stops', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def add_stop(route_id):
     data = request.get_json()
     stop = TransportStop(route_id=route_id, school_id=g.school_id, stop_name=data['stop_name'])
@@ -278,8 +277,35 @@ def add_stop(route_id):
     return success_response(stop.to_dict(), 'Stop added', 201)
 
 
+@transport_bp.route('/stops/add-by-name', methods=['POST'])
+@role_required('school_admin', 'transport_manager', 'principal')
+def add_stop_by_name():
+    """Add a stop using the route's NAME (no IDs needed).
+    Body: { route_name, stop_name, pickup_time?, drop_time?, fare? }"""
+    data = request.get_json() or {}
+    route_name = (data.get('route_name') or '').strip()
+    stop_name = (data.get('stop_name') or '').strip()
+    if not route_name or not stop_name:
+        return error_response('Route name aur Stop name dono required hai', 400)
+    route = TransportRoute.query.filter(
+        TransportRoute.school_id == g.school_id,
+        db.func.lower(TransportRoute.route_name) == route_name.lower()
+    ).first()
+    if not route:
+        return error_response(f"Koi route '{route_name}' naam se nahi mila", 404)
+    count = TransportStop.query.filter_by(school_id=g.school_id, route_id=route.id).count()
+    stop = TransportStop(school_id=g.school_id, route_id=route.id, stop_name=stop_name,
+                         stop_order=data.get('stop_order') or count + 1)
+    for f in ['pickup_time', 'drop_time', 'fare']:
+        if data.get(f) not in (None, ''):
+            setattr(stop, f, data[f])
+    db.session.add(stop)
+    db.session.commit()
+    return success_response(stop.to_dict(), 'Stop added', 201)
+
+
 @transport_bp.route('/stops/<int:stop_id>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_stop(stop_id):
     stop = TransportStop.query.filter_by(id=stop_id, school_id=g.school_id).first()
     if not stop:
@@ -293,7 +319,7 @@ def update_stop(stop_id):
 
 
 @transport_bp.route('/stops/<int:stop_id>', methods=['DELETE'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def delete_stop(stop_id):
     stop = TransportStop.query.filter_by(id=stop_id, school_id=g.school_id).first()
     if not stop:
@@ -323,13 +349,104 @@ def list_student_transport():
     return success_response(paginate(query))
 
 
+@transport_bp.route('/student-lookup', methods=['GET'])
+@school_required
+@feature_required('transport')
+def student_lookup():
+    """Lookup a student by admission number → return name + father name.
+    Used by the Assign dialog to auto-fill / confirm the student.
+    Query param: admission_no"""
+    from app.models.student import Student, ParentDetail
+    adm = (request.args.get('admission_no') or '').strip()
+    if not adm:
+        return error_response('Admission number required', 400)
+    stu = Student.query.filter_by(school_id=g.school_id, admission_no=adm).first()
+    if not stu:
+        return error_response(f"Koi student '{adm}' se nahi mila", 404)
+    father = ParentDetail.query.filter_by(
+        school_id=g.school_id, student_id=stu.id, relation='father'
+    ).first()
+    guardian = None
+    if not father:
+        guardian = ParentDetail.query.filter_by(
+            school_id=g.school_id, student_id=stu.id
+        ).first()
+    return success_response({
+        'student_id': stu.id,
+        'admission_no': stu.admission_no,
+        'student_name': f"{stu.first_name} {stu.last_name or ''}".strip(),
+        'father_name': father.name if father else (guardian.name if guardian else None),
+        'class_name': stu.current_class.name if stu.current_class else None,
+        'section_name': stu.current_section.name if stu.current_section else None,
+    })
+
+
 @transport_bp.route('/assign', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def assign_transport():
-    data = request.get_json()
+    """Assign a student to a route+stop. Accepts either IDs or human-friendly
+    names so the user never has to know internal IDs:
+      - admission_no (string)  → resolved to student
+      - route_name (string)    → resolved to existing route
+      - stop_name (string)     → found on that route, or created if missing
+      - monthly_fee (number)   → stored as the stop fare (transport fee)
+    """
+    from app.models.student import Student
+    data = request.get_json() or {}
+
+    # ── Resolve student ──
+    student_id = data.get('student_id')
+    if not student_id and data.get('admission_no'):
+        stu = Student.query.filter_by(
+            school_id=g.school_id, admission_no=str(data['admission_no']).strip()
+        ).first()
+        if not stu:
+            return error_response(f"Koi student admission no '{data['admission_no']}' se nahi mila", 404)
+        student_id = stu.id
+    if not student_id:
+        return error_response('Student admission number required', 400)
+
+    # ── Resolve route ──
+    route_id = data.get('route_id')
+    if not route_id and data.get('route_name'):
+        route = TransportRoute.query.filter(
+            TransportRoute.school_id == g.school_id,
+            db.func.lower(TransportRoute.route_name) == str(data['route_name']).strip().lower()
+        ).first()
+        if not route:
+            return error_response(f"Koi route '{data['route_name']}' naam se nahi mila. Pehle route banao.", 404)
+        route_id = route.id
+    if not route_id:
+        return error_response('Route name required', 400)
+
+    # ── Resolve / create stop ──
+    stop_id = data.get('stop_id')
+    fee = data.get('monthly_fee') or data.get('fare')
+    if not stop_id:
+        stop_name = (data.get('stop_name') or '').strip()
+        if not stop_name:
+            return error_response('Stop name required', 400)
+        stop = TransportStop.query.filter(
+            TransportStop.school_id == g.school_id,
+            TransportStop.route_id == route_id,
+            db.func.lower(TransportStop.stop_name) == stop_name.lower()
+        ).first()
+        if not stop:
+            # auto-create the stop under this route
+            count = TransportStop.query.filter_by(school_id=g.school_id, route_id=route_id).count()
+            stop = TransportStop(
+                school_id=g.school_id, route_id=route_id, stop_name=stop_name,
+                stop_order=count + 1, fare=fee,
+            )
+            db.session.add(stop)
+            db.session.flush()
+        elif fee is not None and stop.fare is None:
+            stop.fare = fee
+        stop_id = stop.id
+
     assignment = StudentTransport(
-        student_id=data['student_id'], school_id=g.school_id,
-        route_id=data['route_id'], stop_id=data['stop_id'],
+        student_id=student_id, school_id=g.school_id,
+        route_id=route_id, stop_id=stop_id,
         pickup_type=data.get('pickup_type', 'both'),
         rfid_card_no=data.get('rfid_card_no'),
         effective_from=data.get('effective_from'),
@@ -342,7 +459,7 @@ def assign_transport():
 
 
 @transport_bp.route('/assign/<int:aid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_assignment(aid):
     a = StudentTransport.query.filter_by(id=aid, school_id=g.school_id).first()
     if not a:
@@ -420,7 +537,7 @@ def list_maintenance():
 
 
 @transport_bp.route('/maintenance', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_maintenance():
     data = request.get_json()
     m = VehicleMaintenance(school_id=g.school_id, vehicle_id=data['vehicle_id'],
@@ -435,7 +552,7 @@ def create_maintenance():
 
 
 @transport_bp.route('/maintenance/<int:mid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_maintenance(mid):
     m = VehicleMaintenance.query.filter_by(id=mid, school_id=g.school_id).first()
     if not m:
@@ -466,7 +583,7 @@ def list_fuel_logs():
 
 
 @transport_bp.route('/fuel-logs', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_fuel_log():
     data = request.get_json()
     fl = FuelLog(school_id=g.school_id, vehicle_id=data['vehicle_id'],
@@ -484,7 +601,7 @@ def create_fuel_log():
 
 
 @transport_bp.route('/fuel-logs/<int:fid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_fuel_log(fid):
     fl = FuelLog.query.filter_by(id=fid, school_id=g.school_id).first()
     if not fl:
@@ -514,21 +631,37 @@ def list_transport_fees():
 
 
 @transport_bp.route('/fees', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_transport_fee():
-    data = request.get_json()
-    tf = TransportFee(school_id=g.school_id, amount=data['amount'])
+    """Record a transport fee for a student. Accepts admission_no (string),
+    distance_km, amount and paid_date — no internal IDs needed."""
+    from app.models.student import Student
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    if not student_id and data.get('admission_no'):
+        stu = Student.query.filter_by(
+            school_id=g.school_id, admission_no=str(data['admission_no']).strip()
+        ).first()
+        if not stu:
+            return error_response(f"Koi student '{data['admission_no']}' se nahi mila", 404)
+        student_id = stu.id
+
+    if not data.get('amount'):
+        return error_response('Amount required', 400)
+
+    tf = TransportFee(school_id=g.school_id, amount=data['amount'], student_id=student_id)
     for f in ['route_id', 'stop_id', 'academic_year', 'fee_type', 'distance_based',
-              'distance_km', 'rate_per_km', 'effective_from', 'effective_to', 'status']:
-        if f in data:
+              'distance_km', 'rate_per_km', 'paid_date', 'effective_from', 'effective_to', 'status']:
+        if data.get(f) not in (None, ''):
             setattr(tf, f, data[f])
     db.session.add(tf)
     db.session.commit()
-    return success_response(tf.to_dict(), 'Transport fee created', 201)
+    return success_response(tf.to_dict(), 'Transport fee recorded', 201)
 
 
 @transport_bp.route('/fees/<int:fid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_transport_fee(fid):
     tf = TransportFee.query.filter_by(id=fid, school_id=g.school_id).first()
     if not tf:
@@ -572,7 +705,7 @@ def create_sos_alert():
 
 
 @transport_bp.route('/sos-alerts/<int:sid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_sos_alert(sid):
     sos = SOSAlert.query.filter_by(id=sid, school_id=g.school_id).first()
     if not sos:
@@ -604,7 +737,7 @@ def list_trips():
 
 
 @transport_bp.route('/trips', methods=['POST'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def create_trip():
     data = request.get_json()
     trip = TripManagement(school_id=g.school_id, trip_name=data['trip_name'],
@@ -620,7 +753,7 @@ def create_trip():
 
 
 @transport_bp.route('/trips/<int:tid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def update_trip(tid):
     trip = TripManagement.query.filter_by(id=tid, school_id=g.school_id).first()
     if not trip:
@@ -665,7 +798,7 @@ def create_route_request():
 
 
 @transport_bp.route('/route-requests/<int:rid>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def approve_route_request(rid):
     req = RouteChangeRequest.query.filter_by(id=rid, school_id=g.school_id).first()
     if not req:
@@ -709,7 +842,7 @@ def create_speed_alert():
 
 
 @transport_bp.route('/speed-alerts/<int:said>', methods=['PUT'])
-@role_required('school_admin', 'transport_manager')
+@role_required('school_admin', 'transport_manager', 'principal')
 def acknowledge_speed_alert(said):
     sa = SpeedAlert.query.filter_by(id=said, school_id=g.school_id).first()
     if not sa:
@@ -718,3 +851,169 @@ def acknowledge_speed_alert(said):
     sa.acknowledged_by = g.current_user.id
     db.session.commit()
     return success_response(sa.to_dict(), 'Speed alert acknowledged')
+
+
+# ═══════════════════════════════════════════════════════════════
+# EMERGENCY ALERT (sound + auto-popup) & TRANSPORT NOTIFICATIONS
+# Only principal (and admins) can broadcast. Targets students assigned
+# to a route, their linked parents, and optionally all transport users.
+# ═══════════════════════════════════════════════════════════════
+
+def _transport_recipient_user_ids(school_id, route_id=None):
+    """Resolve recipient User ids for a transport notice.
+    If route_id given → only students on that route (+ their parent users).
+    Else → all students who have any active transport assignment (+ parents).
+    """
+    from app.models.student import Student, ParentDetail
+    from app.models.user import User
+
+    q = StudentTransport.query.filter_by(school_id=school_id, status='active')
+    if route_id:
+        q = q.filter_by(route_id=route_id)
+    student_ids = [st.student_id for st in q.all()]
+    if not student_ids:
+        return [], []
+
+    students = Student.query.filter(Student.id.in_(student_ids)).all()
+    user_ids = set()
+    for s in students:
+        if s.user_id:
+            user_ids.add(s.user_id)
+    # Parent users linked to these students
+    parents = ParentDetail.query.filter(
+        ParentDetail.school_id == school_id,
+        ParentDetail.student_id.in_(student_ids),
+    ).all()
+    for p in parents:
+        if getattr(p, 'user_id', None):
+            user_ids.add(p.user_id)
+    return list(user_ids), student_ids
+
+
+@transport_bp.route('/emergency-alert', methods=['POST'])
+@role_required('school_admin', 'transport_manager', 'principal')
+def emergency_alert():
+    """Broadcast an EMERGENCY transport alert that pops up with sound on
+    recipients' screens. Title is prefixed so the frontend can detect it.
+    Body: { title, message, route_id? (optional → target one route),
+            audience? ('route'|'all_transport'|'everyone') }"""
+    from app.models.communication import Notification
+    from app.models.user import User
+    data = request.get_json() or {}
+    title = (data.get('title') or 'Emergency Alert').strip()
+    message = (data.get('message') or '').strip()
+    route_id = data.get('route_id')
+    audience = data.get('audience', 'route' if route_id else 'all_transport')
+
+    if audience == 'everyone':
+        users = User.query.filter_by(school_id=g.school_id, is_active=True).all()
+        user_ids = [u.id for u in users]
+    else:
+        user_ids, _ = _transport_recipient_user_ids(
+            g.school_id, route_id if audience == 'route' else None
+        )
+
+    posted_by = f"{g.current_user.first_name or ''} {g.current_user.last_name or ''}".strip() or 'Principal'
+    # [EMERGENCY] prefix → frontend triggers sound + auto-open modal
+    full_title = f"[EMERGENCY] 🚨 {title}"
+    count = 0
+    for uid in user_ids:
+        db.session.add(Notification(
+            school_id=g.school_id, user_id=uid,
+            title=full_title,
+            message=(message + (f"\n— {posted_by}" if posted_by else '')),
+            type='in_app', status='sent', sent_at=datetime.utcnow(),
+        ))
+        count += 1
+
+    # Also record an active SOS row for the transport dashboard
+    sos = SOSAlert(school_id=g.school_id, alert_type='emergency',
+                   triggered_by=g.current_user.id, description=f"{title}: {message}",
+                   status='active')
+    if route_id:
+        sos.route_id = route_id
+    db.session.add(sos)
+    db.session.commit()
+    return success_response({'notified_users': count, 'sos_id': sos.id},
+                            'Emergency alert broadcast', 201)
+
+
+@transport_bp.route('/notify', methods=['POST'])
+@role_required('school_admin', 'transport_manager', 'principal')
+def transport_notify():
+    """Send a NORMAL transport notification (no sound). Examples:
+    'Bus reached school', 'Bus left school', 'Bus will not come today'.
+    Body: { title, message, route_id? }"""
+    from app.models.communication import Notification
+    data = request.get_json() or {}
+    title = (data.get('title') or '').strip()
+    message = (data.get('message') or '').strip()
+    route_id = data.get('route_id')
+    if not title:
+        return error_response('Title is required', 400)
+
+    user_ids, _ = _transport_recipient_user_ids(g.school_id, route_id)
+    posted_by = f"{g.current_user.first_name or ''} {g.current_user.last_name or ''}".strip() or 'Transport'
+    full_title = f"🚌 {title}"
+    count = 0
+    for uid in user_ids:
+        db.session.add(Notification(
+            school_id=g.school_id, user_id=uid,
+            title=full_title,
+            message=(message + (f"\n— {posted_by}" if posted_by else '')),
+            type='in_app', status='sent', sent_at=datetime.utcnow(),
+        ))
+        count += 1
+    db.session.commit()
+    return success_response({'notified_users': count}, 'Notification sent', 201)
+
+
+# ═══════════════════════════════════════════════════════════════
+# STUDENT-FACING: my transport details (bus no, driver name, driver no)
+# ═══════════════════════════════════════════════════════════════
+@transport_bp.route('/my-transport', methods=['GET'])
+@school_required
+def my_transport():
+    """Return the logged-in student's transport assignment with bus & driver
+    details. Students see only their own bus. Optional ?student_id= for
+    parent/admin viewing a specific child."""
+    from app.models.student import Student
+    user = g.current_user
+    role = user.role.name if user.role else None
+
+    student = None
+    override_id = request.args.get('student_id', type=int)
+    if override_id and role in ('school_admin', 'super_admin', 'principal', 'teacher', 'parent'):
+        student = Student.query.filter_by(id=override_id, school_id=g.school_id).first()
+    elif role == 'student':
+        student = Student.query.filter_by(user_id=user.id, school_id=g.school_id).first()
+
+    if not student:
+        return error_response('Student not found', 404)
+
+    assignment = StudentTransport.query.options(
+        joinedload(StudentTransport.route),
+        joinedload(StudentTransport.stop),
+    ).filter_by(school_id=g.school_id, student_id=student.id, status='active').first()
+
+    if not assignment:
+        return success_response({'has_transport': False})
+
+    route = assignment.route
+    veh = route.vehicle if route else None
+    drv = route.driver if route else None
+    return success_response({
+        'has_transport': True,
+        'route_name': route.route_name if route else None,
+        'route_code': route.route_code if route else None,
+        'shift': route.shift if route else None,
+        'bus_number': (veh.vehicle_number if veh else None) or (route.vehicle_no if route else None),
+        'driver_name': (drv.name if drv else None) or (route.driver_name if route else None),
+        'driver_phone': (drv.phone if drv else None) or (route.driver_phone if route else None),
+        'helper_name': route.helper_name if route else None,
+        'helper_phone': route.helper_phone if route else None,
+        'stop_name': assignment.stop.stop_name if assignment.stop else None,
+        'pickup_time': (assignment.stop.pickup_time.isoformat() if assignment.stop and assignment.stop.pickup_time else None),
+        'drop_time': (assignment.stop.drop_time.isoformat() if assignment.stop and assignment.stop.drop_time else None),
+        'pickup_type': assignment.pickup_type,
+    })

@@ -24,6 +24,19 @@ import TeacherParents from './pages/teacher/TeacherParents';
 import TeacherProfile from './pages/teacher/TeacherProfile';
 import TeacherPayroll from './pages/teacher/TeacherPayroll';
 import TeacherAnalytics from './pages/teacher/TeacherAnalytics';
+import TeacherLibrary from './pages/teacher/TeacherLibrary';
+import TeacherAssignments from './pages/teacher/TeacherAssignments';
+import TeacherMarksEntry from './pages/teacher/TeacherMarksEntry';
+import TeacherAttendancePage from './pages/teacher/TeacherAttendancePage';
+import TeacherSyllabus from './pages/teacher/TeacherSyllabus';
+import ClassTeacherSubjects from './pages/teacher/ClassTeacherSubjects';
+import TeacherLeave from './pages/teacher/TeacherLeave';
+import TeacherQuestionPaperUpload from './pages/teacher/TeacherQuestionPaperUpload';
+import TeacherInvigilatorDuty from './pages/teacher/TeacherInvigilatorDuty';
+import DateSheetApproval from './pages/exam-management/DateSheetApproval';
+import GraceMarksForm from './pages/exam-management/GraceMarksForm';
+import StudentExamView from './pages/exam-management/StudentExamView';
+import ParentExamView from './pages/exam-management/ParentExamView';
 import Students from './pages/students/Students';
 import StudentDetail from './pages/students/StudentDetail';
 import StudentForm from './pages/students/StudentForm';
@@ -37,6 +50,8 @@ import Attendance from './pages/attendance/Attendance';
 import Fees from './pages/fees/Fees';
 import Academics from './pages/academics/Academics';
 import ClassSectionManagement from './pages/academics/ClassSectionManagement';
+import TimetableManagement from './pages/academics/TimetableManagement';
+import CalendarManagement from './pages/academics/CalendarManagement';
 import Communication from './pages/communication/Communication';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
@@ -50,6 +65,12 @@ import Canteen from './pages/canteen/Canteen';
 import Sports from './pages/sports/Sports';
 import DataImport from './pages/settings/DataImport';
 import ParentPortal from './pages/parents/ParentPortal';
+import StudentPortal from './pages/student/StudentPortal';
+import PrincipalDashboard from './pages/principal/PrincipalDashboard';
+import ExamController from './pages/principal/ExamController';
+import InvigilatorDuty from './pages/principal/InvigilatorDuty';
+import AcademicController from './pages/principal/AcademicController';
+import StaffPositions from './pages/principal/StaffPositions';
 import SchoolBranding from './pages/settings/SchoolBranding';
 import PaymentSettings from './pages/settings/PaymentSettings';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
@@ -61,6 +82,15 @@ import SystemSettings from './pages/superadmin/SystemSettings';
 import AuditLogs from './pages/superadmin/AuditLogs';
 import CreateSchool from './pages/superadmin/CreateSchool';
 import StaffManagement from './pages/superadmin/StaffManagement';
+import VisitorManagement from './pages/visitors/VisitorManagement';
+import CertificateGeneration from './pages/certificates/CertificateGeneration';
+import MarksEntryDashboard from './pages/exam-controller/MarksEntryDashboard';
+import StoreDashboard from './pages/store/StoreDashboard';
+import StoreItems from './pages/store/StoreItems';
+import StoreAllocation from './pages/store/StoreAllocation';
+import StoreReturns from './pages/store/StoreReturns';
+import StoreStockUpdate from './pages/store/StoreStockUpdate';
+import StoreTransactions from './pages/store/StoreTransactions';
 
 const { useEffect } = React;
 
@@ -102,6 +132,10 @@ function RoleRedirect() {
   const { user } = useAuthStore();
   if (user?.role?.name === 'teacher') return <Navigate to="/teacher/dashboard" replace />;
   if (user?.role?.name === 'parent') return <Navigate to="/my-children" replace />;
+  if (user?.role?.name === 'student') return <Navigate to="/my-portal" replace />;
+  if (user?.role?.name === 'principal') return <Navigate to="/principal-dashboard" replace />;
+  if (user?.role?.name === 'exam_controller') return <Navigate to="/exam-controller" replace />;
+  if (user?.role?.name === 'store_manager') return <Navigate to="/store" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -156,6 +190,15 @@ function App() {
         <Route path="teacher/parents" element={<TeacherParents />} />
         <Route path="teacher/profile" element={<TeacherProfile />} />
         <Route path="teacher/payroll" element={<TeacherPayroll />} />
+        <Route path="teacher/library" element={<TeacherLibrary />} />
+        <Route path="teacher/assignments" element={<TeacherAssignments />} />
+        <Route path="teacher/marks-entry" element={<TeacherMarksEntry />} />
+        <Route path="teacher/my-attendance" element={<TeacherAttendancePage />} />
+        <Route path="teacher/syllabus" element={<TeacherSyllabus />} />
+        <Route path="teacher/class-subjects" element={<ClassTeacherSubjects />} />
+        <Route path="teacher/leave" element={<TeacherLeave />} />
+        <Route path="teacher/question-papers" element={<TeacherQuestionPaperUpload />} />
+        <Route path="teacher/invigilator-duty" element={<TeacherInvigilatorDuty />} />
         
         {/* Student Management */}
         <Route path="students" element={<ModuleRoute module="students" feature="student_management"><Students /></ModuleRoute>} />
@@ -184,6 +227,8 @@ function App() {
         {/* Academics */}
         <Route path="academics" element={<ModuleRoute module="academics" feature="academic"><Academics /></ModuleRoute>} />
         <Route path="academics/classes" element={<ModuleRoute module="academics" feature="academic"><ClassSectionManagement /></ModuleRoute>} />
+        <Route path="timetable-management" element={<ModuleRoute module="academics" feature="academic"><TimetableManagement /></ModuleRoute>} />
+        <Route path="calendar" element={<ModuleRoute module="academics" feature="academic"><CalendarManagement /></ModuleRoute>} />
         
         {/* Communication */}
         <Route path="communication" element={<ModuleRoute module="communication" feature="communication"><Communication /></ModuleRoute>} />
@@ -201,6 +246,7 @@ function App() {
         
         {/* Health & Safety */}
         <Route path="health" element={<ModuleRoute module="health" feature="health_safety"><Health /></ModuleRoute>} />
+        <Route path="visitors" element={<ModuleRoute module="health" feature="health_safety"><VisitorManagement /></ModuleRoute>} />
         
         {/* Hostel Management */}
         <Route path="hostel" element={<ModuleRoute module="hostel" feature="hostel"><Hostel /></ModuleRoute>} />
@@ -211,11 +257,37 @@ function App() {
         {/* Sports & Extra-Curricular */}
         <Route path="sports" element={<ModuleRoute module="sports" feature="sports"><Sports /></ModuleRoute>} />
         
+        {/* Certificates */}
+        <Route path="certificates" element={<ModuleRoute module="admissions" feature="admission"><CertificateGeneration /></ModuleRoute>} />
+        
         {/* Settings - admin only */}
         <Route path="settings" element={<ModuleRoute module="settings"><Settings /></ModuleRoute>} />
         
         {/* Parent Portal */}
         <Route path="my-children" element={<ParentPortal />} />
+
+        {/* Student Portal (self-service for student role) */}
+        <Route path="my-portal" element={<StudentPortal />} />
+
+        {/* Principal Dashboard */}
+        <Route path="principal-dashboard" element={<PrincipalDashboard />} />
+        <Route path="exam-controller" element={<ExamController />} />
+        <Route path="exam-controller/invigilator-duty" element={<InvigilatorDuty />} />
+        <Route path="exam-controller/marks-entry-dashboard" element={<MarksEntryDashboard />} />
+        <Route path="date-sheet-approval" element={<DateSheetApproval />} />
+        <Route path="grace-marks" element={<GraceMarksForm />} />
+        <Route path="student-exams" element={<StudentExamView />} />
+        <Route path="parent-exams" element={<ParentExamView />} />
+        <Route path="academic-controller" element={<AcademicController />} />
+        <Route path="staff-positions" element={<StaffPositions />} />
+
+        {/* Store Management */}
+        <Route path="store" element={<StoreDashboard />} />
+        <Route path="store/items" element={<StoreItems />} />
+        <Route path="store/allocate" element={<StoreAllocation />} />
+        <Route path="store/returns" element={<StoreReturns />} />
+        <Route path="store/stock" element={<StoreStockUpdate />} />
+        <Route path="store/transactions" element={<StoreTransactions />} />
 
         {/* Data Import / Migration */}
         <Route path="data-import" element={<ModuleRoute module="data_import"><DataImport /></ModuleRoute>} />

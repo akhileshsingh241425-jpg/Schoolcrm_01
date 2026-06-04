@@ -35,6 +35,9 @@ export default function StudentForm() {
   const [houses, setHouses] = useState([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
+  // Sections for the currently selected class (loaded fresh per class)
+  const [classSections, setClassSections] = useState([]);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
 
   useEffect(() => {
     studentsAPI.listClasses().then(r => setClasses(r.data.data || [])).catch(() => {});
@@ -54,6 +57,21 @@ export default function StudentForm() {
       }).catch(() => navigate('/students'));
     }
   }, [id]);
+
+  // Load the specific class's sections in the background whenever the class changes.
+  // This guarantees that section data is pulled fresh from the selected class.
+  useEffect(() => {
+    if (!form.class_id) { setClassSections([]); return; }
+    setSectionsLoading(true);
+    studentsAPI.listSections(form.class_id)
+      .then(r => setClassSections(r.data.data || r.data || []))
+      .catch(() => {
+        // Fallback to sections embedded in the classes list
+        const cls = classes.find(c => c.id === form.class_id);
+        setClassSections(cls?.sections || []);
+      })
+      .finally(() => setSectionsLoading(false));
+  }, [form.class_id, classes]);
 
   const handleChange = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
@@ -85,6 +103,8 @@ export default function StudentForm() {
   };
 
   const selectedClass = classes.find(c => c.id === form.class_id);
+  // Prefer freshly-loaded sections for the selected class; fall back to embedded.
+  const availableSections = classSections.length > 0 ? classSections : (selectedClass?.sections || []);
 
   const renderStep = () => {
     switch (activeStep) {
@@ -137,9 +157,18 @@ export default function StudentForm() {
       case 1: return (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>Academic Information</Typography>
+          {isEdit && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Admission No <strong>{form.admission_no || 'N/A'}</strong> is this student's unique reference.
+              All updates (class, section, roll number) are recorded against it.
+            </Alert>
+          )}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={4}>
-              <TextField fullWidth label="Admission No" value={form.admission_no} onChange={handleChange('admission_no')} />
+              <TextField fullWidth label="Admission No" value={form.admission_no}
+                onChange={handleChange('admission_no')}
+                InputProps={{ readOnly: isEdit }}
+                helperText={isEdit ? 'Unique ID — cannot be changed' : 'Unique per school'} />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <TextField fullWidth label="Roll No" value={form.roll_no} onChange={handleChange('roll_no')} />
@@ -154,9 +183,11 @@ export default function StudentForm() {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
-              <TextField fullWidth select label="Section" value={form.section_id} onChange={handleChange('section_id')}>
+              <TextField fullWidth select label="Section" value={form.section_id} onChange={handleChange('section_id')}
+                disabled={!form.class_id || sectionsLoading}
+                helperText={sectionsLoading ? 'Loading sections...' : (form.class_id ? '' : 'Select a class first')}>
                 <MenuItem value="">Select</MenuItem>
-                {(selectedClass?.sections || []).map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                {availableSections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
@@ -300,7 +331,7 @@ export default function StudentForm() {
               ['DOB', form.date_of_birth],
               ['Admission No', form.admission_no],
               ['Class', classes.find(c => c.id === form.class_id)?.name || '-'],
-              ['Section', selectedClass?.sections?.find(s => s.id === form.section_id)?.name || '-'],
+              ['Section', availableSections.find(s => s.id === form.section_id)?.name || '-'],
               ['Blood Group', form.blood_group],
               ['Category', form.category],
               ['Transport', form.transport_mode],
@@ -322,7 +353,12 @@ export default function StudentForm() {
   return (
     <Box>
       <Button startIcon={<ArrowBack />} onClick={() => navigate('/students')} sx={{ mb: 2 }}>Back to Students</Button>
-      <Typography variant="h5" fontWeight={700} gutterBottom>{isEdit ? 'Edit Student' : 'Add New Student'}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={700}>{isEdit ? 'Edit Student' : 'Add New Student'}</Typography>
+        {isEdit && form.admission_no && (
+          <Chip label={`Adm No: ${form.admission_no}`} color="primary" size="small" />
+        )}
+      </Box>
 
       <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
         {STEPS.map(label => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}

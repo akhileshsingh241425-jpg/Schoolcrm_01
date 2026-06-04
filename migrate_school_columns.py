@@ -13,9 +13,9 @@ except ImportError:
 
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = int(os.getenv('DB_PORT', 3306))
-DB_NAME = os.getenv('DB_NAME', 'rohit0101')
-DB_USER = os.getenv('DB_USER', 'rohit')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'rohit0101')
+DB_NAME = os.getenv('DB_NAME', 'school_crm')
+DB_USER = os.getenv('DB_USER', 'root')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 
 try:
     import pymysql
@@ -26,9 +26,7 @@ except ImportError:
 # Try connecting
 conn = None
 for creds in [
-    {'host': DB_HOST, 'port': DB_PORT, 'user': DB_USER, 'password': DB_PASSWORD, 'db': DB_NAME},
-    {'host': 'localhost', 'port': 3306, 'user': 'root', 'password': 'root', 'db': 'school_crm'},
-    {'host': 'localhost', 'port': 3306, 'user': 'rohit', 'password': 'rohit0101', 'db': 'rohit0101'},
+    {'host': DB_HOST, 'port': DB_PORT, 'user': DB_USER, 'password': DB_PASSWORD, 'database': DB_NAME},
 ]:
     try:
         conn = pymysql.connect(**creds, charset='utf8mb4')

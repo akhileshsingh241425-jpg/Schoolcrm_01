@@ -59,6 +59,11 @@ def list_students():
     if section_id:
         query = query.filter_by(current_section_id=section_id)
 
+    # Exact roll number filter (roll numbers are unique within a class)
+    roll_no = request.args.get('roll_no')
+    if roll_no:
+        query = query.filter(Student.roll_no == roll_no.strip())
+
     academic_year_id = request.args.get('academic_year_id', type=int)
     if academic_year_id:
         query = query.filter_by(academic_year_id=academic_year_id)

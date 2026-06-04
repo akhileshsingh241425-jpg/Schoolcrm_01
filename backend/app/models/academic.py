@@ -232,6 +232,7 @@ class Exam(db.Model):
     end_date = db.Column(db.Date)
     status = db.Column(db.Enum('upcoming', 'ongoing', 'completed', 'cancelled', 'results_published'), default='upcoming')
     instructions = db.Column(db.Text)
+    class_ids = db.Column(db.JSON, default=list)  # List of class IDs this exam applies to
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -255,6 +256,7 @@ class Exam(db.Model):
             'end_date': self.end_date.isoformat() if self.end_date else None,
             'status': self.status,
             'instructions': self.instructions,
+            'class_ids': self.class_ids or [],
             'schedule_count': self.schedules.count(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
@@ -521,7 +523,7 @@ class ExamInvigilator(db.Model):
             'hall_id': self.hall_id,
             'hall_name': self.hall.name if self.hall else None,
             'staff_id': self.staff_id,
-            'staff_name': self.staff.name if self.staff else None,
+            'staff_name': f"{self.staff.first_name} {self.staff.last_name or ''}".strip() if self.staff else None,
             'role': self.role,
         }
 
@@ -655,7 +657,7 @@ class ExamIncident(db.Model):
             'severity': self.severity,
             'action_taken': self.action_taken,
             'reported_by': self.reported_by,
-            'reporter_name': self.reporter.name if self.reporter else None,
+            'reporter_name': f"{self.reporter.first_name} {self.reporter.last_name or ''}".strip() if self.reporter else None,
             'reported_at': self.reported_at.isoformat() if self.reported_at else None,
         }
 
@@ -739,7 +741,7 @@ class SyllabusProgress(db.Model):
             'id': self.id,
             'syllabus_id': self.syllabus_id,
             'teacher_id': self.teacher_id,
-            'teacher_name': self.teacher.name if self.teacher else None,
+            'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
             'date': self.date.isoformat() if self.date else None,
             'topics_covered': self.topics_covered,
             'hours_spent': float(self.hours_spent) if self.hours_spent else None,
@@ -798,7 +800,7 @@ class LessonPlan(db.Model):
         return {
             'id': self.id,
             'teacher_id': self.teacher_id,
-            'teacher_name': self.teacher.name if self.teacher else None,
+            'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
             'class_id': self.class_id,
             'class_name': self.class_ref.name if self.class_ref else None,
             'section_id': self.section_id,
@@ -870,7 +872,7 @@ class Homework(db.Model):
         return {
             'id': self.id,
             'teacher_id': self.teacher_id,
-            'teacher_name': self.teacher.name if self.teacher else None,
+            'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
             'class_id': self.class_id,
             'class_name': self.class_ref.name if self.class_ref else None,
             'section_id': self.section_id,
@@ -976,7 +978,7 @@ class StudyMaterial(db.Model):
             'chapter_id': self.chapter_id,
             'chapter_name': self.chapter.chapter_name if self.chapter else None,
             'uploaded_by': self.uploaded_by,
-            'uploader_name': self.uploader.name if self.uploader else None,
+            'uploader_name': f"{self.uploader.first_name} {self.uploader.last_name or ''}".strip() if self.uploader else None,
             'title': self.title,
             'description': self.description,
             'material_type': self.material_type,
@@ -1076,7 +1078,7 @@ class TeacherSubject(db.Model):
         return {
             'id': self.id,
             'teacher_id': self.teacher_id,
-            'teacher_name': self.teacher.name if self.teacher else None,
+            'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
             'subject_id': self.subject_id,
             'subject_name': self.subject.name if self.subject else None,
             'class_id': self.class_id,
@@ -1178,4 +1180,346 @@ class StudentElective(db.Model):
             'subject_name': self.subject.name if self.subject else None,
             'status': self.status,
             'selected_at': self.selected_at.isoformat() if self.selected_at else None,
+        }
+
+
+class StudentSubjectEnrollment(db.Model):
+    """Per-student subject enrollment for an academic year.
+
+    Set by the class teacher: decides which subjects each student in their
+    section will study this academic year. Teacher-to-subject assignment is
+    handled separately (ClassSubject / TeacherSubject).
+    """
+    __tablename__ = 'student_subject_enrollments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id'))
+    section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+    enrolled_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student')
+    subject = db.relationship('Subject')
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'student_id', 'subject_id', 'academic_year_id',
+                            name='uq_student_subject_year'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'student_name': f"{self.student.first_name} {self.student.last_name or ''}".strip() if self.student else None,
+            'admission_no': self.student.admission_no if self.student else None,
+            'roll_no': self.student.roll_no if self.student else None,
+            'subject_id': self.subject_id,
+            'subject_name': self.subject.name if self.subject else None,
+            'class_id': self.class_id,
+            'section_id': self.section_id,
+            'academic_year_id': self.academic_year_id,
+        }
+
+
+# =====================================================
+# TERM MANAGEMENT
+# =====================================================
+
+class Term(db.Model):
+    """Academic terms within an academic year"""
+    __tablename__ = 'terms'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    is_current = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    academic_year = db.relationship('AcademicYear')
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'academic_year_id', 'name', name='unique_term_per_year'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'academic_year_id': self.academic_year_id,
+            'academic_year': self.academic_year.name if self.academic_year else None,
+            'name': self.name,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'is_current': self.is_current,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# =====================================================
+# TIMETABLE SUBSTITUTIONS
+# =====================================================
+
+class TimetableSubstitution(db.Model):
+    """Temporary teacher substitutions for timetable entries"""
+    __tablename__ = 'timetable_substitutions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    timetable_id = db.Column(db.Integer, db.ForeignKey('timetable.id', ondelete='CASCADE'), nullable=False)
+    substitute_teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='CASCADE'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.String(255))
+    status = db.Column(db.Enum('assigned', 'completed', 'cancelled', name='substitution_status'), default='assigned')
+    assigned_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    timetable = db.relationship('Timetable')
+    substitute_teacher = db.relationship('Staff')
+    assigned_by_user = db.relationship('User', foreign_keys=[assigned_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'timetable_id': self.timetable_id,
+            'substitute_teacher_id': self.substitute_teacher_id,
+            'substitute_teacher_name': f"{self.substitute_teacher.first_name} {self.substitute_teacher.last_name or ''}".strip() if self.substitute_teacher else None,
+            'date': self.date.isoformat() if self.date else None,
+            'reason': self.reason,
+            'status': self.status,
+            'assigned_by': self.assigned_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# =====================================================
+# PROMOTION MANAGEMENT
+# =====================================================
+
+class PromotionCriteria(db.Model):
+    """Criteria for student promotion decisions per class"""
+    __tablename__ = 'promotion_criteria'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+    min_attendance_pct = db.Column(db.Numeric(5, 2), default=75.00)
+    min_overall_pct = db.Column(db.Numeric(5, 2), default=33.00)
+    min_subject_pass_count = db.Column(db.Integer, default=0)
+    max_failed_for_compartment = db.Column(db.Integer, default=2)
+    mandatory_subjects = db.Column(db.Text)  # JSON array of subject_ids
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    class_ref = db.relationship('Class')
+    academic_year = db.relationship('AcademicYear')
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'class_id', 'academic_year_id', name='unique_criteria_per_class_year'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'class_id': self.class_id,
+            'class_name': self.class_ref.name if self.class_ref else None,
+            'academic_year_id': self.academic_year_id,
+            'min_attendance_pct': float(self.min_attendance_pct) if self.min_attendance_pct else 75.00,
+            'min_overall_pct': float(self.min_overall_pct) if self.min_overall_pct else 33.00,
+            'min_subject_pass_count': self.min_subject_pass_count,
+            'max_failed_for_compartment': self.max_failed_for_compartment,
+            'mandatory_subjects': self.mandatory_subjects,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class PromotionRecord(db.Model):
+    """Individual student promotion evaluation records"""
+    __tablename__ = 'promotion_records'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=False)
+    from_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
+    from_section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))
+    to_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'))
+    to_section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))
+    recommendation = db.Column(db.Enum('promote', 'compartment', 'detain', name='promotion_recommendation'), nullable=False)
+    final_decision = db.Column(db.Enum('promote', 'compartment', 'detain', name='promotion_decision'))
+    override_reason = db.Column(db.Text)
+    overridden_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    attendance_pct = db.Column(db.Numeric(5, 2))
+    overall_pct = db.Column(db.Numeric(5, 2))
+    failed_subjects = db.Column(db.Integer, default=0)
+    status = db.Column(db.Enum('pending', 'confirmed', 'cancelled', name='promotion_status'), default='pending')
+    confirmed_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    confirmed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student')
+    from_class = db.relationship('Class', foreign_keys=[from_class_id])
+    to_class = db.relationship('Class', foreign_keys=[to_class_id])
+    from_section = db.relationship('Section', foreign_keys=[from_section_id])
+    to_section = db.relationship('Section', foreign_keys=[to_section_id])
+    overridden_by_user = db.relationship('User', foreign_keys=[overridden_by])
+    confirmed_by_user = db.relationship('User', foreign_keys=[confirmed_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'student_id': self.student_id,
+            'student_name': f"{self.student.first_name} {self.student.last_name}" if self.student else None,
+            'admission_no': self.student.admission_no if self.student else None,
+            'academic_year_id': self.academic_year_id,
+            'from_class_id': self.from_class_id,
+            'from_class_name': self.from_class.name if self.from_class else None,
+            'from_section_id': self.from_section_id,
+            'from_section_name': self.from_section.name if self.from_section else None,
+            'to_class_id': self.to_class_id,
+            'to_class_name': self.to_class.name if self.to_class else None,
+            'to_section_id': self.to_section_id,
+            'to_section_name': self.to_section.name if self.to_section else None,
+            'recommendation': self.recommendation,
+            'final_decision': self.final_decision,
+            'override_reason': self.override_reason,
+            'overridden_by': self.overridden_by,
+            'attendance_pct': float(self.attendance_pct) if self.attendance_pct else None,
+            'overall_pct': float(self.overall_pct) if self.overall_pct else None,
+            'failed_subjects': self.failed_subjects,
+            'status': self.status,
+            'confirmed_by': self.confirmed_by,
+            'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# =====================================================
+# ACADEMIC POLICIES
+# =====================================================
+
+class AcademicPolicy(db.Model):
+    """School-level academic policy configurations"""
+    __tablename__ = 'academic_policies'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+    policy_type = db.Column(db.Enum(
+        'working_days', 'attendance_threshold', 'grading_default',
+        'max_periods_per_day', 'lesson_plan_required',
+        name='academic_policy_type'
+    ), nullable=False)
+    policy_value = db.Column(db.Text, nullable=False)  # JSON value
+    description = db.Column(db.String(255))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    academic_year = db.relationship('AcademicYear')
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'academic_year_id', 'policy_type', name='unique_policy_per_school_year'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'academic_year_id': self.academic_year_id,
+            'policy_type': self.policy_type,
+            'policy_value': self.policy_value,
+            'description': self.description,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# =====================================================
+# MARKS ENTRY SYSTEM
+# =====================================================
+
+class MarksEntryAssignment(db.Model):
+    """Links a teacher to a specific ExamSchedule, granting permission to enter marks."""
+    __tablename__ = 'marks_entry_assignments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='CASCADE'), nullable=False)
+    assigned_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.Enum('active', 'revoked', name='marks_assignment_status'), default='active')
+    source = db.Column(db.Enum('auto', 'manual', name='marks_assignment_source'), default='auto')
+
+    schedule = db.relationship('ExamSchedule', backref='marks_assignments')
+    teacher = db.relationship('Staff', backref='marks_entry_assignments')
+
+    __table_args__ = (
+        db.UniqueConstraint('exam_schedule_id', 'school_id', name='uq_one_teacher_per_schedule'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'exam_schedule_id': self.exam_schedule_id,
+            'teacher_id': self.teacher_id,
+            'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
+            'assigned_by': self.assigned_by,
+            'assigned_at': self.assigned_at.isoformat() if self.assigned_at else None,
+            'status': self.status,
+            'source': self.source,
+        }
+
+
+class ScheduleMarksDeadline(db.Model):
+    """Stores deadline configuration per ExamSchedule with optional auto-lock behavior.
+
+    Distinct from exam_extended.MarksEntryDeadline (which is exam/class/subject scoped);
+    this model is scoped to a specific ExamSchedule for the Marks Entry System.
+    """
+    __tablename__ = 'schedule_marks_deadlines'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
+    deadline_date = db.Column(db.DateTime, nullable=False)
+    auto_lock = db.Column(db.Boolean, default=False)
+    set_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    schedule = db.relationship('ExamSchedule', backref='marks_deadline')
+
+    __table_args__ = (
+        db.UniqueConstraint('exam_schedule_id', 'school_id', name='uq_one_marks_deadline_per_schedule'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'exam_schedule_id': self.exam_schedule_id,
+            'deadline_date': self.deadline_date.isoformat() if self.deadline_date else None,
+            'auto_lock': self.auto_lock,
+            'set_by': self.set_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

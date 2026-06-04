@@ -4,16 +4,203 @@ import {
   Grid, Card, CardContent, Typography, Box, Paper, List, ListItem, ListItemText,
   Chip, Avatar, ListItemAvatar, Skeleton, alpha, useTheme, IconButton, Tooltip,
   Button, Divider, LinearProgress, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Rating
+  TableHead, TableRow, Rating, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import {
   School, People, CalendarMonth, Book, Class, Schedule,
   TrendingUp, ArrowForwardIos, Refresh, AccessTime, Event,
   CheckCircle, HourglassEmpty, Phone, Email, Star,
-  Assignment, Grade, Assessment, BarChart
+  Assignment, Grade, Assessment, BarChart, Close
 } from '@mui/icons-material';
 import { dashboardAPI } from '../../services/api';
+import { academicsAPI } from '../../services/api';
+import examMgmtAPI from '../../services/examApi';
 import useAuthStore from '../../store/authStore';
+import toast from 'react-hot-toast';
+
+// ─── Question Paper Request Notification ───
+function QuestionPaperRequests({ mySubjects }) {
+  const [pendingExams, setPendingExams] = useState([]);
+  const [uploadedPapers, setUploadedPapers] = useState({}); // exam_id -> [papers]
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadExam, setUploadExam] = useState(null);
+  const [uploadSubject, setUploadSubject] = useState(null);
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const navigate = useNavigate();
+  const theme = useTheme();
+
+  const loadData = () => {
+    academicsAPI.listExams({}).then(res => {
+      const exams = Array.isArray(res.data?.data) ? res.data.data : res.data?.data?.items || [];
+      const activeExams = exams.filter(e => ['upcoming', 'ongoing'].includes(e.status));
+      
+      const checks = activeExams.map(exam =>
+        Promise.all([
+          examMgmtAPI.getDateSheet(exam.id).catch(() => ({ data: { data: {} } })),
+          examMgmtAPI.listQuestionPapers(exam.id).catch(() => ({ data: { data: [] } })),
+        ]).then(([dsRes, papersRes]) => ({
+          exam,
+          status: dsRes.data?.data?.status || 'draft',
+          schedules: dsRes.data?.data?.schedules || [],
+          papers: papersRes.data?.data || [],
+        }))
+      );
+      Promise.all(checks).then(results => {
+        const needPapers = results.filter(r => r.status === 'pending_approval' || r.status === 'approved');
+        setPendingExams(needPapers);
+        // Store papers by exam
+        const papersMap = {};
+        results.forEach(r => { papersMap[r.exam.id] = r.papers; });
+        setUploadedPapers(papersMap);
+      });
+    }).catch(() => {});
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleUpload = async () => {
+    if (!file || !uploadExam || !uploadSubject) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Only PDF files allowed'); return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size max 5MB'); return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('class_id', uploadSubject.class_id || '');
+      formData.append('subject_id', uploadSubject.subject_id || '');
+      formData.append('set_name', 'A');
+      formData.append('max_marks', uploadSubject.max_marks || 100);
+      formData.append('duration_minutes', 180);
+      await examMgmtAPI.uploadQuestionPaper(uploadExam.id, formData);
+      toast.success('Question paper uploaded! Exam Controller ko bhej diya.');
+      setUploadOpen(false);
+      setFile(null);
+      loadData(); // Reload to show updated status
+    } catch (err) { toast.error(err.response?.data?.message || 'Upload failed'); }
+    finally { setUploading(false); }
+  };
+
+  // Check if paper already uploaded for a subject+class in an exam
+  const isUploaded = (examId, subjectId, classId) => {
+    const papers = uploadedPapers[examId] || [];
+    return papers.find(p => p.subject_id === subjectId && p.class_id === classId);
+  };
+
+  if (pendingExams.length === 0) return null;
+
+  return (
+    <Paper sx={{ p: 2.5, mt: 3, mb: 0, borderRadius: 3, border: '2px solid', borderColor: alpha('#ef4444', 0.3), bgcolor: alpha('#ef4444', 0.02) }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+        <Avatar sx={{ bgcolor: alpha('#ef4444', 0.12), color: '#ef4444', width: 32, height: 32 }}>
+          <Assignment sx={{ fontSize: 18 }} />
+        </Avatar>
+        <Box>
+          <Typography variant="subtitle1" fontWeight={700} color="#dc2626">
+            📋 Question Paper Request
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Exam Controller ne question paper banane ki request bheji hai
+          </Typography>
+        </Box>
+      </Box>
+
+      {pendingExams.map(({ exam, schedules }) => {
+        // Filter schedules for this teacher's subjects
+        const mySchedules = schedules.filter(s => 
+          mySubjects.some(ms => ms.subject_id === s.subject_id || ms.subject_id === s.subject?.id)
+        );
+        const relevantSchedules = mySchedules.length > 0 ? mySchedules : schedules.slice(0, 3);
+
+        return (
+          <Paper key={exam.id} variant="outlined" sx={{ p: 2, mb: 1, borderRadius: 2 }}>
+            <Typography variant="body2" fontWeight={700}>{exam.name}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+              📅 {exam.start_date} → {exam.end_date}
+            </Typography>
+            
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>Subject</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>Class</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {relevantSchedules.map((s, i) => {
+                  const uploaded = isUploaded(exam.id, s.subject_id, s.class_id);
+                  return (
+                    <TableRow key={i}>
+                      <TableCell sx={{ fontSize: '0.75rem', py: 0.5, fontWeight: 600 }}>{s.subject?.name || s.subject_name || '-'}</TableCell>
+                      <TableCell sx={{ fontSize: '0.75rem', py: 0.5 }}>{s.class_name || '-'}</TableCell>
+                      <TableCell sx={{ fontSize: '0.75rem', py: 0.5 }}>{s.exam_date}</TableCell>
+                      <TableCell sx={{ py: 0.5 }}>
+                        {uploaded ? (
+                          <Chip icon={<CheckCircle sx={{ fontSize: 14 }} />}
+                            label={`Uploaded (${uploaded.status})`} size="small" color="success"
+                            sx={{ fontSize: '0.65rem', fontWeight: 600 }} />
+                        ) : (
+                          <Button size="small" variant="contained" color="error"
+                            onClick={() => { setUploadExam(exam); setUploadSubject(s); setUploadOpen(true); }}
+                            sx={{ textTransform: 'none', borderRadius: 2, fontSize: '0.7rem', py: 0.2 }}>
+                            Upload Paper
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            {relevantSchedules.length === 0 && (
+              <Typography variant="caption" color="text.secondary">No subjects assigned to you for this exam.</Typography>
+            )}
+          </Paper>
+        );
+      })}
+
+      {/* Upload Dialog */}
+      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>Upload Question Paper</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {uploadExam?.name} — {uploadSubject?.subject?.name || uploadSubject?.subject_name || ''} ({uploadSubject?.class_name || ''})
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setUploadOpen(false)}><Close /></IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Button variant="outlined" component="label" fullWidth
+              sx={{ borderRadius: 2, textTransform: 'none', py: 2, borderStyle: 'dashed', borderWidth: 2 }}>
+              {file ? `📄 ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)` : '📎 Click to select PDF file (max 5MB)'}
+              <input type="file" hidden accept=".pdf" onChange={e => setFile(e.target.files[0])} />
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Only PDF format • Maximum 5MB • Paper will be sent to Exam Controller for review
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setUploadOpen(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpload} disabled={uploading || !file}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}>
+            {uploading ? 'Uploading...' : 'Upload Paper'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Paper>
+  );
+}
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -104,6 +291,15 @@ export default function TeacherDashboard() {
   const topperCount = performance?.toppers?.length || 0;
   const lowPerformerCount = performance?.low_performers?.length || 0;
 
+  // Unique subjects (Hindi taught in 2 classes counts as 1 subject)
+  const uniqueSubjectCount = new Set(
+    (my_subjects || []).map(s => s.subject_id ?? s.subject_name)
+  ).size;
+  // Unique class-sections the teacher teaches (via subject allocations) + class-teacher sections
+  const teachingSectionKeys = (my_subjects || []).map(s => `${s.class_id}-${s.section_id || 'all'}`);
+  const classTeacherKeys = (my_classes || []).map(c => `${c.class_id}-${c.section_id || 'all'}`);
+  const uniqueClassCount = new Set([...teachingSectionKeys, ...classTeacherKeys]).size;
+
   return (
     <Box>
       {/* Welcome Banner */}
@@ -143,10 +339,10 @@ export default function TeacherDashboard() {
       {/* Stat Cards */}
       <Grid container spacing={2.5}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="My Classes" value={my_classes?.length || 0} icon={<Class />} gradient={GRADIENTS.primary} shadowColor={alpha(PRIMARY, 0.25)} delay={0} />
+          <StatCard title="My Classes" value={uniqueClassCount} icon={<Class />} gradient={GRADIENTS.primary} shadowColor={alpha(PRIMARY, 0.25)} delay={0} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatCard title="My Subjects" value={my_subjects?.length || 0} icon={<Book />} gradient={GRADIENTS.secondary} shadowColor={alpha(SECONDARY, 0.25)} delay={80} />
+          <StatCard title="My Subjects" value={uniqueSubjectCount} icon={<Book />} gradient={GRADIENTS.secondary} shadowColor={alpha(SECONDARY, 0.25)} delay={80} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard title="Total Students" value={activeStudents.length || today_attendance?.student_count || 0} icon={<People />} gradient={GRADIENTS.info} shadowColor={alpha('#3b82f6', 0.25)} delay={160} />
@@ -157,6 +353,8 @@ export default function TeacherDashboard() {
       </Grid>
 
       {/* Quick Actions */}
+      <QuestionPaperRequests mySubjects={my_subjects || []} />
+
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 3, mb: 3 }}>
         <Button variant="contained" startIcon={<CalendarMonth />}
           onClick={() => navigate('/attendance')}
@@ -348,11 +546,17 @@ export default function TeacherDashboard() {
                 <Book sx={{ color: 'secondary.main', fontSize: 20 }} />
                 <Typography variant="subtitle1" fontWeight={700}>My Subjects</Typography>
               </Box>
-              <Chip label={my_subjects?.length || 0} size="small" color="secondary" sx={{ height: 22 }} />
+              <Chip label={uniqueSubjectCount} size="small" color="secondary" sx={{ height: 22 }} />
             </Box>
             <List disablePadding>
-              {my_subjects?.map((subj, idx) => (
-                <ListItem key={subj.id} divider={idx < my_subjects.length - 1} sx={{ px: 2.5, py: 1.5 }}>
+              {Object.values((my_subjects || []).reduce((acc, s) => {
+                const key = s.subject_id ?? s.subject_name;
+                if (!acc[key]) acc[key] = { subject_name: s.subject_name, classes: [], total_periods: 0 };
+                acc[key].classes.push(`${s.class_name}${s.section_name ? '-' + s.section_name : ''}`);
+                acc[key].total_periods += (s.periods_per_week || 0);
+                return acc;
+              }, {})).map((subj, idx, arr) => (
+                <ListItem key={idx} divider={idx < arr.length - 1} sx={{ px: 2.5, py: 1.5 }}>
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: alpha(SECONDARY, 0.1), color: SECONDARY, width: 38, height: 38, fontSize: '0.85rem', fontWeight: 700 }}>
                       {subj.subject_name?.[0] || 'S'}
@@ -362,8 +566,8 @@ export default function TeacherDashboard() {
                     primary={<Typography variant="body2" fontWeight={600}>{subj.subject_name}</Typography>}
                     secondary={
                       <Typography variant="caption" color="text.secondary">
-                        {subj.class_name}{subj.section_name ? ' - ' + subj.section_name : ''}
-                        {subj.periods_per_week ? ` • ${subj.periods_per_week} periods/week` : ''}
+                        {subj.classes.join(', ')}
+                        {subj.total_periods ? ` • ${subj.total_periods} periods/week` : ''}
                       </Typography>
                     }
                   />

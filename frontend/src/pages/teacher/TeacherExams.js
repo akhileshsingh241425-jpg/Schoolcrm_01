@@ -1,256 +1,491 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Chip, Avatar, Skeleton, alpha, useTheme, IconButton,
-  Tooltip, Button, Grid, Card, CardContent, Tabs, Tab, TextField,
-  InputAdornment, MenuItem, Select, FormControl, InputLabel, LinearProgress
+  TableHead, TableRow, Chip, Avatar, alpha, useTheme, IconButton,
+  Tooltip, Button, Grid, Card, CardContent, TextField, MenuItem,
+  LinearProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions,
+  Checkbox, FormControlLabel, InputAdornment, Divider, Stack, Tabs, Tab
 } from '@mui/material';
 import {
-  Refresh, Event, Schedule, School, People, Book, Search, Download,
-  Assessment, Star, TrendingUp, CheckCircle, Assignment, Grade
+  Refresh, Save, Close, Search, Grade, CheckCircle, Cancel,
+  Person, School, CalendarMonth, Assessment, Download, Print,
+  Visibility, TrendingUp
 } from '@mui/icons-material';
-import { academicsAPI } from '../../services/api';
+import { academicsAPI, dashboardAPI, studentsAPI } from '../../services/api';
+import toast from 'react-hot-toast';
+
+// Grade calculation
+const calcGrade = (pct) => {
+  if (pct >= 91) return { grade: 'A+', color: '#10b981' };
+  if (pct >= 81) return { grade: 'A', color: '#10b981' };
+  if (pct >= 71) return { grade: 'B+', color: '#3b82f6' };
+  if (pct >= 61) return { grade: 'B', color: '#3b82f6' };
+  if (pct >= 51) return { grade: 'C+', color: '#f59e0b' };
+  if (pct >= 41) return { grade: 'C', color: '#f59e0b' };
+  if (pct >= 33) return { grade: 'D', color: '#ef4444' };
+  return { grade: 'F', color: '#ef4444' };
+};
 
 export default function TeacherExams() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [tabValue, setTabValue] = useState(0);
-  const navigate = useNavigate();
   const theme = useTheme();
   const PRIMARY = theme.palette.primary.main;
 
+  // Filter state
+  const [mySubjects, setMySubjects] = useState([]);
+  const [exams, setExams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedExam, setSelectedExam] = useState('');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('');
+
+  // Marks state
+  const [schedule, setSchedule] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [marks, setMarks] = useState({}); // { studentId: { marks_obtained, is_absent, remarks } }
+  const [marksLoading, setMarksLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Student detail dialog
+  const [detailStudent, setDetailStudent] = useState(null);
+
+  // Tab
+  const [tab, setTab] = useState(0);
+
+  // Derived filter options — merge from my_subjects AND my_classes
+  const [myClasses, setMyClasses] = useState([]);
+
   useEffect(() => {
-    setLoading(true);
-    academicsAPI.getExamDashboard()
-      .then(res => setData(res.data.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      dashboardAPI.getTeacher().catch(() => ({ data: { data: {} } })),
+      academicsAPI.listExams({}).catch(() => ({ data: { data: { items: [] } } })),
+    ]).then(([dashRes, examsRes]) => {
+      const dash = dashRes.data?.data || {};
+      setMySubjects(dash.my_subjects || []);
+      setMyClasses(dash.my_classes || []);
+      const ed = examsRes.data?.data;
+      setExams(Array.isArray(ed) ? ed : ed?.items || []);
+    }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <Box>
-        <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Exams & Marks</Typography>
-        <Skeleton variant="rounded" height={120} sx={{ mb: 3, borderRadius: 4 }} />
-        <Skeleton variant="rounded" height={400} sx={{ borderRadius: 4 }} />
-      </Box>
-    );
-  }
+  const uniqueClasses = useMemo(() => {
+    const map = new Map();
+    mySubjects.forEach(s => map.set(s.class_id, { id: s.class_id, name: s.class_name }));
+    myClasses.forEach(c => map.set(c.class_id, { id: c.class_id, name: c.class_name }));
+    return [...map.values()];
+  }, [mySubjects, myClasses]);
 
-  const upcomingExams = data?.upcoming_exams || [];
-  const markedExams = data?.marked_exams || [];
+  const uniqueSections = useMemo(() => {
+    const map = new Map();
+    mySubjects.filter(s => s.class_id === parseInt(selectedClass)).forEach(s => {
+      if (s.section_id) map.set(s.section_id, { id: s.section_id, name: s.section_name });
+    });
+    myClasses.filter(c => c.class_id === parseInt(selectedClass)).forEach(c => {
+      if (c.section_id) map.set(c.section_id, { id: c.section_id, name: c.section_name });
+    });
+    return [...map.values()];
+  }, [mySubjects, myClasses, selectedClass]);
+
+  const uniqueSubjects = useMemo(() =>
+    [...new Map(mySubjects.filter(s => !selectedClass || s.class_id === parseInt(selectedClass)).map(s => [s.subject_id, { id: s.subject_id, name: s.subject_name }])).values()],
+    [mySubjects, selectedClass]
+  );
+
+  // Load marks sheet
+  const loadMarks = async () => {
+    if (!selectedExam || !selectedClass || !selectedSubject) {
+      toast.error('Select Exam, Class and Subject');
+      return;
+    }
+    setMarksLoading(true);
+    try {
+      // Find matching schedule
+      const schedRes = await academicsAPI.listSchedules(selectedExam);
+      const allScheds = schedRes.data?.data || [];
+      const matched = allScheds.find(s =>
+        s.class_id === parseInt(selectedClass) &&
+        s.subject_id === parseInt(selectedSubject) &&
+        (!selectedSection || s.section_id === parseInt(selectedSection) || !s.section_id)
+      );
+
+      if (!matched) {
+        toast.error('No exam schedule found for this combination. Ask admin to create one.');
+        setMarksLoading(false);
+        return;
+      }
+
+      setSchedule(matched);
+
+      // Load marks sheet
+      const res = await academicsAPI.getMarksSheet({ exam_schedule_id: matched.id });
+      const data = res.data?.data;
+      const studentList = data?.marks || data?.students || [];
+      setStudents(studentList);
+
+      // Pre-fill existing marks
+      const existing = {};
+      studentList.forEach(s => {
+        const subMarks = (s.subjects || []).find(sub => sub.schedule_id === matched.id);
+        existing[s.student_id] = {
+          marks_obtained: subMarks?.marks_obtained ?? '',
+          is_absent: subMarks?.is_absent || false,
+          remarks: subMarks?.remarks || '',
+        };
+      });
+      setMarks(existing);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load');
+    } finally {
+      setMarksLoading(false);
+    }
+  };
+
+  // Save marks
+  const saveMarks = async (status = 'draft') => {
+    if (!schedule) return;
+    setSaving(true);
+    try {
+      const entries = students.map(s => {
+        const m = marks[s.student_id] || {};
+        return {
+          student_id: s.student_id,
+          marks_obtained: m.is_absent ? null : (m.marks_obtained !== '' ? parseFloat(m.marks_obtained) : null),
+          is_absent: m.is_absent || false,
+          remarks: m.remarks || '',
+        };
+      }).filter(e => e.marks_obtained !== null || e.is_absent);
+
+      if (entries.length === 0) {
+        toast.error('No marks to save');
+        setSaving(false);
+        return;
+      }
+
+      await academicsAPI.bulkMarksEntry({
+        exam_schedule_id: schedule.id,
+        entries,
+      });
+      toast.success(`${entries.length} marks saved!`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Mark all present/absent
+  const markAllAbsent = (absent) => {
+    const updated = { ...marks };
+    students.forEach(s => {
+      updated[s.student_id] = { ...updated[s.student_id], is_absent: absent };
+    });
+    setMarks(updated);
+  };
+
+  // Filtered students
+  const filteredStudents = students.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (s.student_name || '').toLowerCase().includes(q) ||
+      (s.admission_no || '').toLowerCase().includes(q) ||
+      (s.roll_no || '').toString().includes(q);
+  });
+
+  // Stats
+  const filledCount = Object.values(marks).filter(m => m.marks_obtained !== '' || m.is_absent).length;
+  const absentCount = Object.values(marks).filter(m => m.is_absent).length;
+  const maxMarks = schedule?.max_marks || 100;
+
+  if (loading) return <LinearProgress />;
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>Exams & Marks</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" startIcon={<Assessment />} size="small"
-            onClick={() => navigate('/teacher/analytics')}
-            sx={{ borderRadius: 2, textTransform: 'none' }}>
-            Performance Analytics
-          </Button>
-          <Tooltip title="Refresh">
-            <IconButton onClick={() => window.location.reload()} sx={{ color: PRIMARY }}>
-              <Refresh />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Exams & Marks Entry</Typography>
 
-      {/* Stats */}
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Upcoming Exams</Typography>
-                  <Typography variant="h4" fontWeight={800}>{upcomingExams.length}</Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: alpha('#f59e0b', 0.1), color: '#f59e0b' }}><Event /></Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+      {/* Filters */}
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
+        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5, color: 'text.secondary' }}>
+          SELECT EXAM DETAILS
+        </Typography>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={2.4}>
+            <TextField fullWidth select size="small" label="Exam" value={selectedExam}
+              onChange={e => setSelectedExam(e.target.value)}>
+              {exams.map(e => <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField fullWidth select size="small" label="Class" value={selectedClass}
+              onChange={e => { setSelectedClass(e.target.value); setSelectedSection(''); setSelectedSubject(''); }}>
+              {uniqueClasses.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField fullWidth select size="small" label="Section" value={selectedSection}
+              onChange={e => setSelectedSection(e.target.value)}>
+              <MenuItem value="">All</MenuItem>
+              {uniqueSections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField fullWidth select size="small" label="Subject" value={selectedSubject}
+              onChange={e => setSelectedSubject(e.target.value)}>
+              {uniqueSubjects.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={1.8}>
+            <Button fullWidth variant="contained" onClick={loadMarks} disabled={marksLoading}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, height: 40 }}>
+              {marksLoading ? 'Loading...' : 'Load Students'}
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={1.8}>
+            <Button fullWidth variant="contained" color="success" startIcon={<Save />}
+              onClick={() => saveMarks('submitted')} disabled={saving || !schedule}
+              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, height: 40 }}>
+              {saving ? 'Saving...' : 'Save Marks'}
+            </Button>
+          </Grid>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Marks Entered</Typography>
-                  <Typography variant="h4" fontWeight={800}>{markedExams.length}</Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: alpha('#10b981', 0.1), color: '#10b981' }}><CheckCircle /></Avatar>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Pending Entry</Typography>
-                  <Typography variant="h4" fontWeight={800}>{Math.max(0, upcomingExams.length - markedExams.length)}</Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: alpha('#ef4444', 0.1), color: '#ef4444' }}><Assignment /></Avatar>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Class Avg</Typography>
-                  <Typography variant="h4" fontWeight={800}>82%</Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: alpha('#8b5cf6', 0.1), color: '#8b5cf6' }}><Star /></Avatar>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Content */}
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
-        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}
-          sx={{ px: 2, pt: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Tab label="Exam Schedule" />
-          <Tab label="Enter Marks" />
-          <Tab label="View Results" />
-        </Tabs>
-
-        {/* Tab 1: Exam Schedule */}
-        {tabValue === 0 && (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: alpha('#000', 0.02) }}>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Exam Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Subject</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Class</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Time</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem' }}>Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {upcomingExams.map((exam, idx) => (
-                  <TableRow key={exam.id || idx} hover>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>{exam.exam_name || 'Mid Term Exam'}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={exam.subject_name || 'Science'} size="small"
-                        sx={{ bgcolor: alpha(PRIMARY, 0.08), color: PRIMARY, fontWeight: 600, fontSize: '0.7rem' }} />
-                    </TableCell>
-                    <TableCell sx={{ fontSize: '0.8rem' }}>{exam.class_name || '10-A'}</TableCell>
-                    <TableCell sx={{ fontSize: '0.8rem' }}>{exam.exam_date || '2026-06-15'}</TableCell>
-                    <TableCell sx={{ fontSize: '0.8rem' }}>{exam.start_time || '09:00'} - {exam.end_time || '11:00'}</TableCell>
-                    <TableCell>
-                      <Chip label={exam.status || 'Scheduled'} size="small"
-                        color={exam.status === 'Completed' ? 'success' : exam.status === 'Ongoing' ? 'warning' : 'default'} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {upcomingExams.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
-                      <Event sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
-                      <Typography color="text.secondary">No exams scheduled</Typography>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-
-        {/* Tab 2: Enter Marks */}
-        {tabValue === 1 && (
-          <Box sx={{ p: 3 }}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={8}>
-                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
-                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>Quick Marks Entry</Typography>
-                  <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Select Exam</InputLabel>
-                      <Select label="Select Exam">
-                        <MenuItem value="1">Mid Term - Science</MenuItem>
-                        <MenuItem value="2">Mid Term - Math</MenuItem>
-                        <MenuItem value="3">Final - Science</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Select Class</InputLabel>
-                      <Select label="Select Class">
-                        <MenuItem value="1">Class 10-A</MenuItem>
-                        <MenuItem value="2">Class 10-B</MenuItem>
-                        <MenuItem value="3">Class 9-A</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <Button variant="contained" startIcon={<Grade />}
-                      onClick={() => navigate('/academics')}
-                      sx={{ borderRadius: 2, textTransform: 'none' }}>
-                      Go to Marks Entry
-                    </Button>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Select exam and class above to enter marks for all students at once.
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, textAlign: 'center' }}>
-                  <CheckCircle sx={{ fontSize: 48, color: '#10b981', mb: 1 }} />
-                  <Typography variant="h5" fontWeight={800} color="#10b981">{markedExams.length}/{upcomingExams.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">Marks Entered</Typography>
-                  <Box sx={{ mt: 2 }}>
-                    <LinearProgress variant="determinate"
-                      value={upcomingExams.length > 0 ? (markedExams.length / upcomingExams.length) * 100 : 0}
-                      sx={{ height: 8, borderRadius: 4,
-                        bgcolor: alpha(theme.palette.primary.main, 0.08),
-                        '& .MuiLinearProgress-bar': {
-                          background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                          borderRadius: 4
-                        } }} />
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-
-        {/* Tab 3: View Results */}
-        {tabValue === 2 && (
-          <Box sx={{ p: 3 }}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Button fullWidth variant="outlined" startIcon={<School />}
-                  onClick={() => navigate('/teacher/classes')}
-                  sx={{ p: 3, borderRadius: 3, textTransform: 'none', flexDirection: 'column', gap: 1 }}>
-                  <Typography variant="h6" fontWeight={700}>Class Results</Typography>
-                  <Typography variant="body2" color="text.secondary">View results by class and section</Typography>
-                </Button>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Button fullWidth variant="outlined" startIcon={<People />}
-                  onClick={() => navigate('/teacher/classes')}
-                  sx={{ p: 3, borderRadius: 3, textTransform: 'none', flexDirection: 'column', gap: 1 }}>
-                  <Typography variant="h6" fontWeight={700}>Student Results</Typography>
-                  <Typography variant="body2" color="text.secondary">View individual student report cards</Typography>
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
       </Paper>
+
+      {/* Marks Entry Area */}
+      {schedule && students.length > 0 && (
+        <>
+          {/* Info Bar */}
+          <Paper sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                <Chip label={`Max: ${maxMarks}`} color="primary" size="small" sx={{ fontWeight: 700 }} />
+                <Chip label={`Pass: ${schedule.passing_marks || 33}`} color="warning" size="small" sx={{ fontWeight: 700 }} />
+                <Chip icon={<CheckCircle sx={{ fontSize: 14 }} />} label={`Filled: ${filledCount}/${students.length}`} color="success" size="small" />
+                <Chip icon={<Cancel sx={{ fontSize: 14 }} />} label={`Absent: ${absentCount}`} color="error" size="small" />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField size="small" placeholder="Search student..."
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  sx={{ width: 200 }}
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 18 }} /></InputAdornment> }} />
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Marks Table */}
+          <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            <TableContainer sx={{ maxHeight: 500 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, width: 50, bgcolor: alpha(PRIMARY, 0.05) }}>#</TableCell>
+                    <TableCell sx={{ fontWeight: 700, minWidth: 180, bgcolor: alpha(PRIMARY, 0.05) }}>Student</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 80, bgcolor: alpha(PRIMARY, 0.05) }}>Roll No</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 120, textAlign: 'center', bgcolor: alpha(PRIMARY, 0.05) }}>
+                      Marks (/{maxMarks})
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 60, textAlign: 'center', bgcolor: alpha(PRIMARY, 0.05) }}>%</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 60, textAlign: 'center', bgcolor: alpha(PRIMARY, 0.05) }}>Grade</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 70, textAlign: 'center', bgcolor: alpha(PRIMARY, 0.05) }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 60, textAlign: 'center', bgcolor: alpha(PRIMARY, 0.05) }}>Absent</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 140, bgcolor: alpha(PRIMARY, 0.05) }}>Remarks</TableCell>
+                    <TableCell sx={{ fontWeight: 700, width: 50, bgcolor: alpha(PRIMARY, 0.05) }}>View</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredStudents.map((s, idx) => {
+                    const m = marks[s.student_id] || { marks_obtained: '', is_absent: false, remarks: '' };
+                    const obtained = m.is_absent ? 0 : (parseFloat(m.marks_obtained) || 0);
+                    const pct = maxMarks > 0 ? Math.round((obtained / maxMarks) * 100) : 0;
+                    const { grade, color } = m.marks_obtained !== '' && !m.is_absent ? calcGrade(pct) : { grade: '-', color: '#94a3b8' };
+                    const pass = !m.is_absent && obtained >= (schedule.passing_marks || 33);
+
+                    return (
+                      <TableRow key={s.student_id} hover sx={{
+                        bgcolor: m.is_absent ? alpha('#ef4444', 0.04) : undefined,
+                        opacity: m.is_absent ? 0.7 : 1,
+                      }}>
+                        <TableCell sx={{ color: 'text.secondary' }}>{idx + 1}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar sx={{ width: 28, height: 28, fontSize: '0.7rem', bgcolor: alpha(PRIMARY, 0.1), color: PRIMARY }}>
+                              {(s.student_name || '?')[0]}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight={600} noWrap>{s.student_name}</Typography>
+                              <Typography variant="caption" color="text.secondary">{s.admission_no}</Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ fontSize: '0.8rem' }}>{s.roll_no || '-'}</TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <TextField size="small" type="number"
+                            disabled={m.is_absent}
+                            sx={{ width: 80, '& input': { textAlign: 'center', py: 0.5, fontWeight: 700 } }}
+                            inputProps={{ min: 0, max: maxMarks }}
+                            value={m.marks_obtained}
+                            onChange={e => setMarks({
+                              ...marks,
+                              [s.student_id]: { ...m, marks_obtained: e.target.value }
+                            })}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center', fontWeight: 700, color }}>
+                          {m.marks_obtained !== '' && !m.is_absent ? `${pct}%` : '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          {m.marks_obtained !== '' || m.is_absent ? (
+                            <Chip label={m.is_absent ? 'AB' : grade} size="small"
+                              sx={{ fontWeight: 700, fontSize: '0.7rem', bgcolor: alpha(color, 0.12), color, minWidth: 35 }} />
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          {m.marks_obtained !== '' || m.is_absent ? (
+                            <Chip label={m.is_absent ? 'Fail' : pass ? 'Pass' : 'Fail'} size="small"
+                              color={m.is_absent ? 'error' : pass ? 'success' : 'error'}
+                              sx={{ fontWeight: 600, fontSize: '0.65rem', height: 20 }} />
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <Checkbox size="small" checked={m.is_absent}
+                            onChange={e => setMarks({
+                              ...marks,
+                              [s.student_id]: { ...m, is_absent: e.target.checked, marks_obtained: e.target.checked ? '' : m.marks_obtained }
+                            })}
+                            sx={{ p: 0 }} />
+                        </TableCell>
+                        <TableCell>
+                          <TextField size="small" placeholder="..."
+                            sx={{ width: 120, '& input': { py: 0.3, fontSize: '0.75rem' } }}
+                            value={m.remarks}
+                            onChange={e => setMarks({
+                              ...marks,
+                              [s.student_id]: { ...m, remarks: e.target.value }
+                            })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <IconButton size="small" onClick={() => setDetailStudent(s)}
+                            sx={{ color: PRIMARY }}>
+                            <Visibility sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </>
+      )}
+
+      {schedule && students.length === 0 && !marksLoading && (
+        <Alert severity="warning" sx={{ borderRadius: 3 }}>
+          No students found for this class/section. Check if students are assigned to this class.
+        </Alert>
+      )}
+
+      {!schedule && !marksLoading && (
+        <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
+          <Assessment sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+          <Typography variant="h6" color="text.secondary" fontWeight={600}>Select Exam Details Above</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Choose exam, class, section and subject to load the marks entry sheet.
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Student Detail Dialog */}
+      <Dialog open={!!detailStudent} onClose={() => setDetailStudent(null)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight={700}>Student Details</Typography>
+            <IconButton onClick={() => setDetailStudent(null)}><Close /></IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {detailStudent && (
+            <Box>
+              {/* Profile */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, p: 2, borderRadius: 3, bgcolor: alpha(PRIMARY, 0.04) }}>
+                <Avatar sx={{ width: 56, height: 56, bgcolor: alpha(PRIMARY, 0.15), color: PRIMARY, fontWeight: 700, fontSize: '1.2rem' }}>
+                  {(detailStudent.student_name || '?')[0]}
+                </Avatar>
+                <Box>
+                  <Typography variant="h6" fontWeight={700}>{detailStudent.student_name}</Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                    <Chip icon={<Person sx={{ fontSize: 14 }} />} label={`Roll: ${detailStudent.roll_no || '-'}`} size="small" />
+                    <Chip icon={<School sx={{ fontSize: 14 }} />} label={`Adm: ${detailStudent.admission_no || '-'}`} size="small" />
+                  </Stack>
+                </Box>
+              </Box>
+
+              {/* Current Marks */}
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Current Entry</Typography>
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+                {(() => {
+                  const m = marks[detailStudent.student_id] || {};
+                  const obtained = m.is_absent ? 0 : (parseFloat(m.marks_obtained) || 0);
+                  const pct = maxMarks > 0 ? Math.round((obtained / maxMarks) * 100) : 0;
+                  const { grade, color } = m.marks_obtained !== '' ? calcGrade(pct) : { grade: '-', color: '#94a3b8' };
+                  return (
+                    <Grid container spacing={2}>
+                      <Grid item xs={4} sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} color="primary">{m.is_absent ? 'AB' : (m.marks_obtained || '-')}</Typography>
+                        <Typography variant="caption" color="text.secondary">Marks / {maxMarks}</Typography>
+                      </Grid>
+                      <Grid item xs={4} sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={800} sx={{ color }}>{m.is_absent ? '0' : pct}%</Typography>
+                        <Typography variant="caption" color="text.secondary">Percentage</Typography>
+                      </Grid>
+                      <Grid item xs={4} sx={{ textAlign: 'center' }}>
+                        <Chip label={m.is_absent ? 'Absent' : grade} sx={{ fontWeight: 800, fontSize: '1rem', height: 36, bgcolor: alpha(color, 0.12), color }} />
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                          {m.is_absent ? 'Fail' : obtained >= (schedule?.passing_marks || 33) ? 'PASS' : 'FAIL'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  );
+                })()}
+              </Paper>
+
+              {/* All subjects marks if available */}
+              {detailStudent.subjects && detailStudent.subjects.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>All Subjects (This Exam)</Typography>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Subject</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Max</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Obtained</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Grade</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {detailStudent.subjects.map((sub, i) => {
+                          const sp = sub.max_marks > 0 ? Math.round((sub.marks_obtained || 0) / sub.max_marks * 100) : 0;
+                          const sg = calcGrade(sp);
+                          return (
+                            <TableRow key={i}>
+                              <TableCell>{sub.subject_name || '-'}</TableCell>
+                              <TableCell>{sub.max_marks || '-'}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{sub.marks_obtained ?? '-'}</TableCell>
+                              <TableCell><Chip label={sub.marks_obtained != null ? sg.grade : '-'} size="small" sx={{ bgcolor: alpha(sg.color, 0.12), color: sg.color, fontWeight: 700 }} /></TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

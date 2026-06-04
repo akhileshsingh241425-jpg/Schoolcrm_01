@@ -185,10 +185,14 @@ class StudentTransport(db.Model):
     stop = db.relationship('TransportStop')
 
     def to_dict(self):
+        stu = self.student
         return {
             'id': self.id, 'student_id': self.student_id,
+            'student_name': f"{stu.first_name} {stu.last_name or ''}".strip() if stu else None,
+            'admission_no': stu.admission_no if stu else None,
             'route': self.route.to_dict() if self.route else None,
             'stop': self.stop.to_dict() if self.stop else None,
+            'fare': float(self.stop.fare) if self.stop and self.stop.fare is not None else None,
             'pickup_type': self.pickup_type, 'rfid_card_no': self.rfid_card_no,
             'effective_from': self.effective_from.isoformat() if self.effective_from else None,
             'effective_to': self.effective_to.isoformat() if self.effective_to else None,
@@ -306,6 +310,7 @@ class TransportFee(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     route_id = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
     stop_id = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
     academic_year = db.Column(db.String(20))
@@ -314,22 +319,29 @@ class TransportFee(db.Model):
     distance_based = db.Column(db.Boolean, default=False)
     distance_km = db.Column(db.Numeric(8, 2))
     rate_per_km = db.Column(db.Numeric(8, 2))
+    paid_date = db.Column(db.Date)
     effective_from = db.Column(db.Date)
     effective_to = db.Column(db.Date)
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    student = db.relationship('Student')
     route = db.relationship('TransportRoute', backref='fee_structures')
     stop = db.relationship('TransportStop', backref='fee_structures')
 
     def to_dict(self):
+        stu = self.student
         return {
-            'id': self.id, 'route_id': self.route_id, 'stop_id': self.stop_id,
+            'id': self.id, 'student_id': self.student_id,
+            'student_name': f"{stu.first_name} {stu.last_name or ''}".strip() if stu else None,
+            'admission_no': stu.admission_no if stu else None,
+            'route_id': self.route_id, 'stop_id': self.stop_id,
             'academic_year': self.academic_year, 'fee_type': self.fee_type,
             'amount': float(self.amount) if self.amount else 0,
             'distance_based': self.distance_based,
             'distance_km': float(self.distance_km) if self.distance_km else None,
             'rate_per_km': float(self.rate_per_km) if self.rate_per_km else None,
+            'paid_date': self.paid_date.isoformat() if self.paid_date else None,
             'effective_from': self.effective_from.isoformat() if self.effective_from else None,
             'effective_to': self.effective_to.isoformat() if self.effective_to else None,
             'status': self.status,
@@ -364,7 +376,10 @@ class SOSAlert(db.Model):
     def to_dict(self):
         return {
             'id': self.id, 'vehicle_id': self.vehicle_id,
+            'vehicle_number': self.vehicle.vehicle_number if self.vehicle else None,
             'route_id': self.route_id, 'driver_id': self.driver_id,
+            'route_name': self.route.route_name if self.route else None,
+            'driver_name': self.driver.name if self.driver else None,
             'alert_type': self.alert_type, 'description': self.description,
             'latitude': float(self.latitude) if self.latitude else None,
             'longitude': float(self.longitude) if self.longitude else None,

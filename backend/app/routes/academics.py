@@ -10,7 +10,7 @@ from app.models.academic import (
     Syllabus, SyllabusProgress, LessonPlan,
     Homework, HomeworkSubmission, StudyMaterial,
     AcademicCalendar, TeacherSubject,
-    ElectiveGroup, ElectiveSubject, StudentElective
+    ElectiveGroup, ElectiveSubject, StudentElective, StudentSubjectEnrollment
 )
 from app.models.student import Student, Class, Section, AcademicYear
 from app.models.school import School
@@ -39,7 +39,7 @@ def list_subjects():
 
 
 @academics_bp.route('/subjects', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def create_subject():
     data = request.get_json()
     subject = Subject(
@@ -57,7 +57,7 @@ def create_subject():
 
 
 @academics_bp.route('/subjects/<int:subject_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_subject(subject_id):
     subject = Subject.query.filter_by(id=subject_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -69,7 +69,7 @@ def update_subject(subject_id):
 
 
 @academics_bp.route('/subjects/<int:subject_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_subject(subject_id):
     subject = Subject.query.filter_by(id=subject_id, school_id=g.school_id).first_or_404()
     db.session.delete(subject)
@@ -85,7 +85,7 @@ def list_subject_components(subject_id):
 
 
 @academics_bp.route('/subjects/<int:subject_id>/components', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def add_subject_component(subject_id):
     data = request.get_json()
     comp = SubjectComponent(
@@ -102,7 +102,7 @@ def add_subject_component(subject_id):
 
 
 @academics_bp.route('/subjects/components/<int:comp_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_subject_component(comp_id):
     comp = SubjectComponent.query.filter_by(id=comp_id, school_id=g.school_id).first_or_404()
     db.session.delete(comp)
@@ -122,7 +122,7 @@ def get_class_subjects(class_id):
 
 
 @academics_bp.route('/class-subjects', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def assign_subject():
     data = request.get_json()
     existing = ClassSubject.query.filter_by(
@@ -142,7 +142,7 @@ def assign_subject():
 
 
 @academics_bp.route('/class-subjects/<int:cs_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_class_subject(cs_id):
     cs = ClassSubject.query.filter_by(id=cs_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -153,7 +153,7 @@ def update_class_subject(cs_id):
 
 
 @academics_bp.route('/class-subjects/<int:cs_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def remove_class_subject(cs_id):
     cs = ClassSubject.query.filter_by(id=cs_id, school_id=g.school_id).first_or_404()
     db.session.delete(cs)
@@ -202,7 +202,7 @@ def get_timetable():
 
 
 @academics_bp.route('/timetable', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def create_timetable_entry():
     data = request.get_json()
     entry = Timetable(
@@ -224,7 +224,7 @@ def create_timetable_entry():
 
 
 @academics_bp.route('/timetable/<int:tt_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_timetable_entry(tt_id):
     entry = Timetable.query.filter_by(id=tt_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -237,7 +237,7 @@ def update_timetable_entry(tt_id):
 
 
 @academics_bp.route('/timetable/<int:tt_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_timetable_entry(tt_id):
     entry = Timetable.query.filter_by(id=tt_id, school_id=g.school_id).first_or_404()
     db.session.delete(entry)
@@ -246,7 +246,7 @@ def delete_timetable_entry(tt_id):
 
 
 @academics_bp.route('/timetable/bulk', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def bulk_create_timetable():
     data = request.get_json()
     entries = data.get('entries', [])
@@ -271,6 +271,311 @@ def bulk_create_timetable():
     return success_response([e.to_dict() for e in created], f'{len(created)} entries created', 201)
 
 
+@academics_bp.route('/timetable/auto-generate', methods=['POST'])
+@role_required('school_admin', 'academic_controller')
+def auto_generate_timetable():
+    """
+    Auto-generate timetable for a class/section based on teacher-subject assignments.
+    Rules:
+    1. A teacher cannot be in two classes at the same time (conflict check)
+    2. Theory subjects get 5-7 periods/week, practical get 2-3, both get 6-8
+    3. Uses TeacherSubject allocations as the source
+    4. Distributes subjects evenly across days
+    5. No same subject twice in a day (unless periods > days)
+    """
+    import random
+    from datetime import time as dt_time
+
+    data = request.get_json()
+    class_id = data.get('class_id')
+    section_id = data.get('section_id')
+    periods_per_day = data.get('periods_per_day', 8)
+    days = data.get('days', ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'])
+    start_hour = data.get('start_hour', 8)  # 8 AM
+    period_duration = data.get('period_duration', 45)  # minutes
+    break_after_period = data.get('break_after_period', 4)  # lunch break after 4th period
+    break_duration = data.get('break_duration', 30)  # minutes
+
+    if not class_id or not section_id:
+        return error_response('class_id and section_id are required')
+
+    # Get all teacher-subject allocations for this class/section
+    allocations = TeacherSubject.query.filter_by(
+        school_id=g.school_id,
+        class_id=class_id,
+        section_id=section_id,
+        status='active'
+    ).all()
+
+    # Also check allocations without section (applies to all sections of the class)
+    allocations_no_section = TeacherSubject.query.filter_by(
+        school_id=g.school_id,
+        class_id=class_id,
+        section_id=None,
+        status='active'
+    ).all()
+
+    all_allocations = allocations + allocations_no_section
+
+    if not all_allocations:
+        return error_response('No teacher-subject allocations found for this class/section. Please assign teachers to subjects first.')
+
+    # Determine periods per week for each subject based on type
+    subject_periods = []
+    for alloc in all_allocations:
+        subject = Subject.query.get(alloc.subject_id)
+        if not subject or not subject.is_active:
+            continue
+
+        # Use allocation's periods_per_week if set, otherwise use defaults based on type
+        if alloc.periods_per_week and alloc.periods_per_week > 0:
+            ppw = alloc.periods_per_week
+        else:
+            if subject.type == 'theory':
+                ppw = 6  # 5-7, default 6
+            elif subject.type == 'practical':
+                ppw = 3  # 2-3, default 3
+            else:  # both
+                ppw = 7  # 6-8, default 7
+
+        subject_periods.append({
+            'allocation_id': alloc.id,
+            'subject_id': alloc.subject_id,
+            'subject_name': subject.name,
+            'subject_type': subject.type,
+            'teacher_id': alloc.teacher_id,
+            'periods_per_week': ppw,
+        })
+
+    total_needed = sum(sp['periods_per_week'] for sp in subject_periods)
+    total_available = periods_per_day * len(days)
+
+    # If total needed exceeds available, scale down proportionally
+    if total_needed > total_available:
+        scale = total_available / total_needed
+        for sp in subject_periods:
+            sp['periods_per_week'] = max(1, round(sp['periods_per_week'] * scale))
+        total_needed = sum(sp['periods_per_week'] for sp in subject_periods)
+
+    # Get existing timetable entries for ALL classes to check teacher conflicts
+    existing_entries = Timetable.query.filter_by(school_id=g.school_id).filter(
+        Timetable.teacher_id.isnot(None)
+    ).all()
+
+    # Build teacher schedule map: teacher_id -> {day -> set of period_numbers}
+    teacher_schedule = {}
+    for entry in existing_entries:
+        # Skip entries for the same class/section (we're regenerating those)
+        if entry.class_id == class_id and entry.section_id == section_id:
+            continue
+        tid = entry.teacher_id
+        if tid not in teacher_schedule:
+            teacher_schedule[tid] = {d: set() for d in days}
+        day = entry.day_of_week
+        if day in teacher_schedule[tid] and entry.period_number:
+            teacher_schedule[tid][day].add(entry.period_number)
+
+    # Delete existing timetable for this class/section (regenerate)
+    Timetable.query.filter_by(
+        school_id=g.school_id,
+        class_id=class_id,
+        section_id=section_id
+    ).delete()
+    db.session.flush()
+
+    # Build the slot pool: list of (day, period) tuples
+    slots = []
+    for day in days:
+        for period in range(1, periods_per_day + 1):
+            slots.append((day, period))
+
+    # Create period-to-time mapping
+    def get_period_times(period_num):
+        minutes_offset = (period_num - 1) * period_duration
+        # Add break time if after break period
+        if period_num > break_after_period:
+            minutes_offset += break_duration
+        start_minutes = start_hour * 60 + minutes_offset
+        end_minutes = start_minutes + period_duration
+        s_time = dt_time(start_minutes // 60, start_minutes % 60)
+        e_time = dt_time(end_minutes // 60, end_minutes % 60)
+        return s_time, e_time
+
+    # Distribute subjects across slots
+    # Strategy: spread each subject evenly across days, avoid same subject twice per day
+    # Also check teacher conflicts
+
+    # Create a grid: day -> period -> None (empty)
+    grid = {day: {p: None for p in range(1, periods_per_day + 1)} for day in days}
+
+    # ── Class-teacher-first-period rule ──
+    # Reserve period 1 of every day for the section's class teacher (their subject),
+    # so each day starts with the class teacher's period.
+    section_obj = Section.query.filter_by(id=section_id, school_id=g.school_id).first()
+    ct_teacher_id = section_obj.class_teacher_id if section_obj else None
+    ct_subject = None
+    ct_note = None
+    if not ct_teacher_id:
+        ct_note = 'No class teacher assigned to this section — first period not reserved.'
+    else:
+        # Find a subject this class teacher teaches in this class-section
+        ct_subject = next((sp for sp in subject_periods if sp['teacher_id'] == ct_teacher_id), None)
+        if not ct_subject:
+            ct_note = 'Class teacher has no subject assigned for this class — first period not reserved. Assign the class teacher a subject in Teacher Assignment.'
+
+    ct_days_filled = 0
+    if ct_subject:
+        for day in days:
+            # Only reserve if the class teacher is free at period 1 that day
+            tid = ct_subject['teacher_id']
+            busy = teacher_schedule.get(tid, {}).get(day, set()) if tid else set()
+            if 1 in busy:
+                continue
+            grid[day][1] = ct_subject
+            if tid:
+                teacher_schedule.setdefault(tid, {d: set() for d in days})
+                teacher_schedule[tid][day].add(1)
+            ct_days_filled += 1
+        # Reduce the class teacher subject's remaining periods by how many we pre-placed
+        ct_subject['periods_per_week'] = max(0, ct_subject['periods_per_week'] - ct_days_filled)
+        ct_note = f"Class teacher's subject placed in Period 1 on {ct_days_filled} day(s)."
+
+    # Sort subjects by periods_per_week descending (place hardest first)
+    subject_periods.sort(key=lambda x: x['periods_per_week'], reverse=True)
+
+    # For each subject, distribute periods across days
+    unplaced = []
+    for sp in subject_periods:
+        periods_to_place = sp['periods_per_week']
+        teacher_id = sp['teacher_id']
+        subject_id = sp['subject_id']
+
+        # Try to spread evenly: calculate ideal periods per day
+        placed = 0
+        # Shuffle days to add randomness
+        day_order = list(days)
+        random.shuffle(day_order)
+
+        # First pass: one period per day
+        for day in day_order:
+            if placed >= periods_to_place:
+                break
+            # Find an empty slot on this day where teacher is free
+            for period in range(1, periods_per_day + 1):
+                if grid[day][period] is not None:
+                    continue
+                # Check teacher conflict
+                if teacher_id and teacher_id in teacher_schedule:
+                    if period in teacher_schedule[teacher_id].get(day, set()):
+                        continue
+                # Place it
+                grid[day][period] = sp
+                # Mark teacher as busy
+                if teacher_id:
+                    if teacher_id not in teacher_schedule:
+                        teacher_schedule[teacher_id] = {d: set() for d in days}
+                    teacher_schedule[teacher_id][day].add(period)
+                placed += 1
+                break
+
+        # Second pass: if still need more periods, allow 2 per day
+        if placed < periods_to_place:
+            for day in day_order:
+                if placed >= periods_to_place:
+                    break
+                for period in range(1, periods_per_day + 1):
+                    if placed >= periods_to_place:
+                        break
+                    if grid[day][period] is not None:
+                        continue
+                    if teacher_id and teacher_id in teacher_schedule:
+                        if period in teacher_schedule[teacher_id].get(day, set()):
+                            continue
+                    grid[day][period] = sp
+                    if teacher_id:
+                        if teacher_id not in teacher_schedule:
+                            teacher_schedule[teacher_id] = {d: set() for d in days}
+                        teacher_schedule[teacher_id][day].add(period)
+                    placed += 1
+
+        if placed < periods_to_place:
+            unplaced.append({'subject': sp['subject_name'], 'needed': periods_to_place, 'placed': placed})
+
+    # Create timetable entries from grid
+    created_entries = []
+    for day in days:
+        for period in range(1, periods_per_day + 1):
+            sp = grid[day][period]
+            if sp is None:
+                continue
+            s_time, e_time = get_period_times(period)
+            entry = Timetable(
+                school_id=g.school_id,
+                class_id=class_id,
+                section_id=section_id,
+                subject_id=sp['subject_id'],
+                teacher_id=sp['teacher_id'],
+                day_of_week=day,
+                start_time=s_time,
+                end_time=e_time,
+                period_number=period,
+            )
+            db.session.add(entry)
+            created_entries.append(entry)
+
+    db.session.commit()
+
+    result = {
+        'entries_created': len(created_entries),
+        'total_slots': total_available,
+        'slots_filled': len(created_entries),
+        'slots_empty': total_available - len(created_entries),
+        'class_teacher_note': ct_note,
+        'warnings': unplaced if unplaced else None,
+        'subject_distribution': [
+            {'subject': sp['subject_name'], 'teacher_id': sp['teacher_id'], 'periods': sp['periods_per_week']}
+            for sp in subject_periods
+        ]
+    }
+
+    return success_response(result, f'Timetable generated: {len(created_entries)} periods created')
+
+
+@academics_bp.route('/timetable/check-conflicts', methods=['POST'])
+@role_required('school_admin', 'academic_controller')
+def check_timetable_conflicts():
+    """Check if a teacher has conflicts at a given day/period"""
+    data = request.get_json()
+    teacher_id = data.get('teacher_id')
+    day_of_week = data.get('day_of_week')
+    period_number = data.get('period_number')
+    exclude_id = data.get('exclude_id')  # exclude current entry when editing
+
+    if not teacher_id or not day_of_week or not period_number:
+        return error_response('teacher_id, day_of_week, and period_number are required')
+
+    query = Timetable.query.filter_by(
+        school_id=g.school_id,
+        teacher_id=teacher_id,
+        day_of_week=day_of_week,
+        period_number=period_number
+    )
+    if exclude_id:
+        query = query.filter(Timetable.id != exclude_id)
+
+    conflict = query.first()
+    if conflict:
+        return success_response({
+            'has_conflict': True,
+            'conflict_with': {
+                'class_name': conflict.class_ref.name if conflict.class_ref else None,
+                'section_name': conflict.section_ref.name if conflict.section_ref else None,
+                'subject_name': conflict.subject.name if conflict.subject else None,
+            }
+        })
+    return success_response({'has_conflict': False})
+
+
 # ============================================================
 # EXAM TYPES
 # ============================================================
@@ -283,7 +588,7 @@ def list_exam_types():
 
 
 @academics_bp.route('/exam-types', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def create_exam_type():
     data = request.get_json()
     et = ExamType(
@@ -300,7 +605,7 @@ def create_exam_type():
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -312,7 +617,7 @@ def update_exam_type(et_id):
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
     db.session.delete(et)
@@ -332,7 +637,7 @@ def list_grading_systems():
 
 
 @academics_bp.route('/grading-systems', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def create_grading_system():
     data = request.get_json()
     gs = GradingSystem(
@@ -366,7 +671,7 @@ def create_grading_system():
 
 
 @academics_bp.route('/grading-systems/<int:gs_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_grading_system(gs_id):
     gs = GradingSystem.query.filter_by(id=gs_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -380,7 +685,7 @@ def update_grading_system(gs_id):
 
 
 @academics_bp.route('/grading-systems/<int:gs_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_grading_system(gs_id):
     gs = GradingSystem.query.filter_by(id=gs_id, school_id=g.school_id).first_or_404()
     db.session.delete(gs)
@@ -389,7 +694,7 @@ def delete_grading_system(gs_id):
 
 
 @academics_bp.route('/grading-systems/<int:gs_id>/grades', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def add_grade(gs_id):
     data = request.get_json()
     grade = Grade(
@@ -409,7 +714,7 @@ def add_grade(gs_id):
 
 
 @academics_bp.route('/grading-systems/grades/<int:grade_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def update_grade(grade_id):
     grade = Grade.query.filter_by(id=grade_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -421,7 +726,7 @@ def update_grade(grade_id):
 
 
 @academics_bp.route('/grading-systems/grades/<int:grade_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def delete_grade(grade_id):
     grade = Grade.query.filter_by(id=grade_id, school_id=g.school_id).first_or_404()
     db.session.delete(grade)
@@ -491,7 +796,7 @@ def get_exam(exam_id):
 
 
 @academics_bp.route('/exams', methods=['POST'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'teacher', 'exam_controller')
 def create_exam():
     data = request.get_json()
     exam = Exam(
@@ -504,6 +809,7 @@ def create_exam():
         start_date=data.get('start_date'),
         end_date=data.get('end_date'),
         instructions=data.get('instructions'),
+        class_ids=data.get('class_ids', []),
         created_by=g.user_id if hasattr(g, 'user_id') else None,
     )
     db.session.add(exam)
@@ -512,7 +818,7 @@ def create_exam():
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'teacher', 'exam_controller')
 def update_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -525,7 +831,7 @@ def update_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def delete_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     db.session.delete(exam)
@@ -534,7 +840,7 @@ def delete_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/status', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def update_exam_status(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -559,7 +865,7 @@ def list_exam_schedules(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules', methods=['POST'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'teacher', 'exam_controller')
 def add_exam_schedule(exam_id):
     data = request.get_json()
     schedule = ExamSchedule(
@@ -583,7 +889,7 @@ def add_exam_schedule(exam_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'teacher', 'exam_controller')
 def update_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -596,7 +902,7 @@ def update_exam_schedule(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def delete_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     db.session.delete(schedule)
@@ -605,7 +911,7 @@ def delete_exam_schedule(schedule_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules/bulk', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def bulk_add_schedules(exam_id):
     data = request.get_json()
     schedules = data.get('schedules', [])
@@ -723,7 +1029,7 @@ def list_exam_halls():
 
 
 @academics_bp.route('/exam-halls', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def create_exam_hall():
     data = request.get_json()
     hall = ExamHall(
@@ -742,7 +1048,7 @@ def create_exam_hall():
 
 
 @academics_bp.route('/exam-halls/<int:hall_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def update_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -754,7 +1060,7 @@ def update_exam_hall(hall_id):
 
 
 @academics_bp.route('/exam-halls/<int:hall_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def delete_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
     db.session.delete(hall)
@@ -776,7 +1082,7 @@ def get_seating(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/seating/auto', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def auto_generate_seating(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
 
@@ -786,7 +1092,7 @@ def auto_generate_seating(schedule_id):
     # Get students for this class/section
     student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=schedule.class_id, status='active')
     if schedule.section_id:
-        student_query = student_query.filter_by(section_id=schedule.section_id)
+        student_query = student_query.filter_by(current_section_id=schedule.section_id)
     students = student_query.order_by(Student.first_name).all()
 
     # Get available halls
@@ -842,7 +1148,7 @@ def list_invigilators(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/invigilators', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def assign_invigilator(schedule_id):
     data = request.get_json()
     inv = ExamInvigilator(
@@ -858,7 +1164,7 @@ def assign_invigilator(schedule_id):
 
 
 @academics_bp.route('/exams/invigilators/<int:inv_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def remove_invigilator(inv_id):
     inv = ExamInvigilator.query.filter_by(id=inv_id, school_id=g.school_id).first_or_404()
     db.session.delete(inv)
@@ -871,27 +1177,61 @@ def remove_invigilator(inv_id):
 # ============================================================
 
 @academics_bp.route('/marks/entry', methods=['POST'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'exam_controller', 'teacher')
 def bulk_marks_entry():
     """Bulk marks entry - accepts array of {student_id, marks_obtained, is_absent, remarks}"""
     data = request.get_json()
     exam_schedule_id = data['exam_schedule_id']
 
     schedule = ExamSchedule.query.filter_by(id=exam_schedule_id, school_id=g.school_id).first_or_404()
-    scope = get_teacher_scope()
-    if scope:
-        if scope.get('no_access'):
-            return error_response('Access denied', 403)
-        if schedule.subject_id not in scope.get('subject_ids', []) or schedule.class_id not in scope.get('class_ids', []):
-            return error_response('Access denied', 403)
+
+    # Assignment-based access control for teachers
+    if hasattr(g, 'current_user') and g.current_user and g.current_user.role and g.current_user.role.name == 'teacher':
+        from app.models.academic import MarksEntryAssignment
+        staff = Staff.query.filter_by(user_id=g.user_id, school_id=g.school_id).first()
+        if not staff:
+            return error_response('Staff record not found', 404)
+        assignment = MarksEntryAssignment.query.filter_by(
+            exam_schedule_id=exam_schedule_id,
+            teacher_id=staff.id,
+            status='active',
+            school_id=g.school_id
+        ).first()
+        if not assignment:
+            return error_response('No marks entry assignment for this schedule', 403)
+    else:
+        # Admin/exam_controller bypass — check legacy scope for backward compat
+        scope = get_teacher_scope()
+        if scope:
+            if scope.get('no_access'):
+                return error_response('Access denied', 403)
+            if schedule.subject_id not in scope.get('subject_ids', []) or schedule.class_id not in scope.get('class_ids', []):
+                return error_response('Access denied', 403)
+
     if schedule.is_marks_locked:
         return error_response('Marks are locked for this subject', 403)
 
     entries = data.get('entries', [])
+
+    # Validate marks using MarksEntryService
+    from app.services.marks_entry_service import MarksEntryService
+    is_valid, validation_errors = MarksEntryService.validate_marks_entry(entries, schedule)
+    if not is_valid:
+        return error_response({
+            'message': 'Marks validation failed',
+            'errors': validation_errors
+        }, 400)
+
     results = []
 
     for entry in entries:
         student_id = entry['student_id']
+        is_absent = entry.get('is_absent', False)
+        is_exempted = entry.get('is_exempted', False)
+
+        # If absent, force marks_obtained to None
+        marks = None if is_absent else entry.get('marks_obtained')
+
         # Upsert ExamResult
         result = ExamResult.query.filter_by(
             exam_schedule_id=exam_schedule_id,
@@ -899,27 +1239,24 @@ def bulk_marks_entry():
             school_id=g.school_id,
         ).first()
 
-        marks = entry.get('marks_obtained')
-        is_absent = entry.get('is_absent', False)
-        is_exempted = entry.get('is_exempted', False)
-
-        # Calculate grade if grading system exists
+        # Calculate grade if marks provided
         grade_name = None
         grade_point = None
         percentage = None
         if marks is not None and schedule.max_marks and float(schedule.max_marks) > 0:
-            percentage = (float(marks) / float(schedule.max_marks)) * 100
             exam = schedule.exam
-            if exam and exam.grading_system_id:
-                grade_obj = Grade.query.filter(
-                    Grade.grading_system_id == exam.grading_system_id,
-                    Grade.school_id == g.school_id,
-                    Grade.min_marks <= percentage,
-                    Grade.max_marks >= percentage
-                ).first()
-                if grade_obj:
-                    grade_name = grade_obj.name
-                    grade_point = float(grade_obj.grade_point) if grade_obj.grade_point else None
+            grading_system_id = exam.grading_system_id if exam else None
+            grade_info = MarksEntryService.calculate_grade(
+                marks_obtained=marks,
+                max_marks=schedule.max_marks,
+                grading_system_id=grading_system_id,
+                school_id=g.school_id
+            )
+            percentage = grade_info['percentage']
+            grade_name = grade_info['grade_name']
+            grade_point = grade_info['grade_point']
+
+        now = datetime.utcnow()
 
         if result:
             result.marks_obtained = marks
@@ -929,8 +1266,8 @@ def bulk_marks_entry():
             result.grade_point = grade_point
             result.percentage = percentage
             result.remarks = entry.get('remarks')
-            result.entered_by = g.user_id if hasattr(g, 'user_id') else None
-            result.updated_at = datetime.utcnow()
+            result.entered_by = g.user_id
+            result.updated_at = now
         else:
             result = ExamResult(
                 exam_schedule_id=exam_schedule_id,
@@ -943,7 +1280,8 @@ def bulk_marks_entry():
                 grade_point=grade_point,
                 percentage=percentage,
                 remarks=entry.get('remarks'),
-                entered_by=g.user_id if hasattr(g, 'user_id') else None,
+                entered_by=g.user_id,
+                entered_at=now,
             )
             db.session.add(result)
         results.append(result)
@@ -983,12 +1321,14 @@ def get_marks_sheet():
             return success_response({'students': [], 'schedules': []})
 
     # Get students for this class
-    student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=class_id or schedules[0].class_id, status='active')
-    if section_id:
-        student_query = student_query.filter_by(current_section_id=section_id)
+    resolve_class_id = class_id or schedules[0].class_id
+    resolve_section_id = section_id or (schedules[0].section_id if len(schedules) == 1 else None)
+    student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=resolve_class_id, status='active')
+    if resolve_section_id:
+        student_query = student_query.filter_by(current_section_id=resolve_section_id)
     if scope and scope.get('section_ids'):
         student_query = student_query.filter(Student.current_section_id.in_(scope['section_ids']))
-    students = student_query.order_by(Student.first_name).all()
+    students = student_query.order_by(Student.roll_no, Student.first_name).all()
 
     # Build marks matrix
     marks_data = []
@@ -997,6 +1337,7 @@ def get_marks_sheet():
             'student_id': student.id,
             'student_name': f"{student.first_name} {student.last_name}",
             'admission_no': student.admission_no,
+            'roll_no': student.roll_no,
             'subjects': []
         }
         total_obtained = 0
@@ -1042,7 +1383,7 @@ def get_marks_sheet():
 
 
 @academics_bp.route('/marks/lock', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller', 'principal')
 def lock_marks():
     data = request.get_json()
     schedule_id = data['exam_schedule_id']
@@ -1053,7 +1394,7 @@ def lock_marks():
 
 
 @academics_bp.route('/marks/unlock', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller', 'principal')
 def unlock_marks():
     data = request.get_json()
     schedule_id = data['exam_schedule_id']
@@ -1324,7 +1665,7 @@ def get_toppers():
 # ============================================================
 
 @academics_bp.route('/admit-cards/generate', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def generate_admit_cards():
     data = request.get_json()
     exam_id = data['exam_id']
@@ -1385,7 +1726,7 @@ def list_admit_cards():
 
 
 @academics_bp.route('/admit-cards/<int:card_id>/status', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def update_admit_card_status(card_id):
     card = ExamAdmitCard.query.filter_by(id=card_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -1401,7 +1742,7 @@ def update_admit_card_status(card_id):
 # ============================================================
 
 @academics_bp.route('/report-cards/generate', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def generate_report_cards():
     """Generate report cards for students"""
     data = request.get_json()
@@ -1561,7 +1902,7 @@ def get_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/<int:rc_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def update_report_card(rc_id):
     rc = ReportCard.query.filter_by(id=rc_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -1573,7 +1914,7 @@ def update_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/publish', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller')
 def publish_report_cards():
     data = request.get_json()
     exam_id = data['exam_id']
@@ -2420,7 +2761,7 @@ def get_syllabus():
 
 
 @academics_bp.route('/syllabus', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def create_syllabus():
     """Create a syllabus chapter"""
     data = request.get_json()
@@ -2458,7 +2799,7 @@ def get_syllabus_detail(syllabus_id):
 
 
 @academics_bp.route('/syllabus/<int:syllabus_id>', methods=['PUT'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def update_syllabus(syllabus_id):
     """Update a syllabus chapter"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
@@ -2475,7 +2816,7 @@ def update_syllabus(syllabus_id):
 
 
 @academics_bp.route('/syllabus/<int:syllabus_id>', methods=['DELETE'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def delete_syllabus(syllabus_id):
     """Delete a syllabus chapter"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
@@ -2487,7 +2828,7 @@ def delete_syllabus(syllabus_id):
 
 
 @academics_bp.route('/syllabus/<int:syllabus_id>/progress', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def add_syllabus_progress(syllabus_id):
     """Log daily syllabus progress"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
@@ -2678,7 +3019,7 @@ def update_lesson_plan(plan_id):
 
 
 @academics_bp.route('/lesson-plans/<int:plan_id>', methods=['DELETE'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def delete_lesson_plan(plan_id):
     """Delete lesson plan"""
     plan = LessonPlan.query.filter_by(id=plan_id, school_id=g.school_id).first()
@@ -2690,7 +3031,7 @@ def delete_lesson_plan(plan_id):
 
 
 @academics_bp.route('/lesson-plans/<int:plan_id>/approve', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def approve_lesson_plan(plan_id):
     """Approve or reject a lesson plan"""
     plan = LessonPlan.query.filter_by(id=plan_id, school_id=g.school_id).first()
@@ -2819,7 +3160,7 @@ def update_homework(hw_id):
 
 
 @academics_bp.route('/homework/<int:hw_id>', methods=['DELETE'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def delete_homework(hw_id):
     """Delete homework"""
     hw = Homework.query.filter_by(id=hw_id, school_id=g.school_id).first()
@@ -3020,7 +3361,7 @@ def get_calendar():
 
 
 @academics_bp.route('/calendar', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def create_calendar_event():
     """Create calendar event"""
     data = request.get_json()
@@ -3049,7 +3390,7 @@ def create_calendar_event():
 
 
 @academics_bp.route('/calendar/<int:event_id>', methods=['PUT'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def update_calendar_event(event_id):
     """Update calendar event"""
     event = AcademicCalendar.query.filter_by(id=event_id, school_id=g.school_id).first()
@@ -3067,7 +3408,7 @@ def update_calendar_event(event_id):
 
 
 @academics_bp.route('/calendar/<int:event_id>', methods=['DELETE'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def delete_calendar_event(event_id):
     """Delete calendar event"""
     event = AcademicCalendar.query.filter_by(id=event_id, school_id=g.school_id).first()
@@ -3109,10 +3450,25 @@ def get_teacher_subjects():
 
 
 @academics_bp.route('/teacher-subjects', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def create_teacher_subject():
-    """Allocate subject to teacher"""
+    """Allocate subject to teacher. Supports many-to-many:
+    a teacher can be assigned to multiple class-sections, and a class can
+    have multiple teachers. Skips creation if the same allocation exists."""
     data = request.get_json()
+
+    # Prevent exact duplicate (same teacher+subject+class+section active)
+    existing = TeacherSubject.query.filter_by(
+        school_id=g.school_id,
+        teacher_id=data.get('teacher_id'),
+        subject_id=data['subject_id'],
+        class_id=data['class_id'],
+        section_id=data.get('section_id'),
+        status='active',
+    ).first()
+    if existing:
+        return error_response('This teacher is already assigned to this subject for this class-section', 400)
+
     alloc = TeacherSubject(
         school_id=g.school_id,
         teacher_id=data.get('teacher_id'),
@@ -3130,7 +3486,7 @@ def create_teacher_subject():
 
 
 @academics_bp.route('/teacher-subjects/<int:alloc_id>', methods=['PUT'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def update_teacher_subject(alloc_id):
     """Update teacher subject allocation"""
     alloc = TeacherSubject.query.filter_by(id=alloc_id, school_id=g.school_id).first()
@@ -3146,7 +3502,7 @@ def update_teacher_subject(alloc_id):
 
 
 @academics_bp.route('/teacher-subjects/<int:alloc_id>', methods=['DELETE'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def delete_teacher_subject(alloc_id):
     """Remove teacher subject allocation"""
     alloc = TeacherSubject.query.filter_by(id=alloc_id, school_id=g.school_id).first()
@@ -3242,7 +3598,7 @@ def get_class_teachers():
 
 
 @academics_bp.route('/class-teachers/assign', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller')
 def assign_class_teacher():
     """Assign class teacher and/or co-class teacher to a section"""
     data = request.get_json()
@@ -3268,6 +3624,19 @@ def assign_class_teacher():
         teacher = Staff.query.filter_by(id=class_teacher_id, school_id=g.school_id, status='active').first()
         if not teacher:
             return error_response('Class teacher not found or inactive')
+        # Enforce: one teacher can be class teacher of only ONE section
+        conflict = Section.query.filter(
+            Section.school_id == g.school_id,
+            Section.class_teacher_id == class_teacher_id,
+            Section.id != section_id
+        ).first()
+        if conflict:
+            conflict_cls = Class.query.get(conflict.class_id)
+            cname = f"{conflict_cls.name if conflict_cls else ''} - {conflict.name}".strip(' -')
+            return error_response(
+                f'This teacher is already the class teacher of {cname}. '
+                f'A teacher can be class teacher of only one section.'
+            )
         section.class_teacher_id = class_teacher_id
 
     if co_class_teacher_id:
@@ -3321,7 +3690,7 @@ def get_my_class():
             'section_name': sec.name,
             'class_name': cls.name if cls else None,
             'role': 'Class Teacher',
-            'student_count': Student.query.filter_by(school_id=g.school_id, class_id=sec.class_id, section_id=sec.id, status='active').count(),
+            'student_count': Student.query.filter_by(school_id=g.school_id, current_class_id=sec.class_id, current_section_id=sec.id, status='active').count(),
             'responsibilities': CLASS_TEACHER_RESPONSIBILITIES
         })
     for sec in as_cct:
@@ -3331,11 +3700,143 @@ def get_my_class():
             'section_name': sec.name,
             'class_name': cls.name if cls else None,
             'role': 'Co-Class Teacher',
-            'student_count': Student.query.filter_by(school_id=g.school_id, class_id=sec.class_id, section_id=sec.id, status='active').count(),
+            'student_count': Student.query.filter_by(school_id=g.school_id, current_class_id=sec.class_id, current_section_id=sec.id, status='active').count(),
             'responsibilities': CO_CLASS_TEACHER_RESPONSIBILITIES
         })
 
     return success_response(result)
+
+
+# ============================================================
+# CLASS TEACHER — STUDENT SUBJECT ENROLLMENT (scoped to own section)
+# A class teacher decides which subjects EACH STUDENT in their section
+# will study this academic year. Teacher-to-subject assignment is handled
+# separately by the subject teacher / academic controller.
+# ============================================================
+
+def _resolve_class_teacher_section():
+    """Return (staff, section) for the logged-in class teacher, or (staff, None)."""
+    staff = Staff.query.filter_by(school_id=g.school_id, user_id=g.user_id).first()
+    if not staff:
+        return None, None
+    section = Section.query.filter_by(school_id=g.school_id, class_teacher_id=staff.id).first()
+    return staff, section
+
+
+@academics_bp.route('/class-teacher/roster', methods=['GET'])
+@school_required
+@role_required('teacher')
+def class_teacher_roster():
+    """Return the class teacher's section, its students, and available subjects,
+    plus each student's current subject enrollments for the academic year."""
+    staff, section = _resolve_class_teacher_section()
+    if not staff:
+        return error_response('Staff record not found', 404)
+    if not section:
+        return error_response('You are not assigned as a class teacher of any section', 403)
+
+    cls = Class.query.get(section.class_id)
+
+    # Current academic year
+    ay = AcademicYear.query.filter_by(school_id=g.school_id, is_current=True).first()
+    ay_id = ay.id if ay else None
+
+    students = Student.query.filter_by(
+        school_id=g.school_id,
+        current_class_id=section.class_id,
+        current_section_id=section.id,
+        status='active'
+    ).order_by(Student.roll_no, Student.first_name).all()
+
+    subjects = Subject.query.filter_by(school_id=g.school_id, is_active=True).all()
+
+    # Build enrollment map: student_id -> [subject_id,...]
+    enr_query = StudentSubjectEnrollment.query.filter_by(
+        school_id=g.school_id, section_id=section.id
+    )
+    if ay_id:
+        enr_query = enr_query.filter_by(academic_year_id=ay_id)
+    enrollments = enr_query.all()
+
+    enr_map = {}
+    enr_id_map = {}
+    for e in enrollments:
+        enr_map.setdefault(e.student_id, []).append(e.subject_id)
+        enr_id_map[f"{e.student_id}_{e.subject_id}"] = e.id
+
+    return success_response({
+        'class_id': section.class_id,
+        'class_name': cls.name if cls else None,
+        'section_id': section.id,
+        'section_name': section.name,
+        'academic_year_id': ay_id,
+        'subjects': [s.to_dict() for s in subjects],
+        'students': [{
+            'student_id': s.id,
+            'student_name': f"{s.first_name} {s.last_name or ''}".strip(),
+            'admission_no': s.admission_no,
+            'roll_no': s.roll_no,
+            'enrolled_subject_ids': enr_map.get(s.id, []),
+        } for s in students],
+        'enrollment_ids': enr_id_map,
+    })
+
+
+@academics_bp.route('/class-teacher/enrollments', methods=['POST'])
+@school_required
+@role_required('teacher')
+def class_teacher_set_enrollments():
+    """Set the subjects for a single student in the class teacher's section.
+
+    Body: { student_id, subject_ids: [..] }
+    Replaces the student's enrollment set for the current academic year.
+    """
+    staff, section = _resolve_class_teacher_section()
+    if not staff:
+        return error_response('Staff record not found', 404)
+    if not section:
+        return error_response('You are not assigned as a class teacher of any section', 403)
+
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    subject_ids = data.get('subject_ids', [])
+    if not student_id:
+        return error_response('student_id is required', 400)
+
+    # Student must belong to this class teacher's section
+    student = Student.query.filter_by(
+        id=student_id, school_id=g.school_id,
+        current_class_id=section.class_id, current_section_id=section.id
+    ).first()
+    if not student:
+        return error_response('Student is not in your section', 403)
+
+    ay = AcademicYear.query.filter_by(school_id=g.school_id, is_current=True).first()
+    ay_id = ay.id if ay else None
+
+    # Remove existing enrollments for this student+year, then re-add the given set
+    existing = StudentSubjectEnrollment.query.filter_by(
+        school_id=g.school_id, student_id=student_id, academic_year_id=ay_id
+    ).all()
+    for e in existing:
+        db.session.delete(e)
+
+    added = []
+    for sid in subject_ids:
+        subject = Subject.query.filter_by(id=sid, school_id=g.school_id).first()
+        if not subject:
+            continue
+        enr = StudentSubjectEnrollment(
+            school_id=g.school_id, student_id=student_id, subject_id=sid,
+            class_id=section.class_id, section_id=section.id,
+            academic_year_id=ay_id, enrolled_by=g.user_id
+        )
+        db.session.add(enr)
+        added.append(sid)
+
+    db.session.commit()
+    return success_response({'student_id': student_id, 'subject_ids': added},
+                            'Student subjects updated')
 
 
 # ============================================================
@@ -3355,7 +3856,7 @@ def get_elective_groups():
 
 
 @academics_bp.route('/elective-groups', methods=['POST'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def create_elective_group():
     """Create elective group"""
     data = request.get_json()
@@ -3385,7 +3886,7 @@ def create_elective_group():
 
 
 @academics_bp.route('/elective-groups/<int:group_id>', methods=['PUT'])
-@school_required
+@role_required('school_admin', 'academic_controller')
 def update_elective_group(group_id):
     """Update elective group"""
     group = ElectiveGroup.query.filter_by(id=group_id, school_id=g.school_id).first()

@@ -66,6 +66,14 @@ def create_app(config_name='default'):
     from app.routes.superadmin import superadmin_bp
     from app.routes.superadmin_staff import staff_bp as platform_staff_bp
     from app.routes.payment_gateway import payment_bp
+    from app.routes.student_portal import student_portal_bp
+    from app.routes.uploads import uploads_bp
+    from app.routes.principal import principal_bp
+    from app.routes.exam_management import exam_mgmt_bp
+    from app.routes.academic_controller import academic_controller_bp
+    from app.routes.global_features import global_bp
+    from app.routes.marks_entry import marks_entry_bp
+    from app.routes.store import store_bp
 
     app.register_blueprint(platform_staff_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -91,5 +99,22 @@ def create_app(config_name='default'):
     app.register_blueprint(imports_bp, url_prefix='/api/imports')
     app.register_blueprint(superadmin_bp, url_prefix='/api/superadmin')
     app.register_blueprint(payment_bp, url_prefix='/api/payments')
+    app.register_blueprint(student_portal_bp, url_prefix='/api/student')
+    app.register_blueprint(uploads_bp, url_prefix='/api/files')
+    app.register_blueprint(principal_bp, url_prefix='/api/principal')
+    app.register_blueprint(exam_mgmt_bp, url_prefix='/api/exam-mgmt')
+    app.register_blueprint(academic_controller_bp, url_prefix='/api/academic-controller')
+    app.register_blueprint(global_bp, url_prefix='/api/global')
+    app.register_blueprint(marks_entry_bp, url_prefix='/api/marks-entry')
+    app.register_blueprint(store_bp, url_prefix='/api/store')
+
+    # Serve uploaded files (question papers, etc.)
+    import os
+    from flask import send_from_directory
+
+    @app.route('/uploads/<path:filename>')
+    def serve_upload(filename):
+        upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
+        return send_from_directory(upload_dir, filename)
 
     return app

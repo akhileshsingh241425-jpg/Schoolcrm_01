@@ -184,7 +184,7 @@ def get_teacher_dashboard():
     student_count = Student.query.filter(
         Student.school_id == school_id,
         Student.status == 'active',
-        Student.section_id.in_(my_section_ids)
+        Student.current_section_id.in_(my_section_ids)
     ).count() if my_section_ids else 0
 
     # Today's attendance for teacher's sections
@@ -235,11 +235,11 @@ def get_teacher_dashboard():
     if my_section_ids:
         students_query = Student.query.filter(
             Student.school_id == school_id,
-            Student.section_id.in_(my_section_ids),
+            Student.current_section_id.in_(my_section_ids),
             Student.status == 'active'
         ).options(
-            joinedload(Student.class_ref),
-            joinedload(Student.section_ref)
+            joinedload(Student.current_class),
+            joinedload(Student.current_section)
         ).all()
 
         for s in students_query:
@@ -274,10 +274,10 @@ def get_teacher_dashboard():
                 'first_name': s.first_name,
                 'last_name': s.last_name,
                 'roll_no': s.roll_no,
-                'class_id': s.class_id,
-                'class_name': s.class_ref.name if s.class_ref else None,
-                'section_id': s.section_id,
-                'section_name': s.section_ref.name if s.section_ref else None,
+                'class_id': s.current_class_id,
+                'class_name': s.current_class.name if s.current_class else None,
+                'section_id': s.current_section_id,
+                'section_name': s.current_section.name if s.current_section else None,
                 'status': s.status,
                 'attendance_percentage': att_pct,
                 'marks': marks,
@@ -320,7 +320,7 @@ def get_teacher_dashboard():
             'class_name': s.class_ref.name if s.class_ref else None,
             'role': 'Class Teacher' if s.class_teacher_id == staff.id else 'Co-Class Teacher',
             'student_count': Student.query.filter_by(
-                school_id=school_id, class_id=s.class_id, section_id=s.id, status='active'
+                school_id=school_id, current_class_id=s.class_id, current_section_id=s.id, status='active'
             ).count()
         } for s in my_sections],
         'my_subjects': [{

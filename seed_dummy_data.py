@@ -147,6 +147,7 @@ def random_date(start, end):
 def seed_data(school_code):
     app = create_app()
     with app.app_context():
+        seed_password = input('Enter password for all seed users: ')
         school = School.query.filter_by(code=school_code).first()
         if not school:
             print(f"School with code '{school_code}' not found!")
@@ -288,7 +289,7 @@ def seed_data(school_code):
                         user = User(
                             school_id=school_id, role_id=role_teacher.id,
                             email=staff.email, first_name=fn, last_name=ln,
-                            password_hash=generate_password_hash('password123'),
+                            password_hash=generate_password_hash(seed_password),
                             is_active=True
                         )
                         db.session.add(user)
