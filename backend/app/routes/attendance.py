@@ -13,7 +13,7 @@ from app.models.student import Student, Class, Section
 from app.models.academic import Timetable, Subject
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, get_teacher_scope
+from app.utils.helpers import success_response, error_response, get_teacher_scope, validate
 
 attendance_bp = Blueprint('attendance', __name__)
 
@@ -112,8 +112,9 @@ def get_student_attendance():
 
 @attendance_bp.route('/students', methods=['POST'])
 @role_required('school_admin', 'super_admin', 'principal', 'teacher')
+@validate({'attendance': {'required': True}})
 def mark_student_attendance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     att_date = data.get('date', date.today().isoformat())
     records = data.get('attendance', [])
     period = data.get('period')  # None = full day
@@ -354,8 +355,9 @@ def get_period_attendance():
 
 @attendance_bp.route('/period', methods=['POST'])
 @role_required('school_admin', 'super_admin', 'principal', 'teacher')
+@validate({'period': {'required': True, 'type': int}, 'attendance': {'required': True}})
 def mark_period_attendance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     att_date = data.get('date', date.today().isoformat())
     period = data.get('period')
     records = data.get('attendance', [])
@@ -430,8 +432,9 @@ def get_staff_attendance():
 
 @attendance_bp.route('/staff', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({'attendance': {'required': True}})
 def mark_staff_attendance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     att_date = data.get('date', date.today().isoformat())
     records = data.get('attendance', [])
     capture_mode = data.get('capture_mode', 'manual')
@@ -510,8 +513,9 @@ def get_leave_types():
 
 @attendance_bp.route('/leave-types', methods=['POST'])
 @role_required('school_admin')
+@validate({'name': {'required': True}, 'code': {'required': True}, 'max_days_per_year': {'type': int}})
 def create_leave_type():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     lt = LeaveType(
         school_id=g.school_id,
         name=data['name'], code=data['code'],
@@ -529,9 +533,10 @@ def create_leave_type():
 
 @attendance_bp.route('/leave-types/<int:id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({})
 def update_leave_type(id):
     lt = LeaveType.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'code', 'applies_to', 'max_days_per_year', 'requires_document',
                   'is_paid', 'carry_forward', 'description', 'is_active']:
         if field in data:
@@ -575,8 +580,9 @@ def get_leave_applications():
 
 @attendance_bp.route('/leaves', methods=['POST'])
 @school_required
+@validate({'from_date': {'required': True}, 'to_date': {'required': True}, 'applicant_type': {'required': True}, 'applicant_id': {'required': True, 'type': int}, 'reason': {'required': True}, 'leave_type_id': {'type': int}})
 def apply_leave():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     from_d = date.fromisoformat(data['from_date'])
     to_d = date.fromisoformat(data['to_date'])
     days = (to_d - from_d).days + 1
@@ -612,9 +618,10 @@ def get_leave_detail(id):
 
 @attendance_bp.route('/leaves/<int:id>/approve', methods=['PUT'])
 @role_required('school_admin')
+@validate({'action': {'required': True}})
 def approve_reject_leave(id):
     la = LeaveApplication.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     action = data.get('action')  # 'approve' or 'reject'
 
     if action == 'approve':
@@ -713,8 +720,9 @@ def get_late_arrivals():
 
 @attendance_bp.route('/late-arrivals', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'person_type': {'required': True}, 'person_id': {'required': True, 'type': int}, 'arrival_time': {'required': True}, 'late_by_minutes': {'type': int}})
 def record_late_arrival():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     # Teacher scoping: only allow recording for students in their sections
     scope = get_teacher_scope()
@@ -756,8 +764,9 @@ def get_attendance_rules():
 
 @attendance_bp.route('/rules', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def save_attendance_rules():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     rule = AttendanceRule.query.filter_by(school_id=g.school_id).first()
     if not rule:
         rule = AttendanceRule(school_id=g.school_id)
@@ -787,8 +796,9 @@ def get_devices():
 
 @attendance_bp.route('/devices', methods=['POST'])
 @role_required('school_admin')
+@validate({'device_name': {'required': True}, 'device_type': {'required': True}})
 def add_device():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     device = AttendanceDevice(
         school_id=g.school_id,
         device_name=data['device_name'],
@@ -804,9 +814,10 @@ def add_device():
 
 @attendance_bp.route('/devices/<int:id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({})
 def update_device(id):
     device = AttendanceDevice.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['device_name', 'device_type', 'location', 'serial_number', 'ip_address', 'status']:
         if field in data:
             setattr(device, field, data[field])
@@ -860,8 +871,9 @@ def get_event_attendance():
 
 @attendance_bp.route('/events', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'event_name': {'required': True}, 'event_date': {'required': True}, 'attendance': {'required': True}})
 def mark_event_attendance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     event_name = data['event_name']
     event_type = data.get('event_type', 'other')
     event_date = data['event_date']
@@ -1301,9 +1313,10 @@ def get_substitutions():
 
 @attendance_bp.route('/substitutions', methods=['POST'])
 @school_required
+@validate({'absent_teacher_id': {'required': True, 'type': int}, 'substitute_teacher_id': {'required': True, 'type': int}, 'date': {'required': True}, 'period_number': {'required': True, 'type': int}, 'class_id': {'required': True, 'type': int}, 'section_id': {'required': True, 'type': int}, 'timetable_id': {'type': int}})
 def create_substitution():
     """Assign a substitute teacher"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     required = ['absent_teacher_id', 'substitute_teacher_id', 'date', 'period_number', 'class_id', 'section_id']
     for field in required:
         if field not in data:
@@ -1352,13 +1365,14 @@ def create_substitution():
 
 @attendance_bp.route('/substitutions/<int:sub_id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_substitution(sub_id):
     """Update substitution status or details"""
     sub = SubstituteAssignment.query.filter_by(id=sub_id, school_id=g.school_id).first()
     if not sub:
         return error_response('Substitution not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     if 'status' in data:
         sub.status = data['status']

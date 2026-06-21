@@ -7,7 +7,7 @@ from app.models.inventory import (
 from app.models.student import Student
 from app.models.staff import Staff
 from app.utils.decorators import school_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from datetime import datetime
 from sqlalchemy import func, desc
 
@@ -93,9 +93,16 @@ def get_item(id):
 
 @store_bp.route('/items/<int:id>', methods=['PUT'])
 @school_required
+@validate({
+    'unit_price': {'type': float, 'min': 0},
+    'quantity': {'type': int, 'min': 0},
+    'min_stock_level': {'type': int, 'min': 0},
+    'max_stock_level': {'type': int, 'min': 0},
+    'reorder_quantity': {'type': int, 'min': 0},
+})
 def update_item(id):
     item = InventoryItem.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'description', 'sku', 'unit', 'location']:
         if k in data:
             setattr(item, k, data[k])
@@ -125,8 +132,17 @@ def update_item(id):
 
 @store_bp.route('/items', methods=['POST'])
 @school_required
+@validate({
+    'name': {'required': True},
+    'category_id': {'type': int},
+    'unit_price': {'type': float, 'min': 0},
+    'quantity': {'type': int, 'min': 0},
+    'min_stock_level': {'type': int, 'min': 0},
+    'max_stock_level': {'type': int, 'min': 0},
+    'reorder_quantity': {'type': int, 'min': 0},
+})
 def create_item():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     name = data.get('name')
     if not name:
         return error_response('Item name is required')
@@ -202,8 +218,11 @@ def list_categories():
 
 @store_bp.route('/categories', methods=['POST'])
 @school_required
+@validate({
+    'name': {'required': True},
+})
 def create_category():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     name = data.get('name')
     if not name:
         return error_response('Category name is required')
@@ -215,8 +234,13 @@ def create_category():
 
 @store_bp.route('/allocate', methods=['POST'])
 @school_required
+@validate({
+    'item_id': {'required': True, 'type': int},
+    'quantity': {'required': True, 'type': int, 'min': 1},
+    'recipient_id': {'type': int},
+})
 def allocate_item():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item_id = data.get('item_id')
     quantity = data.get('quantity', 1)
     issued_to = data.get('issued_to', '')
@@ -266,13 +290,14 @@ def allocate_item():
 
 @store_bp.route('/return', methods=['POST'])
 @school_required
+@validate({
+    'item_id': {'required': True, 'type': int},
+    'quantity': {'required': True, 'type': int, 'min': 1},
+})
 def return_item():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item_id = data.get('item_id')
     quantity = data.get('quantity', 1)
-    returned_by = data.get('returned_by', '')
-    user_remarks = data.get('remarks', '')
-    return_date = data.get('return_date', '')
 
     if not item_id or not quantity:
         return error_response('Item ID and quantity are required')
@@ -301,12 +326,14 @@ def return_item():
 
 @store_bp.route('/stock-in', methods=['POST'])
 @school_required
+@validate({
+    'item_id': {'required': True, 'type': int},
+    'quantity': {'required': True, 'type': int, 'min': 1},
+})
 def stock_in():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item_id = data.get('item_id')
     quantity = data.get('quantity', 1)
-    user_remarks = data.get('remarks', '')
-    reference = data.get('reference', 'manual')
 
     if not item_id or quantity < 1:
         return error_response('Item ID and quantity are required')
@@ -332,11 +359,14 @@ def stock_in():
 
 @store_bp.route('/adjust-stock', methods=['POST'])
 @school_required
+@validate({
+    'item_id': {'required': True, 'type': int},
+    'quantity': {'required': True, 'type': int, 'min': 0},
+})
 def adjust_stock():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item_id = data.get('item_id')
     new_quantity = data.get('quantity')
-    user_remarks = data.get('remarks', '')
 
     if not item_id or new_quantity is None:
         return error_response('Item ID and quantity are required')

@@ -28,6 +28,30 @@ def create_app(config_name='default'):
     mail.init_app(app)
     limiter.init_app(app)
 
+    # ── Global JSON sanitization: empty strings -> None for ALL routes ──
+    import json as _json
+
+    def _sanitize(obj):
+        if isinstance(obj, dict):
+            return {k: _sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_sanitize(i) for i in obj]
+        if isinstance(obj, str) and (obj.strip() == '' or obj == 'null'):
+            return None
+        return obj
+
+    @app.before_request
+    def sanitize_json_data():
+        if request.is_json and request.method in ('POST', 'PUT', 'PATCH'):
+            try:
+                raw = request.get_data(as_text=True)
+                if raw:
+                    parsed = _json.loads(raw)
+                    cleaned = _sanitize(parsed)
+                    request._cached_json = (cleaned, request._cached_json[1] if request._cached_json else {})
+            except Exception:
+                pass
+
     # Handle expired/invalid JWT errors gracefully
     @jwt.invalid_token_loader
     def invalid_token_callback(error_string):

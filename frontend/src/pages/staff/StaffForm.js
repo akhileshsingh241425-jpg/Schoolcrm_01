@@ -4,6 +4,7 @@ import { Box, Typography, Paper, Grid, TextField, Button, MenuItem } from '@mui/
 import { Save, ArrowBack } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { staffAPI } from '../../services/api';
+import { VTextField, VSelect, validateForm } from '../../components/Validation';
 
 export default function StaffForm() {
   const navigate = useNavigate();
@@ -23,6 +24,12 @@ export default function StaffForm() {
   const handleChange = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
   const handleSubmit = async (e) => {
+    const errs = validateForm(form, {
+      first_name: ['required'],
+      email: ['email'],
+      phone: ['phone'],
+    });
+    if (Object.keys(errs).length) { setError(Object.values(errs)[0]); return; }
     e.preventDefault();
     try {
       await staffAPI.create(form);

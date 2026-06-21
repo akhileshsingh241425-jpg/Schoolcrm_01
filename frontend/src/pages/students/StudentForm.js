@@ -7,6 +7,7 @@ import {
 import { Save, ArrowBack, Add, Delete, NavigateNext, NavigateBefore } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { studentsAPI } from '../../services/api';
+import { VTextField, VSelect, validateForm } from '../../components/Validation';
 
 const STEPS = ['Personal Info', 'Academic & Address', 'Parent / Guardian', 'Medical & Transport', 'Additional Info'];
 
@@ -85,6 +86,12 @@ export default function StudentForm() {
   const removeParent = (idx) => setForm({ ...form, parents: form.parents.filter((_, i) => i !== idx) });
 
   const handleSubmit = async () => {
+    const errs = validateForm(form, {
+      first_name: ['required'],
+      email: ['email'],
+      phone: ['phone'],
+    });
+    if (Object.keys(errs).length) { setError(Object.values(errs)[0]); return; }
     if (!form.first_name) { toast.error('First name is required'); setActiveStep(0); return; }
     setSaving(true);
     try {

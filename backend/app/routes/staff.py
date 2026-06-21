@@ -8,7 +8,7 @@ from app.models.staff import (
 from app.models.school import School
 from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, clean_val
+from app.utils.helpers import success_response, error_response, paginate, clean_val, validate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import io
@@ -166,9 +166,13 @@ def create_staff():
 
 @staff_bp.route('/<int:staff_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'experience_years': {'type': int, 'min': 0, 'max': 70},
+    'salary': {'type': float, 'min': 0},
+})
 def update_staff(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     updatable = ['first_name', 'last_name', 'gender', 'phone', 'email',
                  'qualification', 'experience_years', 'designation', 'department',
@@ -248,9 +252,12 @@ def list_documents(staff_id):
 
 @staff_bp.route('/<int:staff_id>/documents', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'document_type': {'required': True},
+})
 def add_document(staff_id):
     Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     doc = StaffDocument(
         staff_id=staff_id, school_id=g.school_id,
         document_type=data['document_type'],
@@ -300,8 +307,23 @@ def list_salary_structures():
 
 @staff_bp.route('/salary-structures', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'basic_salary': {'type': float, 'min': 0},
+    'hra': {'type': float, 'min': 0},
+    'da': {'type': float, 'min': 0},
+    'ta': {'type': float, 'min': 0},
+    'medical_allowance': {'type': float, 'min': 0},
+    'special_allowance': {'type': float, 'min': 0},
+    'other_allowance': {'type': float, 'min': 0},
+    'pf_deduction': {'type': float, 'min': 0},
+    'esi_deduction': {'type': float, 'min': 0},
+    'tds': {'type': float, 'min': 0},
+    'professional_tax': {'type': float, 'min': 0},
+    'other_deduction': {'type': float, 'min': 0},
+})
 def create_salary_structure():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     staff_id = data['staff_id']
     Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
     # Deactivate existing
@@ -329,9 +351,23 @@ def create_salary_structure():
 
 @staff_bp.route('/salary-structures/<int:ss_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'basic_salary': {'type': float, 'min': 0},
+    'hra': {'type': float, 'min': 0},
+    'da': {'type': float, 'min': 0},
+    'ta': {'type': float, 'min': 0},
+    'medical_allowance': {'type': float, 'min': 0},
+    'special_allowance': {'type': float, 'min': 0},
+    'other_allowance': {'type': float, 'min': 0},
+    'pf_deduction': {'type': float, 'min': 0},
+    'esi_deduction': {'type': float, 'min': 0},
+    'tds': {'type': float, 'min': 0},
+    'professional_tax': {'type': float, 'min': 0},
+    'other_deduction': {'type': float, 'min': 0},
+})
 def update_salary_structure(ss_id):
     ss = SalaryStructure.query.filter_by(id=ss_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['basic_salary', 'hra', 'da', 'ta', 'medical_allowance', 'special_allowance',
               'other_allowance', 'pf_deduction', 'esi_deduction', 'tds', 'professional_tax',
               'other_deduction', 'effective_from', 'is_active']:
@@ -367,8 +403,12 @@ def list_payroll():
 
 @staff_bp.route('/payroll/generate', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'month': {'required': True, 'type': int, 'min': 1, 'max': 12},
+    'year': {'required': True, 'type': int},
+})
 def generate_payroll():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     month = data['month']
     year = data['year']
 
@@ -433,9 +473,14 @@ def generate_payroll():
 
 @staff_bp.route('/payroll/<int:payroll_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'overtime_hours': {'type': float, 'min': 0},
+    'overtime_amount': {'type': float, 'min': 0},
+    'leave_deduction': {'type': float, 'min': 0},
+})
 def update_payroll(payroll_id):
     pr = StaffPayroll.query.filter_by(id=payroll_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['payment_status', 'payment_date', 'payment_mode', 'transaction_ref',
               'remarks', 'overtime_hours', 'overtime_amount', 'leave_deduction']:
         if f in data:
@@ -449,8 +494,16 @@ def update_payroll(payroll_id):
 
 @staff_bp.route('/payroll', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'month': {'required': True, 'type': int, 'min': 1, 'max': 12},
+    'year': {'required': True, 'type': int},
+    'basic_salary': {'type': float, 'min': 0},
+    'net_salary': {'type': float, 'min': 0},
+    'gross_salary': {'type': float, 'min': 0},
+})
 def create_payroll():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     payroll = StaffPayroll(
         staff_id=data['staff_id'], school_id=g.school_id,
         month=data['month'], year=data['year'],
@@ -706,8 +759,15 @@ def list_leaves():
 
 @staff_bp.route('/leaves', methods=['POST'])
 @school_required
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'leave_type': {'required': True},
+    'from_date': {'required': True},
+    'to_date': {'required': True},
+    'days': {'required': True, 'type': int, 'min': 1},
+})
 def apply_leave():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     leave = StaffLeave(
         staff_id=data['staff_id'], school_id=g.school_id,
         leave_type=data['leave_type'],
@@ -722,9 +782,12 @@ def apply_leave():
 
 @staff_bp.route('/leaves/<int:leave_id>/approve', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'action': {'required': True},
+})
 def approve_leave(leave_id):
     leave = StaffLeave.query.filter_by(id=leave_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     action = data.get('action', 'approved')
     leave.status = action
     leave.approved_by = g.current_user.id
@@ -772,8 +835,20 @@ def get_leave_balance():
 
 @staff_bp.route('/leave-balance', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'year': {'type': int},
+    'cl_total': {'type': int, 'min': 0},
+    'el_total': {'type': int, 'min': 0},
+    'sl_total': {'type': int, 'min': 0},
+    'ml_total': {'type': int, 'min': 0},
+    'cl_used': {'type': int, 'min': 0},
+    'el_used': {'type': int, 'min': 0},
+    'sl_used': {'type': int, 'min': 0},
+    'ml_used': {'type': int, 'min': 0},
+})
 def set_leave_balance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     staff_id = data['staff_id']
     yr = data.get('year', date.today().year)
     lb = StaffLeaveBalance.query.filter_by(staff_id=staff_id, school_id=g.school_id, year=yr).first()
@@ -807,8 +882,16 @@ def list_reviews():
 
 @staff_bp.route('/reviews', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'teaching_rating': {'type': float, 'min': 0, 'max': 5},
+    'punctuality_rating': {'type': float, 'min': 0, 'max': 5},
+    'communication_rating': {'type': float, 'min': 0, 'max': 5},
+    'knowledge_rating': {'type': float, 'min': 0, 'max': 5},
+    'teamwork_rating': {'type': float, 'min': 0, 'max': 5},
+})
 def create_review():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     ratings = [data.get(f, 0) or 0 for f in
                ['teaching_rating', 'punctuality_rating', 'communication_rating',
                 'knowledge_rating', 'teamwork_rating']]
@@ -839,9 +922,16 @@ def create_review():
 
 @staff_bp.route('/reviews/<int:rev_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'teaching_rating': {'type': float, 'min': 0, 'max': 5},
+    'punctuality_rating': {'type': float, 'min': 0, 'max': 5},
+    'communication_rating': {'type': float, 'min': 0, 'max': 5},
+    'knowledge_rating': {'type': float, 'min': 0, 'max': 5},
+    'teamwork_rating': {'type': float, 'min': 0, 'max': 5},
+})
 def update_review(rev_id):
     review = PerformanceReview.query.filter_by(id=rev_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['teaching_rating', 'punctuality_rating', 'communication_rating',
               'knowledge_rating', 'teamwork_rating', 'strengths', 'improvements',
               'goals', 'comments', 'status']:
@@ -871,8 +961,12 @@ def list_recruitment():
 
 @staff_bp.route('/recruitment', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'job_title': {'required': True},
+    'vacancies': {'type': int, 'min': 1},
+})
 def create_recruitment():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     rec = Recruitment(
         school_id=g.school_id,
         job_title=data['job_title'],
@@ -891,9 +985,12 @@ def create_recruitment():
 
 @staff_bp.route('/recruitment/<int:rec_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'vacancies': {'type': int, 'min': 1},
+})
 def update_recruitment(rec_id):
     rec = Recruitment.query.filter_by(id=rec_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['job_title', 'department', 'designation', 'vacancies', 'description',
               'requirements', 'salary_range', 'application_deadline', 'status']:
         if f in data:
@@ -917,9 +1014,13 @@ def list_applications(rec_id):
 
 @staff_bp.route('/recruitment/<int:rec_id>/applications', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'applicant_name': {'required': True},
+    'experience_years': {'type': int, 'min': 0},
+})
 def add_application(rec_id):
     Recruitment.query.filter_by(id=rec_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     application = JobApplication(
         recruitment_id=rec_id, school_id=g.school_id,
         applicant_name=data['applicant_name'],
@@ -936,9 +1037,12 @@ def add_application(rec_id):
 
 @staff_bp.route('/applications/<int:app_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'rating': {'type': float, 'min': 0, 'max': 10},
+})
 def update_application(app_id):
     application = JobApplication.query.filter_by(id=app_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['status', 'interview_date', 'interview_notes', 'rating']:
         if f in data:
             setattr(application, f, data[f])
@@ -964,8 +1068,14 @@ def list_trainings():
 
 @staff_bp.route('/trainings', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'training_name': {'required': True},
+    'hours': {'type': float, 'min': 0},
+    'cpd_points': {'type': int, 'min': 0},
+})
 def create_training():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     tr = TrainingRecord(
         staff_id=data['staff_id'], school_id=g.school_id,
         training_name=data['training_name'],
@@ -986,9 +1096,13 @@ def create_training():
 
 @staff_bp.route('/trainings/<int:tr_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'hours': {'type': float, 'min': 0},
+    'cpd_points': {'type': int, 'min': 0},
+})
 def update_training(tr_id):
     tr = TrainingRecord.query.filter_by(id=tr_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['training_name', 'training_type', 'provider', 'start_date',
               'end_date', 'hours', 'cpd_points', 'certificate_url', 'status', 'remarks']:
         if f in data:
@@ -1021,8 +1135,13 @@ def list_duties():
 
 @staff_bp.route('/duties', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'required': True, 'type': int},
+    'duty_type': {'required': True},
+    'duty_date': {'required': True},
+})
 def create_duty():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     duty = DutyRoster(
         staff_id=data['staff_id'], school_id=g.school_id,
         duty_type=data['duty_type'],
@@ -1039,9 +1158,12 @@ def create_duty():
 
 @staff_bp.route('/duties/<int:duty_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'staff_id': {'type': int},
+})
 def update_duty(duty_id):
     duty = DutyRoster.query.filter_by(id=duty_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['staff_id', 'duty_type', 'duty_date', 'start_time', 'end_time',
               'location', 'notes', 'status']:
         if f in data:
@@ -1063,9 +1185,10 @@ def delete_duty(duty_id):
 
 @staff_bp.route('/<int:staff_id>/exit', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def initiate_exit(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     member.status = 'on_notice'
     member.exit_date = data.get('exit_date')
     member.exit_reason = data.get('exit_reason')
@@ -1075,9 +1198,10 @@ def initiate_exit(staff_id):
 
 @staff_bp.route('/<int:staff_id>/exit/complete', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def complete_exit(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     member.status = data.get('final_status', 'resigned')
     if data.get('exit_date'):
         member.exit_date = data['exit_date']

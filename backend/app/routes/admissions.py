@@ -7,7 +7,7 @@ from app.models.admission import (
 )
 from app.models.student import Student, Class, Section, AcademicYear, ParentDetail
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from datetime import datetime, date
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, subqueryload
@@ -110,8 +110,12 @@ def get_settings():
 
 @admissions_bp.route('/settings', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'academic_year_id': {'type': int},
+    'admission_fee_amount': {'type': float, 'min': 0},
+})
 def update_settings():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     settings = AdmissionSettings.query.filter_by(school_id=g.school_id).first()
     if not settings:
         settings = AdmissionSettings(school_id=g.school_id)
@@ -220,8 +224,15 @@ def get_admission(admission_id):
 @admissions_bp.route('/', methods=['POST'])
 @school_required
 @feature_required('admission')
+@validate({
+    'student_name': {'required': True},
+    'class_applied': {'type': int},
+    'academic_year_id': {'type': int},
+    'previous_percentage': {'type': float, 'min': 0},
+    'father_income': {'type': float, 'min': 0},
+})
 def create_admission():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if not data.get('student_name'):
         return error_response('Student name is required')
 
@@ -353,9 +364,15 @@ def create_admission():
 @admissions_bp.route('/<int:admission_id>', methods=['PUT'])
 @school_required
 @feature_required('admission')
+@validate({
+    'class_applied': {'type': int},
+    'academic_year_id': {'type': int},
+    'previous_percentage': {'type': float, 'min': 0},
+    'father_income': {'type': float, 'min': 0},
+})
 def update_admission(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     if admission.status == 'enrolled':
         return error_response('Cannot edit enrolled application')
@@ -425,9 +442,12 @@ def delete_admission(admission_id):
 @admissions_bp.route('/<int:admission_id>/status', methods=['PUT'])
 @school_required
 @feature_required('admission')
+@validate({
+    'status': {'required': True},
+})
 def update_status(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     new_status = data.get('status')
     remarks = data.get('remarks', '')
 
@@ -471,6 +491,9 @@ def update_status(admission_id):
 
 @admissions_bp.route('/<int:admission_id>/enroll', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'section_id': {'type': int},
+})
 def enroll_student(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
 
@@ -480,7 +503,7 @@ def enroll_student(admission_id):
     if admission.status not in ('approved', 'fee_pending'):
         return error_response('Application must be approved before enrollment')
 
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
 
     # Create student record
     name_parts = admission.student_name.split()
@@ -626,11 +649,12 @@ def upload_document(admission_id):
 
 @admissions_bp.route('/<int:admission_id>/documents/<int:doc_id>/verify', methods=['PUT'])
 @role_required('school_admin', 'receptionist')
+@validate({})
 def verify_document(admission_id, doc_id):
     doc = AdmissionDocument.query.filter_by(
         id=doc_id, admission_id=admission_id, school_id=g.school_id
     ).first_or_404()
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
 
     doc.verified = data.get('verified', True)
     doc.verified_by = g.current_user.id
@@ -674,8 +698,17 @@ def get_seat_matrix():
 
 @admissions_bp.route('/seat-matrix', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'class_id': {'required': True, 'type': int},
+    'total_seats': {'required': True, 'type': int, 'min': 0},
+    'academic_year_id': {'required': True, 'type': int},
+    'section_id': {'type': int},
+    'general_seats': {'type': int, 'min': 0},
+    'rte_seats': {'type': int, 'min': 0},
+    'management_seats': {'type': int, 'min': 0},
+})
 def create_seat_matrix():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     required = ['class_id', 'total_seats', 'academic_year_id']
     for field in required:
         if not data.get(field):
@@ -707,9 +740,16 @@ def create_seat_matrix():
 
 @admissions_bp.route('/seat-matrix/<int:seat_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'total_seats': {'type': int, 'min': 0},
+    'general_seats': {'type': int, 'min': 0},
+    'rte_seats': {'type': int, 'min': 0},
+    'management_seats': {'type': int, 'min': 0},
+    'filled_seats': {'type': int, 'min': 0},
+})
 def update_seat_matrix(seat_id):
     seat = SeatMatrix.query.filter_by(id=seat_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['total_seats', 'general_seats', 'rte_seats', 'management_seats', 'filled_seats']:
         if field in data:
             setattr(seat, field, data[field])
@@ -773,8 +813,16 @@ def list_tests():
 
 @admissions_bp.route('/tests', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'name': {'required': True},
+    'class_id': {'type': int},
+    'academic_year_id': {'type': int},
+    'duration_minutes': {'type': int, 'min': 0},
+    'total_marks': {'type': float, 'min': 0},
+    'passing_marks': {'type': float, 'min': 0},
+})
 def create_test():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if not data.get('name'):
         return error_response('Test name is required')
 
@@ -799,9 +847,15 @@ def create_test():
 
 @admissions_bp.route('/tests/<int:test_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'class_id': {'type': int},
+    'duration_minutes': {'type': int, 'min': 0},
+    'total_marks': {'type': float, 'min': 0},
+    'passing_marks': {'type': float, 'min': 0},
+})
 def update_test(test_id):
     test = AdmissionTest.query.filter_by(id=test_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'class_id', 'duration_minutes', 'total_marks', 'passing_marks', 'venue', 'instructions', 'status']:
         if field in data:
             setattr(test, field, data[field])
@@ -813,10 +867,11 @@ def update_test(test_id):
 
 @admissions_bp.route('/tests/<int:test_id>/assign', methods=['POST'])
 @role_required('school_admin', 'receptionist')
+@validate({})
 def assign_applicants_to_test(test_id):
     """Assign multiple applicants to a test"""
     test = AdmissionTest.query.filter_by(id=test_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     admission_ids = data.get('admission_ids', [])
 
     if not admission_ids:
@@ -862,10 +917,11 @@ def get_test_results(test_id):
 
 @admissions_bp.route('/tests/<int:test_id>/results', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def submit_test_results(test_id):
     """Bulk submit test results"""
     test = AdmissionTest.query.filter_by(id=test_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     results_data = data.get('results', [])
 
     for r in results_data:
@@ -936,8 +992,11 @@ def list_transfer_certificates():
 
 @admissions_bp.route('/transfer-certificates', methods=['POST'])
 @role_required('school_admin', 'receptionist')
+@validate({
+    'student_id': {'required': True, 'type': int},
+})
 def generate_transfer_certificate():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     student_id = data.get('student_id')
     if not student_id:
         return error_response('Student ID is required')
@@ -988,9 +1047,10 @@ def approve_transfer_certificate(tc_id):
 
 @admissions_bp.route('/bulk-import', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def bulk_import():
     """Import admissions from JSON array"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     records = data.get('records', [])
     if not records:
         return error_response('No records provided')

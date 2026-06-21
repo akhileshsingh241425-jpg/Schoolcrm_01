@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
 import { brandingAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const LOGIN_BG = '/assets/images/login-bg.jpg';
 const LOGO_CRM = '/assets/images/logo-crm.svg';
@@ -51,7 +52,14 @@ export default function Login() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true);
+    e.preventDefault(); setError('');
+    const errs = validateForm(form, {
+      school_code: ['required'],
+      email: ['required', 'email'],
+      password: ['required', { minLength: 6 }],
+    });
+    if (Object.keys(errs).length) { setError(Object.values(errs)[0]); return; }
+    setLoading(true);
     try {
       const res = await login(form);
       const userRole = res?.data?.user?.role?.name;

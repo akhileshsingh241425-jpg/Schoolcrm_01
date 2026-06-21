@@ -9,7 +9,7 @@ from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.models.school import School
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val, validate
 from sqlalchemy import false
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
@@ -277,9 +277,15 @@ def create_student():
 
 @students_bp.route('/<int:student_id>', methods=['PUT'])
 @role_required('school_admin', 'teacher')
+@validate({
+    'class_id': {'type': int},
+    'section_id': {'type': int},
+    'academic_year_id': {'type': int},
+    'house_id': {'type': int},
+})
 def update_student(student_id):
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     updatable = ['first_name', 'last_name', 'roll_no', 'gender', 'date_of_birth',
                  'blood_group', 'religion', 'category', 'nationality', 'mother_tongue',
@@ -412,8 +418,11 @@ def list_classes():
 
 @students_bp.route('/classes', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'name': {'required': True},
+})
 def create_class():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cls = Class(school_id=g.school_id, name=data['name'],
                 numeric_name=data.get('numeric_name'), description=data.get('description'))
     db.session.add(cls)
@@ -430,8 +439,13 @@ def list_sections(class_id):
 
 @students_bp.route('/sections', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'class_id': {'required': True, 'type': int},
+    'name': {'required': True},
+    'capacity': {'type': int, 'min': 0},
+})
 def create_section():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     section = Section(school_id=g.school_id, class_id=data['class_id'],
                       name=data['name'], capacity=data.get('capacity', 40))
     db.session.add(section)
@@ -441,9 +455,12 @@ def create_section():
 
 @students_bp.route('/classes/<int:class_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'numeric_name': {'type': int},
+})
 def update_class(class_id):
     cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'name' in data:
         cls.name = data['name']
     if 'numeric_name' in data:
@@ -465,9 +482,14 @@ def delete_class(class_id):
 
 @students_bp.route('/sections/<int:section_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'capacity': {'type': int, 'min': 0},
+    'class_teacher_id': {'type': int},
+    'co_class_teacher_id': {'type': int},
+})
 def update_section(section_id):
     section = Section.query.filter_by(id=section_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'name' in data:
         section.name = data['name']
     if 'capacity' in data:
@@ -500,8 +522,13 @@ def list_academic_years():
 
 @students_bp.route('/academic-years', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'name': {'required': True},
+    'start_date': {'required': True},
+    'end_date': {'required': True},
+})
 def create_academic_year():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if data.get('is_current'):
         AcademicYear.query.filter_by(school_id=g.school_id, is_current=True).update({'is_current': False})
     year = AcademicYear(school_id=g.school_id, name=data['name'],
@@ -527,8 +554,16 @@ def list_promotions():
 
 @students_bp.route('/promote', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'student_id': {'required': True, 'type': int},
+    'to_class_id': {'required': True, 'type': int},
+    'to_section_id': {'type': int},
+    'from_academic_year_id': {'type': int},
+    'to_academic_year_id': {'required': True, 'type': int},
+    'result_percentage': {'type': float, 'min': 0},
+})
 def promote_student():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     student = Student.query.filter_by(id=data['student_id'], school_id=g.school_id).first_or_404()
     promo = StudentPromotion(
         school_id=g.school_id, student_id=student.id,
@@ -563,8 +598,15 @@ def promote_student():
 
 @students_bp.route('/bulk-promote', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'from_class_id': {'required': True, 'type': int},
+    'to_class_id': {'required': True, 'type': int},
+    'from_academic_year_id': {'required': True, 'type': int},
+    'to_academic_year_id': {'required': True, 'type': int},
+    'to_section_id': {'type': int},
+})
 def bulk_promote():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     from_class_id = data['from_class_id']
     to_class_id = data['to_class_id']
     from_ay_id = data['from_academic_year_id']
@@ -622,11 +664,15 @@ def list_achievements(student_id):
 
 @students_bp.route('/<int:student_id>/achievements', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({
+    'title': {'required': True},
+    'points_earned': {'type': int, 'min': 0},
+})
 def add_achievement(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     ach = StudentAchievement(
         school_id=g.school_id, student_id=student_id,
         title=data['title'], category=data.get('category', 'academic'),
@@ -673,11 +719,16 @@ def list_behavior(student_id):
 
 @students_bp.route('/<int:student_id>/behavior', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
+@validate({
+    'behavior_type': {'required': True},
+    'title': {'required': True},
+    'points': {'type': int, 'min': 0},
+})
 def add_behavior(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     beh = StudentBehavior(
         school_id=g.school_id, student_id=student_id,
         behavior_type=data['behavior_type'], category=data.get('category'),
@@ -721,11 +772,14 @@ def get_timeline(student_id):
 
 @students_bp.route('/<int:student_id>/timeline', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
+@validate({
+    'title': {'required': True},
+})
 def add_timeline(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     tl = StudentTimeline(
         school_id=g.school_id, student_id=student_id,
         event_type=data.get('event_type', 'general'), title=data['title'],
@@ -752,11 +806,14 @@ def list_counseling(student_id):
 
 @students_bp.route('/<int:student_id>/counseling', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
+@validate({
+    'session_date': {'required': True},
+})
 def add_counseling(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cs = StudentCounseling(
         school_id=g.school_id, student_id=student_id,
         counselor_id=g.user_id, session_date=data['session_date'],
@@ -780,9 +837,10 @@ def add_counseling(student_id):
 
 @students_bp.route('/counseling/<int:cs_id>', methods=['PUT'])
 @role_required('school_admin', 'counselor')
+@validate({})
 def update_counseling(cs_id):
     cs = StudentCounseling.query.filter_by(id=cs_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['notes', 'recommendations', 'follow_up_date', 'status']:
         if field in data:
             setattr(cs, field, data[field])
@@ -805,11 +863,15 @@ def list_medical(student_id):
 
 @students_bp.route('/<int:student_id>/medical', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
+@validate({
+    'title': {'required': True},
+    'record_date': {'required': True},
+})
 def add_medical(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     med = StudentMedical(
         school_id=g.school_id, student_id=student_id,
         record_type=data.get('record_type', 'checkup'), title=data['title'],
@@ -842,11 +904,15 @@ def list_documents(student_id):
 
 @students_bp.route('/<int:student_id>/documents', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({
+    'document_type': {'required': True},
+    'file_url': {'required': True},
+})
 def upload_document(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
     Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     doc = StudentDocument(
         student_id=student_id, school_id=g.school_id,
         document_type=data['document_type'],
@@ -970,8 +1036,11 @@ def list_houses():
 
 @students_bp.route('/houses', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'name': {'required': True},
+})
 def create_house():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     house = StudentHouse(school_id=g.school_id, name=data['name'],
                          color=data.get('color'), motto=data.get('motto'))
     db.session.add(house)
@@ -981,9 +1050,12 @@ def create_house():
 
 @students_bp.route('/houses/<int:house_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({
+    'captain_student_id': {'type': int},
+})
 def update_house(house_id):
     house = StudentHouse.query.filter_by(id=house_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'color', 'motto', 'captain_student_id']:
         if field in data:
             setattr(house, field, data[field])
@@ -993,8 +1065,12 @@ def update_house(house_id):
 
 @students_bp.route('/assign-house', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'student_id': {'required': True, 'type': int},
+    'house_id': {'required': True, 'type': int},
+})
 def assign_house():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     student = Student.query.filter_by(id=data['student_id'], school_id=g.school_id).first_or_404()
     student.house_id = data['house_id']
     db.session.commit()
@@ -1022,8 +1098,9 @@ def auto_assign_houses():
 
 @students_bp.route('/link-siblings', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def link_siblings():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     student_ids = data.get('student_ids', [])
     if len(student_ids) < 2:
         return error_response('At least 2 students required')
@@ -1077,8 +1154,11 @@ def list_alumni():
 
 @students_bp.route('/alumni', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'name': {'required': True},
+})
 def create_alumni():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     alumni = Alumni(
         school_id=g.school_id, student_id=data.get('student_id'),
         name=data['name'], batch_year=data.get('batch_year'),
@@ -1096,9 +1176,10 @@ def create_alumni():
 
 @students_bp.route('/alumni/<int:alumni_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({})
 def update_alumni(alumni_id):
     alumni = Alumni.query.filter_by(id=alumni_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'batch_year', 'phone', 'email', 'current_occupation',
                   'current_organization', 'higher_education', 'achievements_after', 'is_mentor']:
         if field in data:
@@ -1109,8 +1190,9 @@ def update_alumni(alumni_id):
 
 @students_bp.route('/graduate-to-alumni', methods=['POST'])
 @role_required('school_admin')
+@validate({})
 def graduate_to_alumni():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     student_ids = data.get('student_ids', [])
     batch_year = data.get('batch_year', str(datetime.utcnow().year))
     count = 0
@@ -1147,8 +1229,12 @@ def get_id_card(student_id):
 
 @students_bp.route('/bulk-id-cards', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'class_id': {'type': int},
+    'section_id': {'type': int},
+})
 def bulk_id_cards():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     query = Student.query.filter_by(school_id=g.school_id, status='active')
     if data.get('class_id'):
         query = query.filter_by(current_class_id=data['class_id'])

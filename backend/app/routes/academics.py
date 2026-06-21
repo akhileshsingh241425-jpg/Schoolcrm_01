@@ -16,7 +16,7 @@ from app.models.student import Student, Class, Section, AcademicYear
 from app.models.school import School
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val, validate
 from sqlalchemy import func, case, and_, or_
 from datetime import datetime, date
 
@@ -40,8 +40,11 @@ def list_subjects():
 
 @academics_bp.route('/subjects', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Subject name is required'},
+})
 def create_subject():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     subject = Subject(
         school_id=g.school_id,
         name=data['name'],
@@ -58,9 +61,10 @@ def create_subject():
 
 @academics_bp.route('/subjects/<int:subject_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_subject(subject_id):
     subject = Subject.query.filter_by(id=subject_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'code', 'type', 'description', 'credit_hours', 'is_elective', 'is_active']:
         if field in data:
             setattr(subject, field, data[field])
@@ -86,8 +90,12 @@ def list_subject_components(subject_id):
 
 @academics_bp.route('/subjects/<int:subject_id>/components', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Component name is required'},
+    'max_marks': {'type': int, 'message': 'Max marks is required'},
+})
 def add_subject_component(subject_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     comp = SubjectComponent(
         school_id=g.school_id,
         subject_id=subject_id,
@@ -123,8 +131,12 @@ def get_class_subjects(class_id):
 
 @academics_bp.route('/class-subjects', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+})
 def assign_subject():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     existing = ClassSubject.query.filter_by(
         school_id=g.school_id, class_id=data['class_id'], subject_id=data['subject_id']
     ).first()
@@ -143,9 +155,10 @@ def assign_subject():
 
 @academics_bp.route('/class-subjects/<int:cs_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_class_subject(cs_id):
     cs = ClassSubject.query.filter_by(id=cs_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'teacher_id' in data:
         cs.teacher_id = data['teacher_id']
     db.session.commit()
@@ -203,8 +216,16 @@ def get_timetable():
 
 @academics_bp.route('/timetable', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'section_id': {'type': int, 'message': 'Section ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'day_of_week': {'required': True, 'message': 'Day of week is required'},
+    'start_time': {'required': True, 'message': 'Start time is required'},
+    'end_time': {'required': True, 'message': 'End time is required'},
+})
 def create_timetable_entry():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     entry = Timetable(
         school_id=g.school_id,
         class_id=data['class_id'],
@@ -225,9 +246,10 @@ def create_timetable_entry():
 
 @academics_bp.route('/timetable/<int:tt_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_timetable_entry(tt_id):
     entry = Timetable.query.filter_by(id=tt_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['class_id', 'section_id', 'subject_id', 'teacher_id', 'day_of_week',
                    'start_time', 'end_time', 'room_no', 'period_number']:
         if field in data:
@@ -247,8 +269,9 @@ def delete_timetable_entry(tt_id):
 
 @academics_bp.route('/timetable/bulk', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def bulk_create_timetable():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     entries = data.get('entries', [])
     created = []
     for e in entries:
@@ -273,6 +296,10 @@ def bulk_create_timetable():
 
 @academics_bp.route('/timetable/auto-generate', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'section_id': {'type': int},
+})
 def auto_generate_timetable():
     """
     Auto-generate timetable for a class/section based on teacher-subject assignments.
@@ -286,7 +313,7 @@ def auto_generate_timetable():
     import random
     from datetime import time as dt_time
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     class_id = data.get('class_id')
     section_id = data.get('section_id')
     periods_per_day = data.get('periods_per_day', 8)
@@ -543,9 +570,14 @@ def auto_generate_timetable():
 
 @academics_bp.route('/timetable/check-conflicts', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'teacher_id': {'type': int, 'message': 'Teacher ID is required'},
+    'day_of_week': {'required': True, 'message': 'Day of week is required'},
+    'period_number': {'type': int, 'message': 'Period number is required'},
+})
 def check_timetable_conflicts():
     """Check if a teacher has conflicts at a given day/period"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     teacher_id = data.get('teacher_id')
     day_of_week = data.get('day_of_week')
     period_number = data.get('period_number')
@@ -589,8 +621,11 @@ def list_exam_types():
 
 @academics_bp.route('/exam-types', methods=['POST'])
 @role_required('school_admin', 'academic_controller', 'exam_controller')
+@validate({
+    'name': {'required': True, 'message': 'Exam type name is required'},
+})
 def create_exam_type():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     et = ExamType(
         school_id=g.school_id,
         name=data['name'],
@@ -606,9 +641,10 @@ def create_exam_type():
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller', 'exam_controller')
+@validate({})
 def update_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'code', 'description', 'weightage', 'is_active', 'display_order']:
         if field in data:
             setattr(et, field, data[field])
@@ -638,8 +674,11 @@ def list_grading_systems():
 
 @academics_bp.route('/grading-systems', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Grading system name is required'},
+})
 def create_grading_system():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     gs = GradingSystem(
         school_id=g.school_id,
         name=data['name'],
@@ -672,9 +711,10 @@ def create_grading_system():
 
 @academics_bp.route('/grading-systems/<int:gs_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_grading_system(gs_id):
     gs = GradingSystem.query.filter_by(id=gs_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'type', 'description', 'is_default', 'is_active']:
         if field in data:
             setattr(gs, field, data[field])
@@ -695,8 +735,13 @@ def delete_grading_system(gs_id):
 
 @academics_bp.route('/grading-systems/<int:gs_id>/grades', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Grade name is required'},
+    'min_marks': {'type': int, 'message': 'Min marks is required'},
+    'max_marks': {'type': int, 'message': 'Max marks is required'},
+})
 def add_grade(gs_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     grade = Grade(
         grading_system_id=gs_id,
         school_id=g.school_id,
@@ -715,9 +760,10 @@ def add_grade(gs_id):
 
 @academics_bp.route('/grading-systems/grades/<int:grade_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_grade(grade_id):
     grade = Grade.query.filter_by(id=grade_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'min_marks', 'max_marks', 'grade_point', 'description', 'is_passing', 'display_order']:
         if field in data:
             setattr(grade, field, data[field])
@@ -824,9 +870,10 @@ def create_exam():
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['PUT'])
 @role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@validate({})
 def update_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'academic_year_id', 'exam_type_id', 'grading_system_id',
                    'description', 'start_date', 'end_date', 'status', 'instructions']:
         if field in data:
@@ -846,9 +893,12 @@ def delete_exam(exam_id):
 
 @academics_bp.route('/exams/<int:exam_id>/status', methods=['PUT'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'status': {'required': True, 'message': 'Status is required'},
+})
 def update_exam_status(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam.status = data['status']
     db.session.commit()
     return success_response(exam.to_dict(), 'Status updated')
@@ -871,8 +921,14 @@ def list_exam_schedules(exam_id):
 
 @academics_bp.route('/exams/<int:exam_id>/schedules', methods=['POST'])
 @role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'exam_date': {'required': True, 'message': 'Exam date is required'},
+    'max_marks': {'type': int, 'message': 'Max marks is required'},
+})
 def add_exam_schedule(exam_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     schedule = ExamSchedule(
         exam_id=exam_id,
         school_id=g.school_id,
@@ -895,9 +951,10 @@ def add_exam_schedule(exam_id):
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['PUT'])
 @role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@validate({})
 def update_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['class_id', 'subject_id', 'section_id', 'exam_date', 'start_time', 'end_time',
                    'max_marks', 'passing_marks', 'duration_minutes', 'hall_id', 'instructions']:
         if field in data:
@@ -917,8 +974,9 @@ def delete_exam_schedule(schedule_id):
 
 @academics_bp.route('/exams/<int:exam_id>/schedules/bulk', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({})
 def bulk_add_schedules(exam_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     schedules = data.get('schedules', [])
     created = []
     for s in schedules:
@@ -955,8 +1013,11 @@ def list_exam_groups():
 
 @academics_bp.route('/exam-groups', methods=['POST'])
 @role_required('school_admin', 'academic_controller', 'exam_controller')
+@validate({
+    'name': {'required': True, 'message': 'Exam group name is required'},
+})
 def create_exam_group():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     group = ExamGroup(
         school_id=g.school_id,
         name=data['name'],
@@ -979,9 +1040,10 @@ def create_exam_group():
 
 @academics_bp.route('/exam-groups/<int:group_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller', 'exam_controller')
+@validate({})
 def update_exam_group(group_id):
     group = ExamGroup.query.filter_by(id=group_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'name' in data:
         group.name = data['name']
     if 'description' in data:
@@ -990,19 +1052,14 @@ def update_exam_group(group_id):
     return success_response(group.to_dict(), 'Updated')
 
 
-@academics_bp.route('/exam-groups/<int:group_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
-def delete_exam_group(group_id):
-    group = ExamGroup.query.filter_by(id=group_id, school_id=g.school_id).first_or_404()
-    db.session.delete(group)
-    db.session.commit()
-    return success_response(message='Deleted')
-
 
 @academics_bp.route('/exam-groups/<int:group_id>/exams', methods=['POST'])
 @role_required('school_admin', 'academic_controller', 'exam_controller')
+@validate({
+    'exam_id': {'type': int, 'message': 'Exam ID is required'},
+})
 def add_exam_to_group(group_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     mapping = ExamGroupMapping(
         exam_group_id=group_id,
         exam_id=data['exam_id'],
@@ -1035,8 +1092,12 @@ def list_exam_halls():
 
 @academics_bp.route('/exam-halls', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Hall name is required'},
+    'capacity': {'type': int, 'message': 'Capacity is required'},
+})
 def create_exam_hall():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     hall = ExamHall(
         school_id=g.school_id,
         name=data['name'],
@@ -1054,9 +1115,10 @@ def create_exam_hall():
 
 @academics_bp.route('/exam-halls/<int:hall_id>', methods=['PUT'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({})
 def update_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'building', 'floor', 'capacity', 'rows', 'columns', 'has_cctv', 'is_active']:
         if field in data:
             setattr(hall, field, data[field])
@@ -1154,8 +1216,12 @@ def list_invigilators(schedule_id):
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/invigilators', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'hall_id': {'type': int, 'message': 'Hall ID is required'},
+    'staff_id': {'type': int, 'message': 'Staff ID is required'},
+})
 def assign_invigilator(schedule_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     inv = ExamInvigilator(
         school_id=g.school_id,
         exam_schedule_id=schedule_id,
@@ -1183,9 +1249,12 @@ def remove_invigilator(inv_id):
 
 @academics_bp.route('/marks/entry', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller', 'teacher')
+@validate({
+    'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
+})
 def bulk_marks_entry():
     """Bulk marks entry - accepts array of {student_id, marks_obtained, is_absent, remarks}"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_schedule_id = data['exam_schedule_id']
 
     schedule = ExamSchedule.query.filter_by(id=exam_schedule_id, school_id=g.school_id).first_or_404()
@@ -1389,8 +1458,11 @@ def get_marks_sheet():
 
 @academics_bp.route('/marks/lock', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
+@validate({
+    'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
+})
 def lock_marks():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     schedule_id = data['exam_schedule_id']
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     schedule.is_marks_locked = True
@@ -1400,8 +1472,11 @@ def lock_marks():
 
 @academics_bp.route('/marks/unlock', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
+@validate({
+    'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
+})
 def unlock_marks():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     schedule_id = data['exam_schedule_id']
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     schedule.is_marks_locked = False
@@ -1415,8 +1490,9 @@ def unlock_marks():
 
 @academics_bp.route('/results', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({})
 def add_results():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     results_data = data.get('results', [])
 
     scope = get_teacher_scope()
@@ -1671,8 +1747,11 @@ def get_toppers():
 
 @academics_bp.route('/admit-cards/generate', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'exam_id': {'type': int, 'message': 'Exam ID is required'},
+})
 def generate_admit_cards():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_id = data['exam_id']
     class_id = data.get('class_id')
     section_id = data.get('section_id')
@@ -1732,9 +1811,12 @@ def list_admit_cards():
 
 @academics_bp.route('/admit-cards/<int:card_id>/status', methods=['PUT'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'status': {'required': True, 'message': 'Status is required'},
+})
 def update_admit_card_status(card_id):
     card = ExamAdmitCard.query.filter_by(id=card_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     card.status = data['status']
     if data['status'] == 'issued':
         card.issued_at = datetime.utcnow()
@@ -1748,9 +1830,13 @@ def update_admit_card_status(card_id):
 
 @academics_bp.route('/report-cards/generate', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'exam_id': {'type': int, 'message': 'Exam ID is required'},
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+})
 def generate_report_cards():
     """Generate report cards for students"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_id = data['exam_id']
     class_id = data['class_id']
     section_id = data.get('section_id')
@@ -1908,9 +1994,10 @@ def get_report_card(rc_id):
 
 @academics_bp.route('/report-cards/<int:rc_id>', methods=['PUT'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({})
 def update_report_card(rc_id):
     rc = ReportCard.query.filter_by(id=rc_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['teacher_remarks', 'principal_remarks', 'attendance_percentage']:
         if field in data:
             setattr(rc, field, data[field])
@@ -1920,8 +2007,11 @@ def update_report_card(rc_id):
 
 @academics_bp.route('/report-cards/publish', methods=['POST'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({
+    'exam_id': {'type': int, 'message': 'Exam ID is required'},
+})
 def publish_report_cards():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_id = data['exam_id']
     class_id = data.get('class_id')
 
@@ -2637,8 +2727,13 @@ def list_incidents():
 
 @academics_bp.route('/exam-incidents', methods=['POST'])
 @role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@validate({
+    'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
+    'type': {'required': True, 'message': 'Incident type is required'},
+    'description': {'required': True, 'message': 'Description is required'},
+})
 def report_incident():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     incident = ExamIncident(
         school_id=g.school_id,
         exam_schedule_id=data['exam_schedule_id'],
@@ -2657,9 +2752,10 @@ def report_incident():
 
 @academics_bp.route('/exam-incidents/<int:incident_id>', methods=['PUT'])
 @role_required('school_admin', 'exam_controller', 'academic_controller')
+@validate({})
 def update_incident(incident_id):
     incident = ExamIncident.query.filter_by(id=incident_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['action_taken', 'severity', 'description']:
         if field in data:
             setattr(incident, field, data[field])
@@ -2767,9 +2863,15 @@ def get_syllabus():
 
 @academics_bp.route('/syllabus', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'chapter_number': {'type': int, 'message': 'Chapter number is required'},
+    'chapter_name': {'required': True, 'message': 'Chapter name is required'},
+})
 def create_syllabus():
     """Create a syllabus chapter"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     syllabus = Syllabus(
         school_id=g.school_id,
         class_id=data['class_id'],
@@ -2805,13 +2907,14 @@ def get_syllabus_detail(syllabus_id):
 
 @academics_bp.route('/syllabus/<int:syllabus_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_syllabus(syllabus_id):
     """Update a syllabus chapter"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
     if not syllabus:
         return error_response('Syllabus not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['chapter_number', 'chapter_name', 'topics', 'learning_objectives',
                   'estimated_hours', 'term', 'display_order', 'resources', 'status', 'completion_percentage']:
         if field in data:
@@ -2834,13 +2937,17 @@ def delete_syllabus(syllabus_id):
 
 @academics_bp.route('/syllabus/<int:syllabus_id>/progress', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'date': {'required': True, 'message': 'Date is required'},
+    'topics_covered': {'required': True, 'message': 'Topics covered is required'},
+})
 def add_syllabus_progress(syllabus_id):
     """Log daily syllabus progress"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
     if not syllabus:
         return error_response('Syllabus not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     progress = SyllabusProgress(
         school_id=g.school_id,
         syllabus_id=syllabus_id,
@@ -2955,9 +3062,16 @@ def get_lesson_plans():
 
 @academics_bp.route('/lesson-plans', methods=['POST'])
 @school_required
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'title': {'required': True, 'message': 'Title is required'},
+    'date': {'required': True, 'message': 'Date is required'},
+    'topic': {'required': True, 'message': 'Topic is required'},
+})
 def create_lesson_plan():
     """Create a lesson plan"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     scope = get_teacher_scope()
     if scope:
         if scope.get('no_access'):
@@ -3006,13 +3120,14 @@ def get_lesson_plan_detail(plan_id):
 
 @academics_bp.route('/lesson-plans/<int:plan_id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_lesson_plan(plan_id):
     """Update lesson plan"""
     plan = LessonPlan.query.filter_by(id=plan_id, school_id=g.school_id).first()
     if not plan:
         return error_response('Lesson plan not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'date', 'period_number', 'duration_minutes', 'topic', 'subtopics',
                   'objectives', 'teaching_methodology', 'teaching_aids', 'board_work',
                   'student_activities', 'assessment_plan', 'homework_given', 'previous_knowledge',
@@ -3023,27 +3138,18 @@ def update_lesson_plan(plan_id):
     return success_response(plan.to_dict())
 
 
-@academics_bp.route('/lesson-plans/<int:plan_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller')
-def delete_lesson_plan(plan_id):
-    """Delete lesson plan"""
-    plan = LessonPlan.query.filter_by(id=plan_id, school_id=g.school_id).first()
-    if not plan:
-        return error_response('Lesson plan not found', 404)
-    db.session.delete(plan)
-    db.session.commit()
-    return success_response({'message': 'Lesson plan deleted'})
-
-
 @academics_bp.route('/lesson-plans/<int:plan_id>/approve', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'action': {'required': True, 'message': 'Action is required'},
+})
 def approve_lesson_plan(plan_id):
     """Approve or reject a lesson plan"""
     plan = LessonPlan.query.filter_by(id=plan_id, school_id=g.school_id).first()
     if not plan:
         return error_response('Lesson plan not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     action = data.get('action')  # approve / reject / revision_needed
     if action == 'approve':
         plan.status = 'approved'
@@ -3100,9 +3206,15 @@ def get_homework():
 
 @academics_bp.route('/homework', methods=['POST'])
 @school_required
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'title': {'required': True, 'message': 'Title is required'},
+    'due_date': {'required': True, 'message': 'Due date is required'},
+})
 def create_homework():
     """Create homework assignment"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     scope = get_teacher_scope()
     if scope:
         if scope.get('no_access'):
@@ -3148,13 +3260,14 @@ def get_homework_detail(hw_id):
 
 @academics_bp.route('/homework/<int:hw_id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_homework(hw_id):
     """Update homework"""
     hw = Homework.query.filter_by(id=hw_id, school_id=g.school_id).first()
     if not hw:
         return error_response('Homework not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'description', 'instructions', 'homework_type', 'due_date',
                   'max_marks', 'attachment_url', 'allow_late_submission', 'late_penalty_percent',
                   'is_graded', 'status']:
@@ -3164,27 +3277,18 @@ def update_homework(hw_id):
     return success_response(hw.to_dict())
 
 
-@academics_bp.route('/homework/<int:hw_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller')
-def delete_homework(hw_id):
-    """Delete homework"""
-    hw = Homework.query.filter_by(id=hw_id, school_id=g.school_id).first()
-    if not hw:
-        return error_response('Homework not found', 404)
-    db.session.delete(hw)
-    db.session.commit()
-    return success_response({'message': 'Homework deleted'})
-
-
 @academics_bp.route('/homework/<int:hw_id>/submit', methods=['POST'])
 @school_required
+@validate({
+    'student_id': {'type': int, 'message': 'Student ID is required'},
+})
 def submit_homework(hw_id):
     """Submit homework (by student)"""
     hw = Homework.query.filter_by(id=hw_id, school_id=g.school_id).first()
     if not hw:
         return error_response('Homework not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     is_late = False
     if hw.due_date and date.today() > hw.due_date:
         if not hw.allow_late_submission:
@@ -3206,9 +3310,12 @@ def submit_homework(hw_id):
 
 @academics_bp.route('/homework/<int:hw_id>/grade', methods=['POST'])
 @school_required
+@validate({
+    'submission_id': {'type': int, 'message': 'Submission ID is required'},
+})
 def grade_homework(hw_id):
     """Grade a homework submission"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     submission = HomeworkSubmission.query.filter_by(
         id=data['submission_id'], homework_id=hw_id, school_id=g.school_id
     ).first()
@@ -3258,9 +3365,14 @@ def get_study_materials():
 
 @academics_bp.route('/study-materials', methods=['POST'])
 @school_required
+@validate({
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'title': {'required': True, 'message': 'Title is required'},
+})
 def create_study_material():
     """Upload/create study material"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     scope = get_teacher_scope()
     if scope:
         if scope.get('no_access'):
@@ -3301,13 +3413,14 @@ def get_study_material_detail(material_id):
 
 @academics_bp.route('/study-materials/<int:material_id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_study_material(material_id):
     """Update study material"""
     material = StudyMaterial.query.filter_by(id=material_id, school_id=g.school_id).first()
     if not material:
         return error_response('Study material not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'description', 'material_type', 'file_url', 'external_link',
                   'tags', 'is_downloadable', 'is_active']:
         if field in data:
@@ -3367,9 +3480,14 @@ def get_calendar():
 
 @academics_bp.route('/calendar', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'title': {'required': True, 'message': 'Event title is required'},
+    'event_type': {'required': True, 'message': 'Event type is required'},
+    'start_date': {'required': True, 'message': 'Start date is required'},
+})
 def create_calendar_event():
     """Create calendar event"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     event = AcademicCalendar(
         school_id=g.school_id,
         academic_year_id=data.get('academic_year_id'),
@@ -3396,13 +3514,14 @@ def create_calendar_event():
 
 @academics_bp.route('/calendar/<int:event_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_calendar_event(event_id):
     """Update calendar event"""
     event = AcademicCalendar.query.filter_by(id=event_id, school_id=g.school_id).first()
     if not event:
         return error_response('Event not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'description', 'event_type', 'start_date', 'end_date',
                   'start_time', 'end_time', 'is_holiday', 'applies_to', 'class_id',
                   'color', 'is_recurring', 'recurrence_pattern', 'notify_parents']:
@@ -3456,11 +3575,15 @@ def get_teacher_subjects():
 
 @academics_bp.route('/teacher-subjects', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+})
 def create_teacher_subject():
     """Allocate subject to teacher. Supports many-to-many:
     a teacher can be assigned to multiple class-sections, and a class can
     have multiple teachers. Skips creation if the same allocation exists."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     # Prevent exact duplicate (same teacher+subject+class+section active)
     existing = TeacherSubject.query.filter_by(
@@ -3492,13 +3615,14 @@ def create_teacher_subject():
 
 @academics_bp.route('/teacher-subjects/<int:alloc_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_teacher_subject(alloc_id):
     """Update teacher subject allocation"""
     alloc = TeacherSubject.query.filter_by(id=alloc_id, school_id=g.school_id).first()
     if not alloc:
         return error_response('Allocation not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['periods_per_week', 'is_class_teacher', 'status']:
         if field in data:
             setattr(alloc, field, data[field])
@@ -3604,9 +3728,12 @@ def get_class_teachers():
 
 @academics_bp.route('/class-teachers/assign', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'section_id': {'type': int, 'message': 'Section ID is required'},
+})
 def assign_class_teacher():
     """Assign class teacher and/or co-class teacher to a section"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     section_id = data.get('section_id')
     if not section_id:
         return error_response('section_id is required')
@@ -3790,6 +3917,9 @@ def class_teacher_roster():
 @academics_bp.route('/class-teacher/enrollments', methods=['POST'])
 @school_required
 @role_required('teacher')
+@validate({
+    'student_id': {'type': int, 'message': 'Student ID is required'},
+})
 def class_teacher_set_enrollments():
     """Set the subjects for a single student in the class teacher's section.
 
@@ -3802,7 +3932,7 @@ def class_teacher_set_enrollments():
     if not section:
         return error_response('You are not assigned as a class teacher of any section', 403)
 
-    data = request.get_json() or {}
+    data = g.get('validated_data') or (request.get_json() or {})
     student_id = data.get('student_id')
     subject_ids = data.get('subject_ids', [])
     if not student_id:
@@ -3862,9 +3992,13 @@ def get_elective_groups():
 
 @academics_bp.route('/elective-groups', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Group name is required'},
+    'class_id': {'type': int, 'message': 'Class ID is required'},
+})
 def create_elective_group():
     """Create elective group"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     group = ElectiveGroup(
         school_id=g.school_id,
         name=data['name'],
@@ -3892,13 +4026,14 @@ def create_elective_group():
 
 @academics_bp.route('/elective-groups/<int:group_id>', methods=['PUT'])
 @role_required('school_admin', 'academic_controller')
+@validate({})
 def update_elective_group(group_id):
     """Update elective group"""
     group = ElectiveGroup.query.filter_by(id=group_id, school_id=g.school_id).first()
     if not group:
         return error_response('Group not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'min_choices', 'max_choices', 'deadline', 'is_active']:
         if field in data:
             setattr(group, field, data[field])
@@ -3908,9 +4043,14 @@ def update_elective_group(group_id):
 
 @academics_bp.route('/student-electives', methods=['POST'])
 @school_required
+@validate({
+    'group_id': {'type': int, 'message': 'Group ID is required'},
+    'student_id': {'type': int, 'message': 'Student ID is required'},
+    'subject_id': {'type': int, 'message': 'Subject ID is required'},
+})
 def select_elective():
     """Student selects elective"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     group = ElectiveGroup.query.filter_by(id=data['group_id'], school_id=g.school_id).first()
     if not group:
         return error_response('Group not found', 404)

@@ -8,7 +8,7 @@ from app.models.fee import (
 )
 from app.models.student import Student, Class
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy import func, extract
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
@@ -118,8 +118,9 @@ def list_categories():
 
 @fees_bp.route('/categories', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'name': {'required': True}})
 def create_category():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cat = FeeCategory(school_id=g.school_id, name=data['name'], description=data.get('description'))
     db.session.add(cat)
     db.session.commit()
@@ -145,8 +146,9 @@ def list_structures():
 
 @fees_bp.route('/structures', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'class_id': {'required': True}, 'fee_category_id': {'required': True}, 'amount': {'required': True, 'type': float, 'min': 0}})
 def create_structure():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     structure = FeeStructure(
         school_id=g.school_id,
         academic_year_id=data.get('academic_year_id'),
@@ -166,9 +168,10 @@ def create_structure():
 
 @fees_bp.route('/structures/<int:sid>', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'amount': {'type': float, 'min': 0}})
 def update_structure(sid):
     s = FeeStructure.query.filter_by(id=sid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['amount', 'due_date', 'frequency', 'late_fee_amount', 'late_fee_type', 'grace_period_days', 'is_active']:
         if f in data:
             setattr(s, f, data[f])
@@ -195,8 +198,9 @@ def list_installments():
 
 @fees_bp.route('/installments/generate', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'fee_structure_id': {'required': True}})
 def generate_installments():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     struct_id = data['fee_structure_id']
     class_id = data.get('class_id')
     num_installments = data.get('installments', 1)
@@ -243,8 +247,9 @@ def list_payments():
 
 @fees_bp.route('/payments', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'amount_paid': {'type': float, 'min': 0}, 'late_fee_paid': {'type': float, 'min': 0}, 'discount_amount': {'type': float, 'min': 0}})
 def record_payment():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     # Validate required fields
     amount_val = data.get('amount_paid') or data.get('amount')
@@ -445,8 +450,9 @@ def list_scholarships():
 
 @fees_bp.route('/scholarships', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({'name': {'required': True}, 'discount_value': {'required': True, 'type': float, 'min': 0}})
 def create_scholarship():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     s = Scholarship(
         school_id=g.school_id, name=data['name'],
         scholarship_type=data.get('scholarship_type', 'merit'),
@@ -463,9 +469,10 @@ def create_scholarship():
 
 @fees_bp.route('/scholarships/<int:sid>/award', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({'student_id': {'required': True}})
 def award_scholarship(sid):
     schol = Scholarship.query.filter_by(id=sid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     if schol.discount_type == 'percentage':
         # Calculate from a base - caller provides amount or we use percentage
@@ -495,9 +502,10 @@ def list_awards():
 
 @fees_bp.route('/scholarship-awards/<int:aid>', methods=['PUT'])
 @role_required('school_admin', 'principal')
+@validate({'status': {'type': str}})
 def update_award(aid):
     a = ScholarshipAward.query.filter_by(id=aid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'status' in data:
         a.status = data['status']
         if data['status'] == 'approved':
@@ -523,8 +531,9 @@ def list_concessions():
 
 @fees_bp.route('/concessions', methods=['POST'])
 @school_required
+@validate({'student_id': {'required': True}, 'amount': {'required': True, 'type': float, 'min': 0}})
 def request_concession():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     c = Concession(
         school_id=g.school_id, student_id=data['student_id'],
         fee_category_id=data.get('fee_category_id'),
@@ -539,9 +548,10 @@ def request_concession():
 
 @fees_bp.route('/concessions/<int:cid>/approve', methods=['PUT'])
 @role_required('school_admin', 'principal')
+@validate({'action': {'type': str}})
 def approve_concession(cid):
     c = Concession.query.filter_by(id=cid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     action = data.get('action', 'approved')
     if action == 'reviewed':
         c.status = 'reviewed'
@@ -569,8 +579,9 @@ def list_refunds():
 
 @fees_bp.route('/refunds', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'student_id': {'required': True}, 'refund_amount': {'required': True, 'type': float, 'min': 0}})
 def request_refund():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     r = FeeRefund(
         school_id=g.school_id, student_id=data['student_id'],
         payment_id=data.get('payment_id'),
@@ -586,9 +597,10 @@ def request_refund():
 
 @fees_bp.route('/refunds/<int:rid>', methods=['PUT'])
 @role_required('school_admin', 'principal')
+@validate({'reference_no': {'type': str}})
 def update_refund(rid):
     r = FeeRefund.query.filter_by(id=rid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'status' in data:
         r.status = data['status']
         if data['status'] == 'approved':
@@ -622,8 +634,9 @@ def list_discounts():
 
 @fees_bp.route('/discounts', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({'student_id': {'required': True}, 'fee_category_id': {'required': True}, 'discount_type': {'required': True}, 'discount_value': {'required': True, 'type': float, 'min': 0}})
 def add_discount():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     discount = FeeDiscount(
         school_id=g.school_id,
         student_id=data['student_id'],
@@ -658,8 +671,9 @@ def list_expenses():
 
 @fees_bp.route('/expenses', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'expense_category': {'required': True}, 'amount': {'required': True, 'type': float, 'min': 0}})
 def create_expense():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     e = Expense(
         school_id=g.school_id,
         expense_category=data['expense_category'],
@@ -683,9 +697,10 @@ def create_expense():
 
 @fees_bp.route('/expenses/<int:eid>', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'amount': {'type': float, 'min': 0}})
 def update_expense(eid):
     e = Expense.query.filter_by(id=eid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['expense_category', 'description', 'amount', 'expense_date', 'vendor_id',
               'payment_mode', 'reference_no', 'invoice_no', 'department', 'receipt_url', 'status']:
         if f in data:
@@ -723,8 +738,9 @@ def list_vendors():
 
 @fees_bp.route('/vendors', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'name': {'required': True}})
 def create_vendor():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     v = Vendor(school_id=g.school_id, **{k: data.get(k) for k in [
         'name', 'contact_person', 'phone', 'email', 'address',
         'gst_no', 'pan_no', 'bank_name', 'account_no', 'ifsc_code', 'category'
@@ -736,9 +752,10 @@ def create_vendor():
 
 @fees_bp.route('/vendors/<int:vid>', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'name': {'type': str}})
 def update_vendor(vid):
     v = Vendor.query.filter_by(id=vid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['name', 'contact_person', 'phone', 'email', 'address',
               'gst_no', 'pan_no', 'bank_name', 'account_no', 'ifsc_code', 'category', 'status']:
         if f in data:
@@ -761,8 +778,9 @@ def list_pos():
 
 @fees_bp.route('/purchase-orders', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'vendor_id': {'required': True}, 'total_amount': {'required': True, 'type': float, 'min': 0}})
 def create_po():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     total = float(data['total_amount'])
     gst = float(data.get('gst_amount', 0))
     po = PurchaseOrder(
@@ -784,9 +802,10 @@ def create_po():
 
 @fees_bp.route('/purchase-orders/<int:pid>', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'status': {'type': str}})
 def update_po(pid):
     po = PurchaseOrder.query.filter_by(id=pid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['status', 'delivery_date', 'remarks', 'items_description']:
         if f in data:
             setattr(po, f, data[f])
@@ -807,8 +826,9 @@ def list_budgets():
 
 @fees_bp.route('/budgets', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({'department': {'required': True}, 'budget_head': {'required': True}, 'allocated_amount': {'required': True, 'type': float, 'min': 0}})
 def create_budget():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     b = Budget(
         school_id=g.school_id,
         academic_year_id=data.get('academic_year_id'),
@@ -824,9 +844,10 @@ def create_budget():
 
 @fees_bp.route('/budgets/<int:bid>', methods=['PUT'])
 @role_required('school_admin', 'principal')
+@validate({'allocated_amount': {'type': float, 'min': 0}})
 def update_budget(bid):
     b = Budget.query.filter_by(id=bid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['allocated_amount', 'status', 'remarks']:
         if f in data:
             setattr(b, f, data[f])
@@ -859,8 +880,9 @@ def list_entries():
 
 @fees_bp.route('/accounting', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'entry_type': {'required': True}, 'account_head': {'required': True}})
 def create_entry():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     e = AccountingEntry(
         school_id=g.school_id,
         entry_date=data.get('entry_date', date.today().isoformat()),
@@ -968,9 +990,10 @@ def cheque_tracking():
 
 @fees_bp.route('/cheque-tracking/<int:pid>', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'cheque_status': {'type': str}})
 def update_cheque(pid):
     p = FeePayment.query.filter_by(id=pid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'cheque_status' in data:
         p.cheque_status = data['cheque_status']
         if data['cheque_status'] == 'bounced':
@@ -995,8 +1018,9 @@ def list_reconciliation():
 
 @fees_bp.route('/bank-reconciliation', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'bank_name': {'required': True}, 'statement_date': {'required': True}})
 def add_reconciliation():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     r = BankReconciliation(
         school_id=g.school_id,
         bank_name=data['bank_name'],
@@ -1014,9 +1038,10 @@ def add_reconciliation():
 
 @fees_bp.route('/bank-reconciliation/<int:rid>/match', methods=['PUT'])
 @role_required('school_admin', 'accountant', 'principal')
+@validate({'entry_id': {'type': int}})
 def match_reconciliation(rid):
     r = BankReconciliation.query.filter_by(id=rid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     r.is_reconciled = True
     r.matched_entry_id = data.get('entry_id')
     r.reconciled_at = datetime.utcnow()

@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { superAdminAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const FEATURES_LIST = [
   { key: 'student_management', label: 'Student Management' },
@@ -269,10 +270,13 @@ export default function CreateSchool() {
 
   // ── Submit ────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!form.name || !form.email) {
-      setError('School name and email are required');
-      return;
-    }
+    const errs = validateForm(form, {
+      name: ['required'],
+      email: ['required', 'email'],
+      phone: ['phone'],
+      pincode: ['pincode'],
+    });
+    if (Object.keys(errs).length) { setError(Object.values(errs)[0]); return; }
     setSaving(true);
     setError('');
     try {
