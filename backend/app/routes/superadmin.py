@@ -925,6 +925,8 @@ def create_school():
                 established_year = int(established_year)
             except (ValueError, TypeError):
                 established_year = None
+        elif established_year == '':
+            established_year = None
 
         school = School(
             name=data['name'],

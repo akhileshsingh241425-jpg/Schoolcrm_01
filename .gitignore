@@ -39,6 +39,9 @@ token.txt
 
 # Log files
 *.log
+
+# Sandbox / testing
+sandbox/
 backend/app_err.log
 backend/app_out.log
 backend/backend_err.log
