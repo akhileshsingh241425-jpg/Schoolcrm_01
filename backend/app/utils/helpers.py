@@ -4,6 +4,56 @@ from app.models.staff import Staff
 from app.models.student import Section
 from app.models.academic import TeacherSubject
 from sqlalchemy import or_
+from functools import wraps
+
+
+def validate(rules):
+    """Decorator to validate request JSON data against rules.
+
+    rules = {
+        'field_name': {'required': True, 'type': int, 'min': 0, 'max': 100, 'message': 'Custom error'},
+        'email': {'required': True, 'type': str, 'min_len': 5},
+    }
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            data = request.get_json(silent=True) or {}
+            for field, opts in rules.items():
+                val = data.get(field)
+                msg = opts.get('message', f'{field.replace("_", " ").title()} is required')
+
+                if opts.get('required') and (val is None or (isinstance(val, str) and val.strip() == '')):
+                    return jsonify({'error': msg, 'success': False}), 400
+
+                if val is not None and val != '' and not isinstance(val, bool):
+                    if opts.get('type') == int:
+                        try:
+                            data[field] = int(val) if not isinstance(val, int) else val
+                        except (ValueError, TypeError):
+                            return jsonify({
+                                'error': opts.get('type_msg', f'{field.replace("_", " ").title()} must be a number'),
+                                'success': False
+                            }), 400
+                    elif opts.get('type') == float:
+                        try:
+                            data[field] = float(val) if not isinstance(val, float) else val
+                        except (ValueError, TypeError):
+                            return jsonify({'error': f'{field.replace("_", " ").title()} must be a decimal number', 'success': False}), 400
+
+                    if opts.get('min') is not None and isinstance(data.get(field), (int, float)) and data[field] < opts['min']:
+                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at least {opts["min"]}', 'success': False}), 400
+                    if opts.get('max') is not None and isinstance(data.get(field), (int, float)) and data[field] > opts['max']:
+                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at most {opts["max"]}', 'success': False}), 400
+                    if opts.get('min_len') and isinstance(val, str) and len(val) < opts['min_len']:
+                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at least {opts["min_len"]} characters', 'success': False}), 400
+                    if opts.get('max_len') and isinstance(val, str) and len(val) > opts['max_len']:
+                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at most {opts["max_len"]} characters', 'success': False}), 400
+
+            g.validated_data = data
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 def clean_val(val, cast_to=None):

@@ -18,7 +18,7 @@ from flask import send_file
 from app.models.user import User, Role
 from app.models.audit import AuditLog
 from app.utils.decorators import super_admin_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate, clean_val
 
 superadmin_bp = Blueprint('superadmin', __name__)
 
@@ -907,11 +907,16 @@ def allowed_doc_file(filename):
 # ─── Create School ───────────────────────────────────────────────────────
 @superadmin_bp.route('/schools', methods=['POST'])
 @super_admin_required
+@validate({
+    'name': {'required': True, 'message': 'School name is required'},
+    'email': {'required': True, 'type': str, 'message': 'School email is required'},
+    'phone': {'type': str, 'max_len': 20},
+    'pincode': {'type': str, 'max_len': 20},
+    'established_year': {'type': int, 'min': 1900, 'max': 2100, 'message': 'Invalid established year'},
+})
 def create_school():
     try:
-        data = request.get_json()
-        if not data.get('name') or not data.get('email'):
-            return error_response('School name and email are required', 400)
+        data = g.get('validated_data') or request.get_json()
 
         if School.query.filter_by(email=data['email']).first():
             return error_response('A school with this email already exists', 409)

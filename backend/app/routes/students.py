@@ -215,10 +215,16 @@ def get_student_360(student_id):
 
 @students_bp.route('/', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor', 'principal')
+@validate({
+    'first_name': {'required': True, 'message': 'Student first name is required'},
+    'class_id': {'type': int, 'message': 'Class is required'},
+    'section_id': {'type': int},
+    'academic_year_id': {'type': int},
+    'phone': {'type': str, 'max_len': 20},
+    'pincode': {'type': str, 'max_len': 20},
+})
 def create_student():
-    data = request.get_json()
-    if not data.get('first_name'):
-        return error_response('First name is required')
+    data = g.get('validated_data') or request.get_json()
 
     student = Student(
         school_id=g.school_id,

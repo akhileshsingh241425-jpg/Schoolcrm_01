@@ -797,8 +797,13 @@ def get_exam(exam_id):
 
 @academics_bp.route('/exams', methods=['POST'])
 @role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@validate({
+    'name': {'required': True, 'message': 'Exam name is required'},
+    'exam_type_id': {'type': int, 'message': 'Exam type is required'},
+    'academic_year_id': {'type': int},
+})
 def create_exam():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam = Exam(
         school_id=g.school_id,
         name=data['name'],

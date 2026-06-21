@@ -85,10 +85,15 @@ def get_staff_profile(staff_id):
 
 @staff_bp.route('/', methods=['POST'])
 @role_required('school_admin', 'principal')
+@validate({
+    'first_name': {'required': True, 'message': 'First name is required'},
+    'email': {'type': str},
+    'phone': {'type': str, 'max_len': 20},
+    'experience_years': {'type': int, 'min': 0, 'max': 70},
+    'salary': {'type': float, 'min': 0},
+})
 def create_staff():
-    data = request.get_json()
-    if not data.get('first_name'):
-        return error_response('First name is required')
+    data = g.get('validated_data') or request.get_json()
 
     member = Staff(
         school_id=g.school_id,
