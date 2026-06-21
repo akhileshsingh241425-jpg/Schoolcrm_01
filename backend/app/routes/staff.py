@@ -8,7 +8,7 @@ from app.models.staff import (
 from app.models.school import School
 from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, clean_val
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import io
@@ -92,39 +92,39 @@ def create_staff():
 
     member = Staff(
         school_id=g.school_id,
-        employee_id=data.get('employee_id'),
+        employee_id=clean_val(data.get('employee_id')),
         first_name=data['first_name'],
-        last_name=data.get('last_name'),
-        gender=data.get('gender'),
-        date_of_birth=data.get('date_of_birth'),
-        phone=data.get('phone'),
-        email=data.get('email'),
-        qualification=data.get('qualification'),
-        experience_years=data.get('experience_years'),
-        designation=data.get('designation'),
-        department=data.get('department'),
-        date_of_joining=data.get('date_of_joining'),
-        salary=data.get('salary'),
-        address=data.get('address'),
-        city=data.get('city'),
-        state=data.get('state'),
-        aadhar_no=data.get('aadhar_no'),
-        pan_no=data.get('pan_no'),
-        bank_name=data.get('bank_name'),
-        bank_account_no=data.get('bank_account_no'),
-        ifsc_code=data.get('ifsc_code'),
+        last_name=clean_val(data.get('last_name')),
+        gender=clean_val(data.get('gender')),
+        date_of_birth=clean_val(data.get('date_of_birth')),
+        phone=clean_val(data.get('phone')),
+        email=clean_val(data.get('email')),
+        qualification=clean_val(data.get('qualification')),
+        experience_years=clean_val(data.get('experience_years'), int),
+        designation=clean_val(data.get('designation')),
+        department=clean_val(data.get('department')),
+        date_of_joining=clean_val(data.get('date_of_joining')),
+        salary=clean_val(data.get('salary'), float),
+        address=clean_val(data.get('address')),
+        city=clean_val(data.get('city')),
+        state=clean_val(data.get('state')),
+        aadhar_no=clean_val(data.get('aadhar_no')),
+        pan_no=clean_val(data.get('pan_no')),
+        bank_name=clean_val(data.get('bank_name')),
+        bank_account_no=clean_val(data.get('bank_account_no')),
+        ifsc_code=clean_val(data.get('ifsc_code')),
         staff_type=data.get('staff_type', 'teaching'),
         contract_type=data.get('contract_type', 'permanent'),
-        probation_end_date=data.get('probation_end_date'),
-        contract_end_date=data.get('contract_end_date'),
-        pf_number=data.get('pf_number'),
-        esi_number=data.get('esi_number'),
-        uan_number=data.get('uan_number'),
-        emergency_contact=data.get('emergency_contact'),
-        emergency_person=data.get('emergency_person'),
-        blood_group=data.get('blood_group'),
-        marital_status=data.get('marital_status'),
-        spouse_name=data.get('spouse_name'),
+        probation_end_date=clean_val(data.get('probation_end_date')),
+        contract_end_date=clean_val(data.get('contract_end_date')),
+        pf_number=clean_val(data.get('pf_number')),
+        esi_number=clean_val(data.get('esi_number')),
+        uan_number=clean_val(data.get('uan_number')),
+        emergency_contact=clean_val(data.get('emergency_contact')),
+        emergency_person=clean_val(data.get('emergency_person')),
+        blood_group=clean_val(data.get('blood_group')),
+        marital_status=clean_val(data.get('marital_status')),
+        spouse_name=clean_val(data.get('spouse_name')),
     )
     db.session.add(member)
     db.session.flush()

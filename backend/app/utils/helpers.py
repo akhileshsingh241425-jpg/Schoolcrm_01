@@ -6,6 +6,26 @@ from app.models.academic import TeacherSubject
 from sqlalchemy import or_
 
 
+def clean_val(val, cast_to=None):
+    """Sanitize a value: convert empty string/null to None, optionally cast type."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        if val.strip() == '' or val == 'null':
+            return None
+    if cast_to and val is not None:
+        try:
+            return cast_to(val)
+        except (ValueError, TypeError):
+            return None
+    return val
+
+
+def clean_data(data, fields):
+    """Clean multiple fields at once. fields = [(key, cast_type), ...]"""
+    return {key: clean_val(data.get(key), cast) for key, cast in fields}
+
+
 def paginate(query, schema=None):
     """Helper to paginate SQLAlchemy queries"""
     page = request.args.get('page', 1, type=int)

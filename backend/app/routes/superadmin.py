@@ -185,7 +185,12 @@ def update_school(school_id):
 
     for field in updatable:
         if field in data:
-            setattr(school, field, data[field])
+            val = data[field]
+            if isinstance(val, str) and val.strip() == '':
+                val = None
+            if val == 'null':
+                val = None
+            setattr(school, field, val)
 
     db.session.commit()
     return success_response(school.to_dict(), 'School updated')
@@ -919,40 +924,53 @@ def create_school():
             code = f"{base_code}{counter}"
             counter += 1
 
-        established_year = data.get('established_year')
-        if established_year:
+        def _val(key, default=None):
+            v = data.get(key, default)
+            if v is not None and not isinstance(v, bool):
+                if isinstance(v, str) and v.strip() == '':
+                    return None
+            return v
+
+        def _int_val(key):
+            v = data.get(key)
+            if v is None or v == '':
+                return None
             try:
-                established_year = int(established_year)
+                return int(v)
             except (ValueError, TypeError):
-                established_year = None
-        elif established_year == '':
-            established_year = None
+                return None
+
+        def _json_val(key):
+            v = data.get(key)
+            if v is None or v == '' or v == 'null':
+                return None
+            return v
 
         school = School(
             name=data['name'],
-            short_name=data.get('short_name'),
+            short_name=_val('short_name'),
             code=code,
             email=data['email'],
-            phone=data.get('phone'),
-            secondary_phone=data.get('secondary_phone'),
-            alternate_contacts=data.get('alternate_contacts'),
-            address=data.get('address'),
-            city=data.get('city'),
-            state=data.get('state'),
-            pincode=data.get('pincode'),
-            country=data.get('country', 'India'),
-            website=data.get('website'),
-            domain_name=data.get('domain_name'),
-            principal_name=data.get('principal_name'),
-            principal_email=data.get('principal_email'),
-            principal_phone=data.get('principal_phone'),
-            board=data.get('board', 'CBSE'),
-            school_type=data.get('school_type', 'co-ed'),
-            established_year=established_year,
-            registration_number=data.get('registration_number'),
-            session=data.get('session'),
-            notes=data.get('notes'),
-            custom_fields=data.get('custom_fields'),
+            phone=_val('phone'),
+            secondary_phone=_val('secondary_phone'),
+            alternate_contacts=_json_val('alternate_contacts'),
+            address=_val('address'),
+            city=_val('city'),
+            state=_val('state'),
+            pincode=_val('pincode'),
+            country=_val('country', 'India'),
+            website=_val('website'),
+            domain_name=_val('domain_name'),
+            principal_name=_val('principal_name'),
+            principal_email=_val('principal_email'),
+            principal_phone=_val('principal_phone'),
+            board=_val('board', 'CBSE'),
+            school_type=_val('school_type', 'co-ed'),
+            established_year=_int_val('established_year'),
+            registration_number=_val('registration_number'),
+            session=_val('session'),
+            notes=_val('notes'),
+            custom_fields=_json_val('custom_fields'),
             is_active=True,
             plan='basic',
         )
@@ -980,22 +998,37 @@ def create_school():
         # ── Director Info ─────────────────────────────────────────────
         director_data = data.get('director')
         staff_category = data.get('staff_category')
+        def _dval(key, default=None):
+            v = director_data.get(key, default)
+            if v is not None and isinstance(v, str) and v.strip() == '':
+                return None
+            return v
+
+        def _dint(key):
+            v = director_data.get(key)
+            if v is None or v == '':
+                return None
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                return None
+
         if director_data and director_data.get('name'):
             director = Director(
                 school_id=school.id,
                 name=director_data['name'],
-                email=director_data.get('email'),
-                phone=director_data.get('phone'),
-                secondary_phone=director_data.get('secondary_phone'),
-                address=director_data.get('address'),
-                city=director_data.get('city'),
-                state=director_data.get('state'),
-                pincode=director_data.get('pincode'),
-                qualification=director_data.get('qualification'),
-                experience_years=director_data.get('experience_years'),
-                aadhar_no=director_data.get('aadhar_no'),
-                pan_no=director_data.get('pan_no'),
-                other_doc_name=director_data.get('other_doc_name'),
+                email=_dval('email'),
+                phone=_dval('phone'),
+                secondary_phone=_dval('secondary_phone'),
+                address=_dval('address'),
+                city=_dval('city'),
+                state=_dval('state'),
+                pincode=_dval('pincode'),
+                qualification=_dval('qualification'),
+                experience_years=_dint('experience_years'),
+                aadhar_no=_dval('aadhar_no'),
+                pan_no=_dval('pan_no'),
+                other_doc_name=_dval('other_doc_name'),
             )
             db.session.add(director)
 
@@ -1032,7 +1065,14 @@ def create_school():
         return success_response(result, 'School created successfully', 201)
     except Exception as e:
         db.session.rollback()
-        return error_response(str(e), 500)
+        err_msg = str(e)
+        # Clean up MySQL errors for frontend
+        if '(pymysql.err.DataError)' in err_msg and 'Incorrect' in err_msg:
+            field = err_msg.split("'")[1] if "'" in err_msg else 'unknown'
+            return error_response(f'Invalid value for {field}. Please check your input and try again.', 400)
+        if '(pymysql.err.IntegrityError)' in err_msg:
+            return error_response('This school email is already registered.', 409)
+        return error_response('Failed to create school. Please check all fields and try again.', 500)
 
 
 @superadmin_bp.route('/schools/upload-doc', methods=['POST'])

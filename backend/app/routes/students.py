@@ -9,7 +9,7 @@ from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.models.school import School
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val
 from sqlalchemy import false
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
@@ -222,24 +222,24 @@ def create_student():
 
     student = Student(
         school_id=g.school_id,
-        first_name=data['first_name'], last_name=data.get('last_name'),
-        admission_no=data.get('admission_no'), roll_no=data.get('roll_no'),
-        gender=data.get('gender'), date_of_birth=data.get('date_of_birth'),
-        blood_group=data.get('blood_group'), religion=data.get('religion'),
-        category=data.get('category'), nationality=data.get('nationality', 'Indian'),
-        mother_tongue=data.get('mother_tongue'), aadhar_no=data.get('aadhar_no'),
-        address=data.get('address'), city=data.get('city'),
-        state=data.get('state'), pincode=data.get('pincode'),
-        current_class_id=data.get('class_id'),
-        current_section_id=data.get('section_id'),
-        academic_year_id=data.get('academic_year_id'),
-        admission_date=data.get('admission_date'),
-        emergency_contact=data.get('emergency_contact'),
-        emergency_person=data.get('emergency_person'),
-        medical_conditions=data.get('medical_conditions'),
-        allergies=data.get('allergies'),
-        previous_school=data.get('previous_school'),
-        house_id=data.get('house_id'),
+        first_name=data['first_name'], last_name=clean_val(data.get('last_name')),
+        admission_no=clean_val(data.get('admission_no')), roll_no=clean_val(data.get('roll_no')),
+        gender=clean_val(data.get('gender')), date_of_birth=clean_val(data.get('date_of_birth')),
+        blood_group=clean_val(data.get('blood_group')), religion=clean_val(data.get('religion')),
+        category=clean_val(data.get('category')), nationality=data.get('nationality', 'Indian'),
+        mother_tongue=clean_val(data.get('mother_tongue')), aadhar_no=clean_val(data.get('aadhar_no')),
+        address=clean_val(data.get('address')), city=clean_val(data.get('city')),
+        state=clean_val(data.get('state')), pincode=clean_val(data.get('pincode')),
+        current_class_id=clean_val(data.get('class_id'), int),
+        current_section_id=clean_val(data.get('section_id'), int),
+        academic_year_id=clean_val(data.get('academic_year_id'), int),
+        admission_date=clean_val(data.get('admission_date')),
+        emergency_contact=clean_val(data.get('emergency_contact')),
+        emergency_person=clean_val(data.get('emergency_person')),
+        medical_conditions=clean_val(data.get('medical_conditions')),
+        allergies=clean_val(data.get('allergies')),
+        previous_school=clean_val(data.get('previous_school')),
+        house_id=clean_val(data.get('house_id'), int),
         transport_mode=data.get('transport_mode', 'self'),
         status='active'
     )

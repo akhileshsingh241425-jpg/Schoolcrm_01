@@ -16,7 +16,7 @@ from app.models.student import Student, Class, Section, AcademicYear
 from app.models.school import School
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope
+from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val
 from sqlalchemy import func, case, and_, or_
 from datetime import datetime, date
 
@@ -802,14 +802,14 @@ def create_exam():
     exam = Exam(
         school_id=g.school_id,
         name=data['name'],
-        academic_year_id=data.get('academic_year_id'),
-        exam_type_id=data.get('exam_type_id'),
-        grading_system_id=data.get('grading_system_id'),
-        description=data.get('description'),
-        start_date=data.get('start_date'),
-        end_date=data.get('end_date'),
-        instructions=data.get('instructions'),
-        class_ids=data.get('class_ids', []),
+        academic_year_id=clean_val(data.get('academic_year_id'), int),
+        exam_type_id=clean_val(data.get('exam_type_id'), int),
+        grading_system_id=clean_val(data.get('grading_system_id'), int),
+        description=clean_val(data.get('description')),
+        start_date=clean_val(data.get('start_date')),
+        end_date=clean_val(data.get('end_date')),
+        instructions=clean_val(data.get('instructions')),
+        class_ids=clean_val(data.get('class_ids')) or [],
         created_by=g.user_id if hasattr(g, 'user_id') else None,
     )
     db.session.add(exam)
