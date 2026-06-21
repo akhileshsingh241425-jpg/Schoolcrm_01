@@ -13,6 +13,7 @@ import {
   Timeline as TimelineIcon, Delete, Verified, FamilyRestroom
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
+import { validateForm } from '../../components/Validation';
 import { studentsAPI } from '../../services/api';
 
 const statusColors = { active: 'success', inactive: 'default', graduated: 'info', transferred: 'warning', dropout: 'error' };
@@ -312,7 +313,8 @@ function AchievementsTab({ studentId, achievements, onRefresh }) {
   const [form, setForm] = useState({ title: '', category: 'academic', level: 'school', position: '', description: '', event_date: '', points_earned: 0 });
 
   const handleAdd = async () => {
-    if (!form.title) { toast.error('Title required'); return; }
+    const errs = validateForm(form, { title: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.addAchievement(studentId, form);
       toast.success('Achievement added');
@@ -396,7 +398,8 @@ function BehaviorTab({ studentId, behaviors, onRefresh }) {
   const [form, setForm] = useState({ behavior_type: 'positive', category: '', title: '', description: '', points: 0, action_taken: '', incident_date: '' });
 
   const handleAdd = async () => {
-    if (!form.title) { toast.error('Title required'); return; }
+    const errs = validateForm(form, { title: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.addBehavior(studentId, form);
       toast.success('Behavior recorded');
@@ -469,7 +472,8 @@ function CounselingTab({ studentId, sessions, onRefresh }) {
   const [form, setForm] = useState({ session_date: '', session_type: 'academic', reason: '', notes: '', recommendations: '', follow_up_date: '', status: 'scheduled', is_confidential: false });
 
   const handleAdd = async () => {
-    if (!form.session_date) { toast.error('Session date required'); return; }
+    const errs = validateForm(form, { session_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.addCounseling(studentId, form);
       toast.success('Counseling session added');
@@ -546,7 +550,8 @@ function MedicalTab({ studentId, records, onRefresh }) {
   const [form, setForm] = useState({ record_type: 'checkup', title: '', description: '', doctor_name: '', record_date: '', next_followup: '' });
 
   const handleAdd = async () => {
-    if (!form.title || !form.record_date) { toast.error('Title and date required'); return; }
+    const errs = validateForm(form, { title: ['required'], record_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.addMedical(studentId, form);
       toast.success('Medical record added');
@@ -619,7 +624,8 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
   const [parentForm, setParentForm] = useState({ document_type: '', document_name: '', file: null });
 
   const handleAdd = async () => {
-    if (!form.document_type || !form.file) { toast.error('Type and file required'); return; }
+    const errs = validateForm(form, { document_type: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       const fd = new FormData();
       fd.append('file', form.file);
@@ -634,7 +640,8 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
   };
 
   const handleParentAdd = async (parentId) => {
-    if (!parentForm.document_type || !parentForm.file) { toast.error('Type and file required'); return; }
+    const errs = validateForm(parentForm, { document_type: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       const fd = new FormData();
       fd.append('file', parentForm.file);

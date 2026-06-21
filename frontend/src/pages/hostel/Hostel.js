@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Refresh } from '@mui/icons-material';
 import { hostelAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const ex = (d) => d?.data?.data?.items || d?.data?.data || d?.data?.items || [];
 const init = (fields) => fields.reduce((a, f) => ({ ...a, [f]: '' }), {});
@@ -80,6 +81,8 @@ export default function Hostel() {
   };
 
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showSnack(Object.values(errs)[0], 'error'); return; }
     try {
       const apis = [null,
         { create: hostelAPI.createBlock, update: hostelAPI.updateBlock },

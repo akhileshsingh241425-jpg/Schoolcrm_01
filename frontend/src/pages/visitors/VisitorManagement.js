@@ -12,6 +12,7 @@ import {
 import { healthAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
+import { validateForm } from '../../components/Validation';
 
 const ID_TYPES = [
   { value: 'aadhar', label: 'Aadhar Card' },
@@ -95,10 +96,8 @@ export default function VisitorManagement() {
 
   // Handlers
   const handleCheckin = async () => {
-    if (!form.visitor_name || !form.visitor_phone || !form.purpose || !form.visiting_person) {
-      toast.error('Please fill required fields: Name, Phone, Purpose, Visiting Person');
-      return;
-    }
+    const errs = validateForm(form, { visitor_name: ['required'], visitor_phone: ['phone'], visitor_email: ['email'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setSubmitting(true);
     try {
       await healthAPI.createVisitor(form);

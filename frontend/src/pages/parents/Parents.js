@@ -14,6 +14,7 @@ import {
   CalendarMonth, EmojiEvents, LibraryBooks
 } from '@mui/icons-material';
 import { parentAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 // =================== DASHBOARD TAB ===================
 function DashboardTab() {
@@ -98,6 +99,8 @@ function ProfilesTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'], email: ['email'], phone: ['phone'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       if (editId) {
         await parentAPI.updateProfile(editId, form);
@@ -350,6 +353,8 @@ function SurveysTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { title: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       if (editId) { await parentAPI.updateSurvey(editId, form); }
       else { await parentAPI.createSurvey(form); }
@@ -478,6 +483,8 @@ function GrievancesTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { subject: ['required'], description: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       if (editId) { await parentAPI.updateGrievance(editId, form); }
       else { await parentAPI.createGrievance(form); }
@@ -601,6 +608,8 @@ function ConsentTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { title: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       if (editId) { await parentAPI.updateConsentForm(editId, form); }
       else { await parentAPI.createConsentForm(form); }
@@ -777,6 +786,8 @@ function ActivitiesTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { title: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       await parentAPI.createActivity(form);
       setSnack({ open: true, message: 'Activity posted', severity: 'success' });
@@ -866,6 +877,8 @@ function VolunteersTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { parent_name: ['required'], phone: ['phone'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       await parentAPI.registerVolunteer(form);
       setSnack({ open: true, message: 'Volunteer registered', severity: 'success' });
@@ -940,6 +953,8 @@ function PickupTab() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
+    const errs = validateForm(form, { authorized_person: ['required'], phone: ['phone'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     try {
       if (editId) { await parentAPI.updatePickupAuth(editId, form); }
       else { await parentAPI.createPickupAuth(form); }

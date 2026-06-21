@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Card, CardContent, Grid, TextField, Button, Autocomplete, CircularProgress, alpha, Tabs, Tab, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material';
+import { validateForm } from '../../components/Validation';
 import { storeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -55,7 +56,8 @@ export default function StoreStockUpdate() {
   };
 
   const handleCreate = async () => {
-    if (!newItem.name.trim()) { toast.error('Item name is required'); return; }
+    const errs = validateForm(newItem, { name: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setSubmitting(true);
     try {
       const payload = { ...newItem };
@@ -86,7 +88,6 @@ export default function StoreStockUpdate() {
 
   const handleStockIn = async () => {
     if (!stockInItem) { toast.error('Select an item'); return; }
-    if (stockInQty < 1) { toast.error('Quantity must be at least 1'); return; }
     setSubmitting(true);
     try {
       const res = await storeAPI.stockIn({ item_id: stockInItem.id, quantity: stockInQty, remarks: stockInRemarks, reference: stockInRef });

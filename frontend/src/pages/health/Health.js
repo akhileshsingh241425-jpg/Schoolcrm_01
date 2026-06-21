@@ -10,6 +10,7 @@ import {
   Refresh, ExitToApp, HealthAndSafety
 } from '@mui/icons-material';
 import { healthAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const init = (keys) => keys.reduce((o, k) => ({ ...o, [k]: '' }), {});
 
@@ -105,6 +106,68 @@ export default function Health() {
       </TextField>
     </Grid>
   );
+
+  const handleSaveRecord = () => {
+    const errs = validateForm(recForm, { person_type: ['required'], person_id: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editRecId ? healthAPI.updateRecord(editRecId, recForm) : healthAPI.createRecord(recForm);
+    fn.then(() => { msg(editRecId ? 'Updated' : 'Created'); setOpenRec(false); fetchRecords(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveInfirmary = () => {
+    const errs = validateForm(infForm, { person_type: ['required'], person_id: ['required'], complaint: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editInfId ? healthAPI.updateInfirmary(editInfId, infForm) : healthAPI.createInfirmary(infForm);
+    fn.then(() => { msg(editInfId ? 'Updated' : 'Recorded'); setOpenInf(false); fetchInfirmary(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveIncident = () => {
+    const errs = validateForm(incForm, { incident_type: ['required'], title: ['required'], incident_date: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editIncId ? healthAPI.updateIncident(editIncId, incForm) : healthAPI.createIncident(incForm);
+    fn.then(() => { msg(editIncId ? 'Updated' : 'Reported'); setOpenInc(false); fetchIncidents(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveCheckup = () => {
+    const errs = validateForm(chkForm, { checkup_name: ['required'], checkup_date: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    healthAPI.createCheckup(chkForm).then(() => { msg('Recorded'); setOpenChk(false); fetchCheckups(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveVisitor = () => {
+    const errs = validateForm(visForm, { visitor_name: ['required'], purpose: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    healthAPI.createVisitor(visForm).then(() => { msg('Visitor checked in'); setOpenVis(false); fetchVisitors(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveDrill = () => {
+    const errs = validateForm(drlForm, { drill_name: ['required'], scheduled_date: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editDrlId ? healthAPI.updateDrill(editDrlId, drlForm) : healthAPI.createDrill(drlForm);
+    fn.then(() => { msg(editDrlId ? 'Updated' : 'Scheduled'); setOpenDrl(false); fetchDrills(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveMedication = () => {
+    const errs = validateForm(medForm, { medication_name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editMedId ? healthAPI.updateMedication(editMedId, medForm) : healthAPI.createMedication(medForm);
+    fn.then(() => { msg(editMedId ? 'Updated' : 'Added'); setOpenMed(false); fetchMedications(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveEmergency = () => {
+    const errs = validateForm(emForm, { contact_name: ['required'], phone_primary: ['phone'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    healthAPI.createEmergency(emForm).then(() => { msg('Contact added'); setOpenEm(false); fetchEmergency(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveWellbeing = () => {
+    const errs = validateForm(welForm, { student_id: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editWelId ? healthAPI.updateWellbeing(editWelId, welForm) : healthAPI.createWellbeing(welForm);
+    fn.then(() => { msg(editWelId ? 'Updated' : 'Recorded'); setOpenWel(false); fetchWellbeing(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveSanitation = () => {
+    const errs = validateForm(sanForm, { area_name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    healthAPI.createSanitization(sanForm).then(() => { msg('Logged'); setOpenSan(false); fetchSanitation(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveTemperature = () => {
+    const errs = validateForm(tmpForm, { person_type: ['required'], person_id: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    healthAPI.createTemperature(tmpForm).then(() => { msg('Recorded'); setOpenTmp(false); fetchTemps(); }).catch(() => msg('Failed','error'));
+  };
 
   const statColor = (s) => {
     if (['treated','completed','resolved','closed','checked_out','active','recorded'].includes(s)) return 'success';
@@ -563,10 +626,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRec(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editRecId ? healthAPI.updateRecord(editRecId, recForm) : healthAPI.createRecord(recForm);
-            fn.then(() => { msg(editRecId ? 'Updated' : 'Created'); setOpenRec(false); fetchRecords(); }).catch(() => msg('Failed','error'));
-          }}>{editRecId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSaveRecord}>{editRecId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -591,10 +651,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenInf(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editInfId ? healthAPI.updateInfirmary(editInfId, infForm) : healthAPI.createInfirmary(infForm);
-            fn.then(() => { msg(editInfId ? 'Updated' : 'Recorded'); setOpenInf(false); fetchInfirmary(); }).catch(() => msg('Failed','error'));
-          }}>{editInfId ? 'Update' : 'Record'}</Button>
+          <Button variant="contained" onClick={handleSaveInfirmary}>{editInfId ? 'Update' : 'Record'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -617,10 +674,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenInc(false)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={() => {
-            const fn = editIncId ? healthAPI.updateIncident(editIncId, incForm) : healthAPI.createIncident(incForm);
-            fn.then(() => { msg(editIncId ? 'Updated' : 'Reported'); setOpenInc(false); fetchIncidents(); }).catch(() => msg('Failed','error'));
-          }}>{editIncId ? 'Update' : 'Report'}</Button>
+          <Button variant="contained" color="error" onClick={handleSaveIncident}>{editIncId ? 'Update' : 'Report'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -650,9 +704,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenChk(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            healthAPI.createCheckup(chkForm).then(() => { msg('Recorded'); setOpenChk(false); fetchCheckups(); }).catch(() => msg('Failed','error'));
-          }}>Record</Button>
+          <Button variant="contained" onClick={handleSaveCheckup}>Record</Button>
         </DialogActions>
       </Dialog>
 
@@ -676,9 +728,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenVis(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            healthAPI.createVisitor(visForm).then(() => { msg('Visitor checked in'); setOpenVis(false); fetchVisitors(); }).catch(() => msg('Failed','error'));
-          }}>Check In</Button>
+          <Button variant="contained" onClick={handleSaveVisitor}>Check In</Button>
         </DialogActions>
       </Dialog>
 
@@ -705,10 +755,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDrl(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editDrlId ? healthAPI.updateDrill(editDrlId, drlForm) : healthAPI.createDrill(drlForm);
-            fn.then(() => { msg(editDrlId ? 'Updated' : 'Scheduled'); setOpenDrl(false); fetchDrills(); }).catch(() => msg('Failed','error'));
-          }}>{editDrlId ? 'Update' : 'Schedule'}</Button>
+          <Button variant="contained" onClick={handleSaveDrill}>{editDrlId ? 'Update' : 'Schedule'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -733,10 +780,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenMed(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editMedId ? healthAPI.updateMedication(editMedId, medForm) : healthAPI.createMedication(medForm);
-            fn.then(() => { msg(editMedId ? 'Updated' : 'Added'); setOpenMed(false); fetchMedications(); }).catch(() => msg('Failed','error'));
-          }}>{editMedId ? 'Update' : 'Add'}</Button>
+          <Button variant="contained" onClick={handleSaveMedication}>{editMedId ? 'Update' : 'Add'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -758,9 +802,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenEm(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            healthAPI.createEmergency(emForm).then(() => { msg('Contact added'); setOpenEm(false); fetchEmergency(); }).catch(() => msg('Failed','error'));
-          }}>Add</Button>
+          <Button variant="contained" onClick={handleSaveEmergency}>Add</Button>
         </DialogActions>
       </Dialog>
 
@@ -785,10 +827,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenWel(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editWelId ? healthAPI.updateWellbeing(editWelId, welForm) : healthAPI.createWellbeing(welForm);
-            fn.then(() => { msg(editWelId ? 'Updated' : 'Created'); setOpenWel(false); fetchWellbeing(); }).catch(() => msg('Failed','error'));
-          }}>{editWelId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSaveWellbeing}>{editWelId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -812,9 +851,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenSan(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            healthAPI.createSanitization(sanForm).then(() => { msg('Logged'); setOpenSan(false); fetchSanitation(); }).catch(() => msg('Failed','error'));
-          }}>Log</Button>
+          <Button variant="contained" onClick={handleSaveSanitation}>Log</Button>
         </DialogActions>
       </Dialog>
 
@@ -834,9 +871,7 @@ export default function Health() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenTmp(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            healthAPI.createTemperature(tmpForm).then(() => { msg('Recorded'); setOpenTmp(false); fetchTemps(); }).catch(() => msg('Failed','error'));
-          }}>Record</Button>
+          <Button variant="contained" onClick={handleSaveTemperature}>Record</Button>
         </DialogActions>
       </Dialog>
 

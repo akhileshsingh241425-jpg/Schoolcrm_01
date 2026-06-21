@@ -9,6 +9,7 @@ import {
   Build, ShoppingCart, Receipt, RequestQuote, DeleteSweep, SwapHoriz, Warehouse
 } from '@mui/icons-material';
 import { inventoryAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const init = (keys) => keys.reduce((o, k) => ({ ...o, [k]: '' }), {});
 
@@ -109,6 +110,58 @@ export default function Inventory() {
       </TextField>
     </Grid>
   );
+
+  const handleSaveAsset = () => {
+    const errs = validateForm(astForm, { name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editAstId ? inventoryAPI.updateAsset(editAstId, astForm) : inventoryAPI.createAsset(astForm);
+    fn.then(() => { msg(editAstId ? 'Updated' : 'Created'); setOpenAst(false); fetchAssets(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveMaintenance = () => {
+    const errs = validateForm(mntForm, { asset_id: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editMntId ? inventoryAPI.updateMaintenance(editMntId, mntForm) : inventoryAPI.createMaintenance(mntForm);
+    fn.then(() => { msg(editMntId ? 'Updated' : 'Created'); setOpenMnt(false); fetchMaint(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveItem = () => {
+    const errs = validateForm(itmForm, { name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editItmId ? inventoryAPI.updateItem(editItmId, itmForm) : inventoryAPI.createItem(itmForm);
+    fn.then(() => { msg(editItmId ? 'Updated' : 'Created'); setOpenItm(false); fetchItems(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveAssetCategory = () => {
+    const errs = validateForm(acForm, { name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    inventoryAPI.createAssetCategory(acForm).then(() => { msg('Created'); setOpenAC(false); fetchAssetCats(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveInvCategory = () => {
+    const errs = validateForm(icForm, { name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    inventoryAPI.createCategory(icForm).then(() => { msg('Created'); setOpenIC(false); fetchInvCats(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSavePR = () => {
+    const errs = validateForm(prForm, { title: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editPRId ? inventoryAPI.updatePurchaseRequest(editPRId, prForm) : inventoryAPI.createPurchaseRequest(prForm);
+    fn.then(() => { msg(editPRId ? 'Updated' : 'Created'); setOpenPR(false); fetchPR(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSavePO = () => {
+    const errs = validateForm(poForm, { vendor_name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editPOId ? inventoryAPI.updatePurchaseOrder(editPOId, poForm) : inventoryAPI.createPurchaseOrder(poForm);
+    fn.then(() => { msg(editPOId ? 'Updated' : 'Created'); setOpenPO(false); fetchPO(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveQuotation = () => {
+    const errs = validateForm(qtForm, { vendor_name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    inventoryAPI.createQuotation(qtForm).then(() => { msg('Added'); setOpenQt(false); fetchQt(); }).catch(() => msg('Failed','error'));
+  };
+  const handleSaveDisposal = () => {
+    const errs = validateForm(dspForm, { asset_id: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
+    const fn = editDspId ? inventoryAPI.updateDisposal(editDspId, dspForm) : inventoryAPI.createDisposal(dspForm);
+    fn.then(() => { msg(editDspId ? 'Updated' : 'Created'); setOpenDsp(false); fetchDsp(); }).catch(() => msg('Failed','error'));
+  };
 
   const statColor = (s) => {
     if (['active','completed','approved','delivered','good','new','in_stock'].includes(s)) return 'success';
@@ -460,7 +513,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenAC(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => inventoryAPI.createAssetCategory(acForm).then(() => { msg('Created'); setOpenAC(false); fetchAssetCats(); }).catch(() => msg('Failed','error'))}>Create</Button>
+          <Button variant="contained" onClick={handleSaveAssetCategory}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -492,10 +545,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenAst(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editAstId ? inventoryAPI.updateAsset(editAstId, astForm) : inventoryAPI.createAsset(astForm);
-            fn.then(() => { msg(editAstId ? 'Updated' : 'Created'); setOpenAst(false); fetchAssets(); }).catch(() => msg('Failed','error'));
-          }}>{editAstId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSaveAsset}>{editAstId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -518,10 +568,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenMnt(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editMntId ? inventoryAPI.updateMaintenance(editMntId, mntForm) : inventoryAPI.createMaintenance(mntForm);
-            fn.then(() => { msg(editMntId ? 'Updated' : 'Created'); setOpenMnt(false); fetchMaint(); }).catch(() => msg('Failed','error'));
-          }}>{editMntId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSaveMaintenance}>{editMntId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -534,7 +581,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenIC(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => inventoryAPI.createCategory(icForm).then(() => { msg('Created'); setOpenIC(false); fetchInvCats(); }).catch(() => msg('Failed','error'))}>Create</Button>
+          <Button variant="contained" onClick={handleSaveInvCategory}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -558,10 +605,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenItm(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editItmId ? inventoryAPI.updateItem(editItmId, itmForm) : inventoryAPI.createItem(itmForm);
-            fn.then(() => { msg(editItmId ? 'Updated' : 'Created'); setOpenItm(false); fetchItems(); }).catch(() => msg('Failed','error'));
-          }}>{editItmId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSaveItem}>{editItmId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -596,10 +640,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPR(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editPRId ? inventoryAPI.updatePurchaseRequest(editPRId, prForm) : inventoryAPI.createPurchaseRequest(prForm);
-            fn.then(() => { msg(editPRId ? 'Updated' : 'Created'); setOpenPR(false); fetchPR(); }).catch(() => msg('Failed','error'));
-          }}>{editPRId ? 'Update' : 'Submit'}</Button>
+          <Button variant="contained" onClick={handleSavePR}>{editPRId ? 'Update' : 'Submit'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -624,10 +665,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPO(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            const fn = editPOId ? inventoryAPI.updatePurchaseOrder(editPOId, poForm) : inventoryAPI.createPurchaseOrder(poForm);
-            fn.then(() => { msg(editPOId ? 'Updated' : 'Created'); setOpenPO(false); fetchPO(); }).catch(() => msg('Failed','error'));
-          }}>{editPOId ? 'Update' : 'Create'}</Button>
+          <Button variant="contained" onClick={handleSavePO}>{editPOId ? 'Update' : 'Create'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -651,7 +689,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenQt(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => inventoryAPI.createQuotation(qtForm).then(() => { msg('Added'); setOpenQt(false); fetchQt(); }).catch(() => msg('Failed','error'))}>Add</Button>
+          <Button variant="contained" onClick={handleSaveQuotation}>Add</Button>
         </DialogActions>
       </Dialog>
 
@@ -672,10 +710,7 @@ export default function Inventory() {
         </Grid></DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDsp(false)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={() => {
-            const fn = editDspId ? inventoryAPI.updateDisposal(editDspId, dspForm) : inventoryAPI.createDisposal(dspForm);
-            fn.then(() => { msg(editDspId ? 'Updated' : 'Created'); setOpenDsp(false); fetchDsp(); }).catch(() => msg('Failed','error'));
-          }}>{editDspId ? 'Update' : 'Submit'}</Button>
+          <Button variant="contained" color="error" onClick={handleSaveDisposal}>{editDspId ? 'Update' : 'Submit'}</Button>
         </DialogActions>
       </Dialog>
 

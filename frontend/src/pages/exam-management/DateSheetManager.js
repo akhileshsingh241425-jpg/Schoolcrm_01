@@ -9,6 +9,7 @@ import {
   Send, CheckCircle, Cancel, Download, Refresh, Schedule, Add, Close,
   Delete, Edit
 } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI, studentsAPI } from '../../services/api';
 import examMgmtAPI from '../../services/examApi';
 import toast from 'react-hot-toast';
@@ -68,10 +69,8 @@ export default function DateSheetManager({ exam }) {
   };
 
   const handleAddSchedule = async () => {
-    if (!form.class_id || !form.subject_id || !form.exam_date) {
-      toast.error('Class, Subject aur Date select karo');
-      return;
-    }
+    const errs = validateForm(form, { class_id: ['required'], subject_id: ['required'], exam_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setAdding(true);
     try {
       await academicsAPI.addExamSchedule(exam.id, {

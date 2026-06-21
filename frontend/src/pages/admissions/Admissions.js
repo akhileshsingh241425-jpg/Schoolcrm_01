@@ -16,6 +16,7 @@ import {
   Close, ArrowForward, Print, Timeline
 } from '@mui/icons-material';
 import { admissionsAPI, studentsAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const STATUS_CONFIG = {
   applied: { color: 'info', label: 'Applied', icon: <Description fontSize="small" /> },
@@ -181,6 +182,12 @@ export default function Admissions() {
   // ============ HANDLERS ============
 
   const handleCreate = () => {
+    const errs = validateForm(form, {
+      student_name: ['required'],
+      email: ['email'],
+      phone: ['phone'],
+    });
+    if (Object.keys(errs).length) { setError?.(Object.values(errs)[0]) || alert(Object.values(errs)[0]); return; }
     const api = editingId ? admissionsAPI.update(editingId, form) : admissionsAPI.create(form);
     api.then(res => {
       showSnack(res.data.message);

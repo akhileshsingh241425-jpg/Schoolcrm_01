@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Card, CardContent, Grid, TextField, Button, MenuItem, Autocomplete, CircularProgress, alpha, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material';
+import { validateForm } from '../../components/Validation';
 import { storeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -48,8 +49,8 @@ export default function StoreAllocation() {
   const selectedItem = items.find(i => i.id === form.item_id);
 
   const handleSubmit = async () => {
-    if (!form.item_id) { toast.error('Select an item'); return; }
-    if (form.quantity < 1) { toast.error('Quantity must be at least 1'); return; }
+    const errs = validateForm(form, { item_id: ['required'], quantity: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setSubmitting(true);
     try {
       const payload = { ...form };

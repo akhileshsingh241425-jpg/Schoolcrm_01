@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Paper, Grid, TextField, Button, MenuItem } from '@mui/material';
 import { Save, ArrowBack } from '@mui/icons-material';
 import toast from 'react-hot-toast';
+import { validateForm } from '../../components/Validation';
 import { leadsAPI } from '../../services/api';
 
 export default function LeadForm() {
@@ -21,6 +22,8 @@ export default function LeadForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errs = validateForm(form, { student_name: ['required'], phone: ['phone'], email: ['email'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await leadsAPI.create(form);
       toast.success('Lead created');

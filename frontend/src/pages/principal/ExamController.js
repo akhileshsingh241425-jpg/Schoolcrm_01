@@ -12,6 +12,7 @@ import {
   Add, Close, Refresh, CheckCircle, EventNote, CalendarMonth,
   Description, ArrowForward, School, Schedule, EmojiEvents, Print, Edit, Delete
 } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI, studentsAPI, staffAPI } from '../../services/api';
 import examMgmtAPI from '../../services/examApi';
 import toast from 'react-hot-toast';
@@ -163,12 +164,8 @@ export default function ExamController() {
 
   // ─── Create Exam ───
   const handleCreate = async () => {
-    if (!examForm.name || !examForm.start_date || !examForm.end_date) {
-      toast.error('Name, Start Date, End Date required'); return;
-    }
-    if (examForm.selectedClasses.length === 0) {
-      toast.error('At least 1 class select karo'); return;
-    }
+    const errs = validateForm(examForm, { name: ['required'], start_date: ['required'], end_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setCreating(true);
     try {
       const res = await academicsAPI.createExam({
@@ -189,9 +186,8 @@ export default function ExamController() {
 
   // ─── Add Schedule ───
   const handleAddSchedule = async () => {
-    if (!schedForm.class_id || !schedForm.subject_id || !schedForm.exam_date) {
-      toast.error('Class, Subject, Date required'); return;
-    }
+    const errs = validateForm(schedForm, { class_id: ['required'], subject_id: ['required'], exam_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     // Validate date is within exam range
     if (selectedExam?.start_date && schedForm.exam_date < selectedExam.start_date) {
       toast.error(`Date cannot be before exam start date (${selectedExam.start_date})`); return;

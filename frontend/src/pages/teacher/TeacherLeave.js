@@ -6,6 +6,7 @@ import {
   LinearProgress, Alert, Stack
 } from '@mui/material';
 import { Add, CalendarMonth, CheckCircle, Cancel, Schedule } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { staffAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -65,10 +66,8 @@ export default function TeacherLeave() {
   };
 
   const handleApply = async () => {
-    if (!form.from_date || !form.to_date || !form.reason) {
-      toast.error('All fields are required');
-      return;
-    }
+    const errs = validateForm(form, { from_date: ['required'], to_date: ['required'], reason: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     const days = calcDays();
     if (days <= 0) { toast.error('To date must be after From date'); return; }
     if (!staffId) { toast.error('Staff ID not found. Contact admin.'); return; }

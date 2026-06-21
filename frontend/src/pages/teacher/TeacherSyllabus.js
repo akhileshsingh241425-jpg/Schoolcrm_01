@@ -7,6 +7,7 @@ import {
 import {
   MenuBook, Add, CheckCircle, Schedule, Refresh, TrendingUp, Edit
 } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI, dashboardAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -43,6 +44,8 @@ export default function TeacherSyllabus() {
 
   const handleAddProgress = async () => {
     if (!progressDialog) return;
+    const errs = validateForm(progressForm, { topics_covered: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await academicsAPI.addSyllabusProgress(progressDialog.id, {
         topics_covered: progressForm.topics_covered,

@@ -8,6 +8,7 @@ import {
 import { Add, Receipt, ExpandMore, Download, Payment, History } from '@mui/icons-material';
 import { superAdminAPI } from '../../services/api';
 import toast from 'react-hot-toast';
+import { validateForm } from '../../components/Validation';
 
 export default function ManageSubscriptions() {
   const [subscriptions, setSubs] = useState([]);
@@ -55,6 +56,8 @@ export default function ManageSubscriptions() {
   };
 
   const handleSave = async () => {
+    const errs = validateForm(form, { school_id: ['required'], plan_id: ['required'], amount: ['number'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setSaving(true);
     try {
       await superAdminAPI.createSubscription({

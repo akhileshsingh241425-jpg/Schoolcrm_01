@@ -11,6 +11,7 @@ import {
   CheckCircle, Cancel, People, AdminPanelSettings, Lock
 } from '@mui/icons-material';
 import { schoolsAPI, authAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 import useAuthStore from '../../store/authStore';
 
 export default function Settings() {
@@ -181,6 +182,8 @@ function UsersTab({ showSnack }) {
   };
 
   const save = () => {
+    const errs = validateForm(form, { first_name: ['required'], email: ['email'], phone: ['phone'] });
+    if (Object.keys(errs).length) { showSnack(Object.values(errs)[0], 'error'); return; }
     if (!form.email || !form.first_name || !form.role_id) {
       showSnack('Email, Name aur Role required hai', 'error'); return;
     }

@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Search, Edit, ToggleOn, Visibility, Business, Delete } from '@mui/icons-material';
 import { superAdminAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const ALL_FEATURES = [
   'student_management', 'staff_management', 'fee_management', 'attendance',
@@ -52,6 +53,8 @@ export default function ManageSchools() {
   };
 
   const handleSaveEdit = async () => {
+    const errs = validateForm(editForm, { name: ['required'] });
+    if (Object.keys(errs).length) { alert(Object.values(errs)[0]); return; }
     setSaving(true);
     try {
       await superAdminAPI.updateSchool(selected.id, editForm);

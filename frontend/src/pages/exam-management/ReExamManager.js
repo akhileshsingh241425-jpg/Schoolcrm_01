@@ -6,6 +6,7 @@ import {
   TextField, MenuItem, Grid
 } from '@mui/material';
 import { Replay, Refresh, Add, Close } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import examMgmtAPI from '../../services/examApi';
 import toast from 'react-hot-toast';
 
@@ -32,10 +33,8 @@ export default function ReExamManager({ exam }) {
   useEffect(() => { loadReExams(); }, [exam?.id]);
 
   const handleCreate = async () => {
-    if (!form.new_exam_date || !form.re_exam_type) {
-      toast.error('Date and type required');
-      return;
-    }
+    const errs = validateForm(form, { new_exam_date: ['required'], re_exam_type: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setCreating(true);
     try {
       await examMgmtAPI.createReExam(exam.id, {

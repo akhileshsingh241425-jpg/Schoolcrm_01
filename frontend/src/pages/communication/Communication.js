@@ -9,6 +9,7 @@ import {
 import { Add, Send, NotificationsActive, Email, WhatsApp, Schedule, School,
   PlayArrow, History, Settings, Phone, Chat, CheckCircle, Cancel } from '@mui/icons-material';
 import { communicationAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 export default function Communication() {
   const [tab, setTab] = useState(0);
@@ -135,6 +136,8 @@ export default function Communication() {
   };
 
   const createAnnouncement = () => {
+    const errs = validateForm(annForm, { title: ['required'], message: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     communicationAPI.createAnnouncement(annForm).then(() => {
       setSnack({ open: true, message: 'Announcement created', severity: 'success' });
       setOpenAnnouncement(false); setAnnForm({ title: '', message: '', target_audience: 'all', priority: 'normal' });
@@ -143,6 +146,8 @@ export default function Communication() {
   };
 
   const sendMessage = () => {
+    const errs = validateForm(sendForm, { recipients: ['required'], message: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     communicationAPI.send(sendForm).then(() => {
       setSnack({ open: true, message: 'Message sent!', severity: 'success' });
       setOpenSend(false); setSendForm({ type: 'sms', recipients: '', subject: '', message: '' });
@@ -150,6 +155,8 @@ export default function Communication() {
   };
 
   const createTemplate = () => {
+    const errs = validateForm(templateForm, { name: ['required'], content: ['required'] });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     communicationAPI.createTemplate(templateForm).then(() => {
       setSnack({ open: true, message: 'Template created', severity: 'success' });
       setOpenTemplate(false); setTemplateForm({ name: '', content: '', category: '' });

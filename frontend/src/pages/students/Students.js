@@ -17,6 +17,7 @@ import {
 import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
+import { validateForm } from '../../components/Validation';
 import { studentsAPI } from '../../services/api';
 
 ChartJS.register(ArcElement, ChartTooltip, Legend, CategoryScale, LinearScale, BarElement);
@@ -400,9 +401,8 @@ function Promotions() {
   }, [bulkForm.from_class_id]);
 
   const handleBulkPromote = async () => {
-    if (!bulkForm.from_class_id || !bulkForm.to_class_id || !bulkForm.from_academic_year_id || !bulkForm.to_academic_year_id) {
-      toast.error('Fill all fields'); return;
-    }
+    const errs = validateForm(bulkForm, { from_class_id: ['required'], to_class_id: ['required'], from_academic_year_id: ['required'], to_academic_year_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setLoading(true);
     try {
       const res = await studentsAPI.bulkPromote(bulkForm);
@@ -531,7 +531,8 @@ function AlumniTab() {
   useEffect(() => { fetchAlumni(); }, [fetchAlumni]);
 
   const handleCreate = async () => {
-    if (!form.name) { toast.error('Name required'); return; }
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.createAlumni(form);
       toast.success('Alumni added');
@@ -616,7 +617,8 @@ function HousesTab() {
   useEffect(() => { fetchHouses(); }, []);
 
   const handleCreate = async () => {
-    if (!form.name) { toast.error('Name required'); return; }
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await studentsAPI.createHouse(form);
       toast.success('House created');

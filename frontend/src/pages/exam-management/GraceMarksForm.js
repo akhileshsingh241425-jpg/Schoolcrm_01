@@ -6,6 +6,7 @@ import {
   DialogActions, IconButton
 } from '@mui/material';
 import { Add, Refresh, Close, History } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI } from '../../services/api';
 import examMgmtAPI from '../../services/examApi';
 import toast from 'react-hot-toast';
@@ -40,10 +41,8 @@ export default function GraceMarksForm() {
   };
 
   const handleApply = async () => {
-    if (!selectedExam || !form.marks_value || !form.reason) {
-      toast.error('Marks value and reason required');
-      return;
-    }
+    const errs = validateForm(form, { marks_value: ['required'], reason: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setApplying(true);
     try {
       await examMgmtAPI.applyGraceMarks(selectedExam, {

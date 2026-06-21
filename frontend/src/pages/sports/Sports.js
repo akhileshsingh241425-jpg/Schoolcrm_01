@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Refresh, SportsBasketball, Groups, EmojiEvents, Event as EventIcon, MeetingRoom, FitnessCenter, WorkspacePremium, SportsSoccer } from '@mui/icons-material';
 import { sportsAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ py: 2 }}>{children}</Box> : null;
@@ -88,6 +89,8 @@ function SportsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listSports(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateSport(editing, form); showMsg('Sport updated'); }
       else { await sportsAPI.createSport(form); showMsg('Sport created'); }
@@ -150,6 +153,8 @@ function TeamsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listTeams(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateTeam(editing, form); showMsg('Team updated'); }
       else { await sportsAPI.createTeam(form); showMsg('Team created'); }
@@ -209,6 +214,8 @@ function TournamentsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listTournaments(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateTournament(editing, form); showMsg('Tournament updated'); }
       else { await sportsAPI.createTournament(form); showMsg('Tournament created'); }
@@ -274,6 +281,8 @@ function ClubsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listClubs(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateClub(editing, form); showMsg('Club updated'); }
       else { await sportsAPI.createClub(form); showMsg('Club created'); }
@@ -334,6 +343,8 @@ function EventsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listEvents(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateEvent(editing, form); showMsg('Event updated'); }
       else { await sportsAPI.createEvent(form); showMsg('Event created'); }
@@ -397,6 +408,8 @@ function BookingsTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listBookings(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateBooking(editing, form); showMsg('Booking updated'); }
       else { await sportsAPI.createBooking(form); showMsg('Booking created'); }
@@ -462,6 +475,8 @@ function FitnessTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listFitness(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { student_id: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateFitness(editing, form); showMsg('Record updated'); }
       else { await sportsAPI.createFitness(form); showMsg('Record created'); }
@@ -530,6 +545,8 @@ function CertificatesTab({ showMsg }) {
   useEffect(() => { load(); }, []);
   const load = async () => { try { const r = await sportsAPI.listCertificates(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {} };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await sportsAPI.updateCertificate(editing, form); showMsg('Certificate updated'); }
       else { await sportsAPI.createCertificate(form); showMsg('Certificate created'); }

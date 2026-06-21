@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Refresh, AccountBalanceWallet, Restaurant, ShoppingCart, Inventory2, Store, ListAlt } from '@mui/icons-material';
 import { canteenAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ py: 2 }}>{children}</Box> : null;
@@ -85,6 +86,8 @@ function MenuTab({ showMsg }) {
     try { const r = await canteenAPI.listMenu(); setItems(r.data.data?.items || r.data.data || []); } catch(e) {}
   };
   const handleSave = async () => {
+    const errs = validateForm(form, { name: ['required'], price: ['number'] });
+    if (Object.keys(errs).length) { showMsg(Object.values(errs)[0], 'error'); return; }
     try {
       if (editing) { await canteenAPI.updateMenuItem(editing, form); showMsg('Menu item updated'); }
       else { await canteenAPI.createMenuItem(form); showMsg('Menu item created'); }

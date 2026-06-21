@@ -14,6 +14,7 @@ import {
   CheckCircle, Error as ErrorIcon
 } from '@mui/icons-material';
 import { libraryAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 
 const ex = d => d?.data?.data?.items || d?.data?.data || d?.data?.items || [];
 const tot = d => d?.data?.data?.total || d?.data?.data?.length || 0;
@@ -243,6 +244,8 @@ export default function Library() {
   const close = () => { setDlg(false); setEdit(null); setForm({}); };
 
   const save = async () => {
+    const errs = validateForm(form, { name: ['required'] });
+    if (Object.keys(errs).length) { msg(Object.values(errs)[0], 'error'); return; }
     try {
       const api = [
         null,

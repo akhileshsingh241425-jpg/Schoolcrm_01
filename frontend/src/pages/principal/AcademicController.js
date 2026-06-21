@@ -11,6 +11,7 @@ import {
   Add, Edit, Delete, Refresh, Warning, Assignment, MenuBook,
   CalendarMonth, SwapHoriz, Search, ThumbUp, ThumbDown, Undo, ArrowForward
 } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI, studentsAPI, staffAPI } from '../../services/api';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -305,8 +306,8 @@ function TeacherAssignmentTab({ classes, staff, subjects }) {
   const removeTarget = (idx) => setTargets(prev => prev.filter((_, i) => i !== idx));
 
   const handleSave = async () => {
-    if (!form.teacher_id) { toast.error('Select a teacher'); return; }
-    if (!form.subject_id) { toast.error('Select a subject'); return; }
+    const errs = validateForm(form, { teacher_id: ['required'], subject_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
 
     // Edit mode: single record update (keeps existing behaviour)
     if (editItem) {
@@ -583,8 +584,8 @@ function ClassTeachersTab({ classes, staff }) {
   }, [form.class_id]);
 
   const handleAssign = async () => {
-    if (!form.section_id) { toast.error('Please select a section'); return; }
-    if (!form.teacher_id && !form.co_teacher_id) { toast.error('Please select at least one teacher'); return; }
+    const errs = validateForm(form, { section_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     if (form.teacher_id && form.co_teacher_id && form.teacher_id === form.co_teacher_id) {
       toast.error('Class Teacher and Co-Class Teacher cannot be the same person');
       return;
@@ -785,6 +786,8 @@ function TimetableTab({ classes, subjects, staff }) {
   useEffect(() => { loadTimetable(); }, [loadTimetable]);
 
   const handleCreate = async () => {
+    const errs = validateForm(form, { day: ['required'], period: ['required'], subject_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await academicsAPI.createTimetableEntry({
         class_id: selectedClass,
@@ -1016,9 +1019,8 @@ function SubstitutionsTab({ staff, classes }) {
   }, [form.original_teacher_id]);
 
   const handleCreate = async () => {
-    if (!form.date) { toast.error('Please select a date'); return; }
-    if (!form.original_teacher_id) { toast.error('Please select the original teacher'); return; }
-    if (!form.substitute_teacher_id) { toast.error('Please select a substitute teacher'); return; }
+    const errs = validateForm(form, { date: ['required'], original_teacher_id: ['required'], substitute_teacher_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     if (String(form.original_teacher_id) === String(form.substitute_teacher_id)) {
       toast.error('Substitute must be different from the original teacher'); return;
     }
@@ -1198,7 +1200,7 @@ function SubjectsTab({ subjects, setSubjects, classes }) {
 
   useEffect(() => { loadClassSubjects(); }, [loadClassSubjects]);
 
-  const validateForm = () => {
+  const validateSubjectForm = () => {
     const errors = {};
     if (!form.name.trim()) errors.name = 'Subject name is required';
     if (!form.code.trim()) errors.code = 'Subject code is required';
@@ -1207,7 +1209,7 @@ function SubjectsTab({ subjects, setSubjects, classes }) {
   };
 
   const handleSave = async () => {
-    if (!validateForm()) return;
+    if (!validateSubjectForm()) return;
     setSaving(true);
     try {
       if (editItem) {
@@ -1955,6 +1957,8 @@ function PromotionsTab({ classes }) {
   }, [selectedClass]);
 
   const handleSaveCriteria = async () => {
+    const errs = validateForm(criteriaForm, { class_id: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       await acAPI.createPromotionCriteria(criteriaForm);
       toast.success('Criteria saved');

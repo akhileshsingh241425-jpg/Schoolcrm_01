@@ -9,6 +9,7 @@ import {
   Add, Assignment, Upload, Refresh, Visibility, Grade, Download,
   AttachFile, CheckCircle, Schedule, People, Close
 } from '@mui/icons-material';
+import { validateForm } from '../../components/Validation';
 import { academicsAPI, dashboardAPI, uploadAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -51,10 +52,8 @@ export default function TeacherAssignments() {
   useEffect(() => { loadData(); }, []);
 
   const handleCreate = async () => {
-    if (!form.title || !form.class_id || !form.subject_id || !form.due_date) {
-      toast.error('Title, Class, Subject and Due Date are required');
-      return;
-    }
+    const errs = validateForm(form, { title: ['required'], class_id: ['required'], subject_id: ['required'], due_date: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     setCreating(true);
     try {
       let attachment_url = null;

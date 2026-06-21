@@ -11,6 +11,7 @@ import {
   SwapHoriz, PersonSearch
 } from '@mui/icons-material';
 import { attendanceAPI, studentsAPI, staffAPI } from '../../services/api';
+import { validateForm } from '../../components/Validation';
 import useAuthStore from '../../store/authStore';
 
 const ADMIN_TABS = ['Dashboard', 'Student Attendance', 'Staff Attendance', 'Period-wise',
@@ -766,6 +767,11 @@ function LateArrivalsTab({ snack, setSnack }) {
   useEffect(() => { load(); }, [load]);
 
   const save = () => {
+    const errs = validateForm(form, {
+      person_id: ['required'],
+      reason: ['required'],
+    });
+    if (Object.keys(errs).length) { setSnack({ open: true, message: Object.values(errs)[0], severity: 'error' }); return; }
     attendanceAPI.recordLateArrival({ ...form, date }).then(() => {
       setDialog(false);
       setSnack({ open: true, message: 'Late arrival recorded', severity: 'success' });

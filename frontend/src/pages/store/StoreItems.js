@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, TextField, CircularProgress, alpha, Button, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { validateForm } from '../../components/Validation';
 import { storeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -48,6 +49,8 @@ export default function StoreItems() {
   };
 
   const handleSave = async () => {
+    const errs = validateForm(editForm, { name: ['required'] });
+    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     try {
       const payload = { ...editForm };
       if (payload.quantity !== undefined) payload.quantity = parseInt(payload.quantity) || 0;
