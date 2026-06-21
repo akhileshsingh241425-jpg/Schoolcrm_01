@@ -36,3 +36,10 @@ token.txt
 
 # BOB workspace memory
 .bob/
+
+# Log files
+*.log
+backend/app_err.log
+backend/app_out.log
+backend/backend_err.log
+backend/server_err.log

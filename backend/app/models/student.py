@@ -108,7 +108,7 @@ class Student(db.Model):
     address = db.Column(db.Text)
     city = db.Column(db.String(100))
     state = db.Column(db.String(100))
-    pincode = db.Column(db.String(10))
+    pincode = db.Column(db.String(20))
     photo_url = db.Column(db.String(500))
     current_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'))
     current_section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))

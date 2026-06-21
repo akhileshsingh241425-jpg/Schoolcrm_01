@@ -71,7 +71,7 @@ class Admission(db.Model):
     address = db.Column(db.Text)
     city = db.Column(db.String(100))
     state = db.Column(db.String(100))
-    pincode = db.Column(db.String(10))
+    pincode = db.Column(db.String(20))
 
     # Father Info
     father_name = db.Column(db.String(255))

@@ -143,8 +143,11 @@ export default function CreateSchool() {
 
   const handleChange = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
   const handleAdminChange = (key, value) => setAdminForm(prev => ({ ...prev, [key]: value }));
-
   const handleDirectorChange = (key, value) => setDirector(prev => ({ ...prev, [key]: value }));
+
+  const numField = (handler, key, maxLen) => (e) => {
+    handler(key, e.target.value.replace(/\D/g, '').slice(0, maxLen));
+  };
 
   const toggleFeature = (key) => {
     setFeatures(prev => {
@@ -369,12 +372,14 @@ export default function CreateSchool() {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="Phone" value={form.phone}
-                    onChange={e => handleChange('phone', e.target.value)}
+                    onChange={numField(handleChange, 'phone', 10)}
+                    inputProps={{ maxLength: 10 }}
                     InputProps={{ startAdornment: <InputAdornment position="start"><Phone fontSize="small" /></InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="Secondary Mobile No." value={form.secondary_phone}
-                    onChange={e => handleChange('secondary_phone', e.target.value)}
+                    onChange={numField(handleChange, 'secondary_phone', 10)}
+                    inputProps={{ maxLength: 10 }}
                     InputProps={{ startAdornment: <InputAdornment position="start"><Phone fontSize="small" /></InputAdornment> }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -405,7 +410,8 @@ export default function CreateSchool() {
                 </Grid>
                 <Grid item xs={6} sm={4}>
                   <TextField fullWidth label="Pincode" value={form.pincode}
-                    onChange={e => handleChange('pincode', e.target.value)} />
+                    onChange={numField(handleChange, 'pincode', 6)}
+                    inputProps={{ maxLength: 6 }} />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField fullWidth label="Website" value={form.website}
@@ -460,7 +466,8 @@ export default function CreateSchool() {
                         </Grid>
                         <Grid item xs={12} sm={3}>
                           <TextField fullWidth size="small" label="Phone" value={alt.phone}
-                            onChange={e => updateAlternate(idx, 'phone', e.target.value)} />
+                            onChange={e => updateAlternate(idx, 'phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            inputProps={{ maxLength: 10 }} />
                         </Grid>
                         <Grid item xs={12} sm={3}>
                           <TextField fullWidth size="small" label="Relation" value={alt.relation}
@@ -548,7 +555,8 @@ export default function CreateSchool() {
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField fullWidth label="Principal Phone" value={form.principal_phone}
-                    onChange={e => handleChange('principal_phone', e.target.value)} />
+                    onChange={numField(handleChange, 'principal_phone', 10)}
+                    inputProps={{ maxLength: 10 }} />
                 </Grid>
               </Grid>
             </CardContent>
@@ -581,11 +589,13 @@ export default function CreateSchool() {
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField fullWidth label="Phone" value={director.phone}
-                      onChange={e => handleDirectorChange('phone', e.target.value)} />
+                      onChange={numField(handleDirectorChange, 'phone', 10)}
+                      inputProps={{ maxLength: 10 }} />
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField fullWidth label="Secondary Phone" value={director.secondary_phone}
-                      onChange={e => handleDirectorChange('secondary_phone', e.target.value)} />
+                      onChange={numField(handleDirectorChange, 'secondary_phone', 10)}
+                      inputProps={{ maxLength: 10 }} />
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField fullWidth label="Qualification" value={director.qualification}
@@ -616,7 +626,8 @@ export default function CreateSchool() {
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField fullWidth label="Pincode" value={director.pincode}
-                      onChange={e => handleDirectorChange('pincode', e.target.value)} />
+                      onChange={numField(handleDirectorChange, 'pincode', 6)}
+                      inputProps={{ maxLength: 6 }} />
                   </Grid>
 
                   {/* ── Aadhar ── */}

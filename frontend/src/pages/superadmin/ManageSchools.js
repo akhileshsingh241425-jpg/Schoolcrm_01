@@ -231,7 +231,14 @@ export default function ManageSchools() {
             {['name', 'email', 'phone', 'city', 'state', 'pincode', 'website'].map(field => (
               <Grid item xs={6} key={field}>
                 <TextField fullWidth size="small" label={field.charAt(0).toUpperCase() + field.slice(1)}
-                  value={editForm[field] || ''} onChange={e => setEditForm({ ...editForm, [field]: e.target.value })}
+                  value={editForm[field] || ''}
+                  onChange={e => {
+                    let val = e.target.value;
+                    if (field === 'phone') val = val.replace(/\D/g, '').slice(0, 10);
+                    if (field === 'pincode') val = val.replace(/\D/g, '').slice(0, 6);
+                    setEditForm({ ...editForm, [field]: val });
+                  }}
+                  inputProps={field === 'phone' ? { maxLength: 10 } : field === 'pincode' ? { maxLength: 6 } : undefined}
                 />
               </Grid>
             ))}
