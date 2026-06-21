@@ -7,7 +7,14 @@ Super Admin account (admin@schoolcrm.com) safe rahega.
 Roles aur permissions bhi safe rahenge.
 """
 
-import os, pymysql
+import os, sys, pymysql
+from dotenv import load_dotenv
+
+# ─── Load .env from backend folder ──────────────────────────────────
+env_path = os.path.join(os.path.dirname(__file__), 'backend', '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+    print(f"Loaded .env from: {env_path}")
 
 # ─── DB Connection ───────────────────────────────────────────────────
 conn = pymysql.connect(
@@ -51,6 +58,7 @@ for t in large_tables:
 # ─── Step 2: All school data tables ──────────────────────────────────
 print("\n[3/4] Sab tables se data hata raha hai...")
 
+# ─── ALL TABLES (sab dummy hai, sab hata do) ────────────────────────
 tables_to_clean = [
     # Academics
     'homework_submissions', 'homework', 'study_materials',
@@ -113,13 +121,13 @@ tables_to_clean = [
     'student_achievements', 'student_behaviors', 'student_documents',
     'student_promotions', 'alumni', 'parent_details',
     'student_houses', 'student_marks',
-    # Core - Students & Staff (last)
+    # Core
     'students', 'staff',
-    # Classes & Sections
+    # Structure
     'sections', 'classes',
-    # Schools (remove dummy schools but keep super admin's access)
+    # Schools
     'school_settings', 'school_branding', 'schools',
-    # Alerts & Notifications
+    # Alerts
     'alert_rules', 'alert_logs',
 ]
 
@@ -191,7 +199,7 @@ print(f"\n  Super Admin accounts:")
 for a in admins:
     print(f"    - ID: {a[0]}, Email: {a[1]}")
 print(f"\n  Login: admin@schoolcrm.com / superadmin123")
-print("\n  Ab aap fresh testing shuru kar sakte hain!")
+print("\n  ✓ Saara dummy data delete! Ab aap real data daal sakte hain.")
 print("=" * 60)
 
 conn.close()

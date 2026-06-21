@@ -79,7 +79,7 @@ from app.models.sports import (
     Sport, SportsTeam, Tournament, TournamentMatch,
     Club, ClubMember, Event, FacilityBooking, FitnessRecord, Certificate
 )
-from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment
+from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment, SubscriptionFeatureAddOn, ADDON_FEATURES_CATALOG
 from app.models.audit import AuditLog
 from app.models.platform_staff import PlatformStaff, PlatformStaffAttendance, PlatformStaffPayroll, PlatformStaffLeave
 from app.models.principal import ClassObservation, DisciplineCase, TeacherPerformanceScore

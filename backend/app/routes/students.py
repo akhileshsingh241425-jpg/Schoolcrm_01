@@ -214,7 +214,7 @@ def get_student_360(student_id):
 
 
 @students_bp.route('/', methods=['POST'])
-@role_required('school_admin', 'teacher', 'counselor')
+@role_required('school_admin', 'teacher', 'counselor', 'principal')
 def create_student():
     data = request.get_json()
     if not data.get('first_name'):

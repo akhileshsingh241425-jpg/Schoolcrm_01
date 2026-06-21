@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Grid, Card, CardContent, Chip, Button, Tabs, Tab,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -87,11 +88,24 @@ const TAB_NAMES = [
   'Syllabus Progress', 'Promotions', 'Calendar', 'Reports'
 ];
 
+const TAB_MAP = {
+  '': 0, 'dashboard': 0, 'subjects': 1, 'teachers': 2, 'class-teachers': 3,
+  'timetable': 4, 'substitutions': 5, 'syllabus': 6, 'promotions': 7,
+  'calendar': 8, 'reports': 9,
+};
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 export default function AcademicController() {
-  const [tab, setTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') || '';
+  const [tab, setTab] = useState(TAB_MAP[tabParam] || 0);
+
+  useEffect(() => {
+    const idx = TAB_MAP[tabParam];
+    if (idx !== undefined && idx !== tab) setTab(idx);
+  }, [tabParam]);
   const [classes, setClasses] = useState([]);
   const [staff, setStaff] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -110,7 +124,7 @@ export default function AcademicController() {
 
       <Tabs
         value={tab}
-        onChange={(_, v) => setTab(v)}
+        onChange={(_, v) => { setTab(v); const key = Object.keys(TAB_MAP).find(k => TAB_MAP[k] === v); setSearchParams(key ? { tab: key } : {}); }}
         variant="scrollable"
         scrollButtons="auto"
         sx={{
@@ -258,7 +272,13 @@ function TeacherAssignmentTab({ classes, staff, subjects }) {
 
   useEffect(() => {
     if (form.class_id) {
-      studentsAPI.listSections(form.class_id).then(r => setSections(r.data?.data || [])).catch(() => setSections([]));
+      studentsAPI.listSections(form.class_id).then(r => {
+        const secs = r.data?.data || [];
+        setSections(secs);
+        if (form.section_id && !secs.some(s => String(s.id) === String(form.section_id))) {
+          setForm(f => ({ ...f, section_id: '' }));
+        }
+      }).catch(() => setSections([]));
     } else {
       setSections([]);
     }
@@ -357,7 +377,19 @@ function TeacherAssignmentTab({ classes, staff, subjects }) {
   const openEdit = (item) => {
     setEditItem(item);
     setTargets([]);
-    setForm({ teacher_id: item.teacher_id, subject_id: item.subject_id, class_id: item.class_id, section_id: item.section_id || '', periods_per_week: item.periods_per_week || '' });
+    const validTeacherId = staff.some(s => String(s.id) === String(item.teacher_id)) ? item.teacher_id : '';
+    const validSubjectId = subjects.some(s => String(s.id) === String(item.subject_id)) ? item.subject_id : '';
+    const validClassId = classes.some(c => String(c.id) === String(item.class_id)) ? item.class_id : '';
+    setForm({ teacher_id: validTeacherId, subject_id: validSubjectId, class_id: validClassId, section_id: item.section_id || '', periods_per_week: item.periods_per_week || '' });
+    if (item.class_id) {
+      studentsAPI.listSections(item.class_id).then(r => {
+        const secs = r.data?.data || [];
+        setSections(secs);
+        if (item.section_id && !secs.some(s => String(s.id) === String(item.section_id))) {
+          setForm(f => ({ ...f, section_id: '' }));
+        }
+      }).catch(() => setSections([]));
+    }
     setDialogOpen(true);
   };
 
@@ -573,14 +605,23 @@ function ClassTeachersTab({ classes, staff }) {
 
   // Open dialog with pre-filled data for editing
   const openEditDialog = (a) => {
+    const validClassId = classes.some(c => String(c.id) === String(a.class_id)) ? a.class_id : '';
+    const validTeacherId = teachers.some(t => String(t.id) === String(a.class_teacher_id)) ? a.class_teacher_id : '';
+    const validCoTeacherId = teachers.some(t => String(t.id) === String(a.co_class_teacher_id)) ? a.co_class_teacher_id : '';
     setForm({
-      class_id: a.class_id || '',
+      class_id: validClassId,
       section_id: a.section_id || '',
-      teacher_id: a.class_teacher_id || '',
-      co_teacher_id: a.co_class_teacher_id || ''
+      teacher_id: validTeacherId,
+      co_teacher_id: validCoTeacherId
     });
     if (a.class_id) {
-      studentsAPI.listSections(a.class_id).then(r => setSections(r.data?.data || [])).catch(() => setSections([]));
+      studentsAPI.listSections(a.class_id).then(r => {
+        const secs = r.data?.data || [];
+        setSections(secs);
+        if (a.section_id && !secs.some(s => String(s.id) === String(a.section_id))) {
+          setForm(f => ({ ...f, section_id: '' }));
+        }
+      }).catch(() => setSections([]));
     }
     setDialogOpen(true);
   };

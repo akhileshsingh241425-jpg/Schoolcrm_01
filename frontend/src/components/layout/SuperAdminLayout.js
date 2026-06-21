@@ -1,16 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Drawer, AppBar, Toolbar, Typography, IconButton, List, ListItem,
   ListItemButton, ListItemIcon, ListItemText, Avatar, Menu, MenuItem,
-  Divider, useTheme, useMediaQuery, Chip, alpha, Tooltip, Badge
+  Divider, useTheme, useMediaQuery, Chip, alpha, Tooltip, Badge,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, CircularProgress, Alert,
+  Popover,
 } from '@mui/material';
 import {
   Menu as MenuIcon, Dashboard, School, People, Star, Receipt,
   Settings, Logout, AdminPanelSettings, BarChart, Security,
-  ManageAccounts, Notifications, ChevronLeft, Circle, Group
+  ManageAccounts, Notifications, ChevronLeft, Circle, Group, Search, Close
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
+import { superAdminAPI } from '../../services/api';
 
 const DRAWER_WIDTH = 260;
 
@@ -43,7 +46,65 @@ export default function SuperAdminLayout() {
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, school, logout, switchSchool, clearSchool } = useAuthStore();
+
+  const [switchDialogOpen, setSwitchDialogOpen] = useState(false);
+  const [schoolCode, setSchoolCode] = useState('');
+  const [switchLoading, setSwitchLoading] = useState(false);
+  const [switchError, setSwitchError] = useState('');
+  const [switchSuccess, setSwitchSuccess] = useState('');
+
+  const handleSwitchSchool = async () => {
+    if (!schoolCode.trim()) { setSwitchError('Please enter a school code'); return; }
+    setSwitchLoading(true); setSwitchError(''); setSwitchSuccess('');
+    try {
+      await switchSchool(schoolCode.trim());
+      setSwitchSuccess(`Switched to ${schoolCode.trim().toUpperCase()}`);
+      setSchoolCode('');
+      setTimeout(() => setSwitchDialogOpen(false), 1000);
+    } catch (err) {
+      setSwitchError(err.response?.data?.message || 'Failed to switch school');
+    } finally { setSwitchLoading(false); }
+  };
+
+  const handleClearSchool = () => {
+    clearSchool();
+    setSwitchDialogOpen(false);
+    setSchoolCode('');
+    setSwitchSuccess('');
+  };
+
+  // Notification state
+  const [notifAnchor, setNotifAnchor] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true);
+    try {
+      const res = await superAdminAPI.notifications({ limit: 10 });
+      setNotifications(res.data.data.notifications || []);
+      setUnreadCount(res.data.data.unread_count || 0);
+    } catch { /* silent */ }
+    setNotifLoading(false);
+  }, []);
+
+  useEffect(() => { fetchNotifications(); const t = setInterval(fetchNotifications, 30000); return () => clearInterval(t); }, [fetchNotifications]);
+
+  const handleNotifClick = (e) => { setNotifAnchor(e.currentTarget); fetchNotifications(); };
+  const handleNotifClose = () => setNotifAnchor(null);
+
+  const timeAgo = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
 
   const handleLogout = () => {
     logout();
@@ -241,16 +302,69 @@ export default function SuperAdminLayout() {
               }}
             />
 
+            {/* School Switcher */}
+            <Tooltip title={school ? `Viewing: ${school.name} (${school.code})` : 'No school selected - click to switch'}>
+              <Chip
+                icon={<School sx={{ fontSize: 14 }} />}
+                label={school ? `${school.name} (${school.code})` : 'Select School'}
+                size="small"
+                onClick={() => setSwitchDialogOpen(true)}
+                sx={{
+                  ml: 1.5,
+                  bgcolor: school ? alpha('#10b981', 0.1) : alpha('#f59e0b', 0.1),
+                  color: school ? '#059669' : '#d97706',
+                  fontWeight: 600, fontSize: 11,
+                  '&:hover': { bgcolor: school ? alpha('#10b981', 0.2) : alpha('#f59e0b', 0.2) },
+                  cursor: 'pointer',
+                  maxWidth: 220,
+                  '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+                }}
+              />
+            </Tooltip>
+
             <Box sx={{ flex: 1 }} />
 
             {/* Notifications */}
             <Tooltip title="Notifications">
-              <IconButton>
-                <Badge badgeContent={3} color="error">
+              <IconButton onClick={handleNotifClick}>
+                <Badge badgeContent={unreadCount} color="error" max={99}>
                   <Notifications sx={{ color: 'text.secondary' }} />
                 </Badge>
               </IconButton>
             </Tooltip>
+            <Popover open={Boolean(notifAnchor)} anchorEl={notifAnchor} onClose={handleNotifClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              PaperProps={{ sx: { width: 360, maxHeight: 480, borderRadius: 3, mt: 1, overflow: 'hidden' } }}>
+              <Box sx={{ p: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
+                {unreadCount > 0 && <Chip label={`${unreadCount} new`} size="small" color="primary" sx={{ fontWeight: 600 }} />}
+              </Box>
+              <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                {notifLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
+                ) : notifications.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 4, px: 2 }}>
+                    <Notifications sx={{ fontSize: 40, color: alpha('#000', 0.15), mb: 1 }} />
+                    <Typography variant="body2" color="text.secondary">No notifications yet</Typography>
+                  </Box>
+                ) : notifications.map((n, i) => (
+                  <React.Fragment key={n.id}>
+                    {i > 0 && <Divider />}
+                    <Box sx={{ px: 2, py: 1.5, '&:hover': { bgcolor: alpha('#6366f1', 0.04) }, transition: 'background 0.15s' }}>
+                      <Typography variant="subtitle2" fontWeight={600} fontSize={13}>{n.title}</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>{n.message}</Typography>
+                      <Typography variant="caption" color="text.disabled" fontSize={11}>{timeAgo(n.created_at)}</Typography>
+                    </Box>
+                  </React.Fragment>
+                ))}
+              </Box>
+              <Box sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+                <Button size="small" onClick={() => { handleNotifClose(); navigate('/super-admin/audit'); }} sx={{ textTransform: 'none', fontSize: 12 }}>
+                  View All Activity
+                </Button>
+              </Box>
+            </Popover>
 
             {/* Avatar Menu */}
             <Tooltip title="Account">
@@ -283,6 +397,55 @@ export default function SuperAdminLayout() {
           <Outlet />
         </Box>
       </Box>
+
+      {/* School Switcher Dialog */}
+      <Dialog open={switchDialogOpen} onClose={() => { setSwitchDialogOpen(false); setSwitchError(''); setSwitchSuccess(''); }}
+        PaperProps={{ sx: { borderRadius: 4, maxWidth: 440, width: '100%', p: 1 } }}>
+        <DialogTitle sx={{ pb: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700}>Switch School</Typography>
+            <Typography variant="body2" color="text.secondary">Enter a school code to view its data</Typography>
+          </Box>
+          <IconButton size="small" onClick={() => { setSwitchDialogOpen(false); setSwitchError(''); setSwitchSuccess(''); }}>
+            <Close fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {school && (
+            <Box sx={{ mb: 2.5, p: 2, borderRadius: 3, bgcolor: alpha('#10b981', 0.08), border: '1px solid', borderColor: alpha('#10b981', 0.2) }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>CURRENT SCHOOL</Typography>
+              <Typography variant="subtitle2" fontWeight={700} mt={0.5}>{school.name}</Typography>
+              <Typography variant="caption" color="text.secondary">Code: {school.code}</Typography>
+            </Box>
+          )}
+          <TextField fullWidth label="School Code" placeholder="e.g. SPS" value={schoolCode}
+            onChange={(e) => setSchoolCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === 'Enter' && handleSwitchSchool()}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 1.5 }}
+          />
+          {switchError && <Alert severity="error" sx={{ mb: 1.5, borderRadius: 2 }}>{switchError}</Alert>}
+          {switchSuccess && <Alert severity="success" sx={{ mb: 1.5, borderRadius: 2 }}>{switchSuccess}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          {school && (
+            <Button onClick={handleClearSchool} color="warning" variant="outlined" size="small"
+              sx={{ borderRadius: 2, textTransform: 'none' }}>
+              Clear Context
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={() => { setSwitchDialogOpen(false); setSwitchError(''); setSwitchSuccess(''); }}
+            sx={{ borderRadius: 2, textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button onClick={handleSwitchSchool} variant="contained" disabled={switchLoading}
+            startIcon={switchLoading ? <CircularProgress size={18} /> : <Search />}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+            {switchLoading ? 'Switching...' : 'Switch'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

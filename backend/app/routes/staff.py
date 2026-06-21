@@ -84,7 +84,7 @@ def get_staff_profile(staff_id):
 
 
 @staff_bp.route('/', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def create_staff():
     data = request.get_json()
     if not data.get('first_name'):

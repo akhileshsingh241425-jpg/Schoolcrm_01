@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Grid, TextField, Button, Autocomplete, CircularProgress, alpha, Tabs, Tab, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Typography, Card, CardContent, Grid, TextField, Button, Autocomplete, CircularProgress, alpha, Tabs, Tab, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material';
 import { storeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -18,14 +18,22 @@ export default function StoreStockUpdate() {
     reorder_quantity: '', location: '', description: '',
   });
 
+  const [stockInItem, setStockInItem] = useState(null);
+  const [stockInQty, setStockInQty] = useState(1);
+  const [stockInRef, setStockInRef] = useState('manual');
+  const [stockInRemarks, setStockInRemarks] = useState('');
+  const [stockInTxns, setStockInTxns] = useState([]);
+
   const load = async () => {
     try {
-      const [itemsRes, catsRes] = await Promise.all([
+      const [itemsRes, catsRes, txnRes] = await Promise.all([
         storeAPI.listItems({ per_page: 200 }),
         storeAPI.listCategories(),
+        storeAPI.getTransactions({ type: 'in', per_page: 50 }),
       ]);
       setItems(itemsRes.data.data?.items || []);
       setCategories(catsRes.data.data || []);
+      setStockInTxns(txnRes.data.data?.items || []);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load data');
     }
@@ -76,6 +84,19 @@ export default function StoreStockUpdate() {
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to create category'); }
   };
 
+  const handleStockIn = async () => {
+    if (!stockInItem) { toast.error('Select an item'); return; }
+    if (stockInQty < 1) { toast.error('Quantity must be at least 1'); return; }
+    setSubmitting(true);
+    try {
+      const res = await storeAPI.stockIn({ item_id: stockInItem.id, quantity: stockInQty, remarks: stockInRemarks, reference: stockInRef });
+      toast.success(res.data.message);
+      setStockInQty(1); setStockInRemarks('');
+      load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Stock in failed'); }
+    setSubmitting(false);
+  };
+
   const colSx = { '& .MuiOutlinedInput-root': { borderRadius: 2.5 } };
 
   return (
@@ -84,6 +105,7 @@ export default function StoreStockUpdate() {
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, borderRadius: '8px 8px 0 0' } }}>
         <Tab label="Add New Item" />
+        <Tab label="Stock In" />
         <Tab label="Adjust Stock" />
       </Tabs>
 
@@ -131,6 +153,87 @@ export default function StoreStockUpdate() {
                   sx={{ mt: 2.5, borderRadius: 3, textTransform: 'none', fontWeight: 600, py: 1.2, px: 4 }}>
                   {submitting ? <CircularProgress size={20} color="inherit" /> : 'Add Item to Stock'}
                 </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      ) : tab === 1 ? (
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={5}>
+            <Card sx={{ borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Stock In</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Autocomplete options={items} getOptionLabel={o => `${o.name} (Current: ${o.quantity})`}
+                    isOptionEqualToValue={(option, value) => option.id === value?.id}
+                    value={stockInItem} onChange={(_, v) => { setStockInItem(v); }}
+                    renderInput={p => <TextField {...p} label="Item" size="small" />} />
+                  {stockInItem && (
+                    <Box sx={{ px: 1.5, py: 0.8, borderRadius: 2, bgcolor: alpha('#10b981', 0.06), display: 'flex', gap: 3, fontSize: '0.85rem' }}>
+                      <span><strong>Current Stock:</strong> {stockInItem.quantity}</span>
+                      <span><strong>Category:</strong> {stockInItem.category_name || 'N/A'}</span>
+                    </Box>
+                  )}
+                  <TextField label="Quantity to Add" type="number" size="small" value={stockInQty}
+                    onChange={e => setStockInQty(parseInt(e.target.value) || 1)} inputProps={{ min: 1 }} />
+                  <FormControl size="small">
+                    <InputLabel>Reference</InputLabel>
+                    <Select value={stockInRef} label="Reference" onChange={e => setStockInRef(e.target.value)}>
+                      <MenuItem value="manual">Manual</MenuItem>
+                      <MenuItem value="purchase">Purchase Order</MenuItem>
+                      <MenuItem value="return">Return to Stock</MenuItem>
+                      <MenuItem value="transfer">Transfer</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField label="Remarks" size="small" multiline rows={2} value={stockInRemarks}
+                    onChange={e => setStockInRemarks(e.target.value)} />
+                  <Button variant="contained" onClick={handleStockIn} disabled={submitting}
+                    sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 600, py: 1.2, bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}>
+                    {submitting ? <CircularProgress size={20} color="inherit" /> : 'Add to Stock'}
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={7}>
+            <Card sx={{ borderRadius: 4, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+              <CardContent>
+                <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Stock In History</Typography>
+                <TableContainer component={Paper} elevation={0} sx={{ bgcolor: 'transparent' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Item</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Qty Added</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Reference</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Date</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Note</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {stockInTxns.map(t => (
+                        <TableRow key={t.id} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
+                          <TableCell sx={{ fontWeight: 600 }}>{t.item_name}</TableCell>
+                          <TableCell>
+                            <Chip label={`+${t.quantity}`} size="small"
+                              sx={{ fontWeight: 700, bgcolor: alpha('#10b981', 0.1), color: '#10b981' }} />
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={t.reference_type || 'manual'} size="small" variant="outlined"
+                              sx={{ textTransform: 'capitalize', fontSize: '0.7rem' }} />
+                          </TableCell>
+                          <TableCell sx={{ color: '#94a3b8' }}>
+                            {t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell sx={{ color: '#94a3b8', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.note || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                      {stockInTxns.length === 0 && (
+                        <TableRow><TableCell colSpan={5} sx={{ textAlign: 'center', color: '#94a3b8' }}>No stock in entries yet</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </CardContent>
             </Card>
           </Grid>

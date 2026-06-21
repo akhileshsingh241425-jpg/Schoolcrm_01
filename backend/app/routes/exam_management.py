@@ -47,7 +47,7 @@ def get_date_sheet(exam_id):
 
 
 @exam_mgmt_bp.route('/date-sheet/<int:exam_id>/submit', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def submit_date_sheet(exam_id):
     """Submit date sheet for Principal approval."""
     ds = ExamDateSheet.query.filter_by(exam_id=exam_id, school_id=g.school_id).first()
@@ -178,7 +178,7 @@ def get_deadlines(exam_id):
 
 
 @exam_mgmt_bp.route('/deadlines/<int:exam_id>', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def set_deadline(exam_id):
     data = request.get_json()
     dl = MarksEntryDeadline(
@@ -198,7 +198,7 @@ def set_deadline(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/marks-status/<int:exam_id>', methods=['GET'])
-@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
 def marks_entry_status(exam_id):
     """Track which subjects have marks entered."""
     schedules = ExamSchedule.query.filter_by(exam_id=exam_id, school_id=g.school_id).all()
@@ -236,7 +236,7 @@ def marks_entry_status(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/results/<int:exam_id>/process', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def process_exam_results(exam_id):
     """Trigger result processing."""
     result = process_results(exam_id, g.school_id)
@@ -246,7 +246,7 @@ def process_exam_results(exam_id):
 
 
 @exam_mgmt_bp.route('/results/<int:exam_id>/analysis', methods=['GET'])
-@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
 def result_analysis(exam_id):
     """Get subject-wise analysis."""
     class_id = request.args.get('class_id', type=int)
@@ -259,7 +259,7 @@ def result_analysis(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/seating/<int:schedule_id>/generate', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def generate_seating_arrangement(schedule_id):
     """Generate seating for an exam schedule."""
     data = request.get_json() or {}
@@ -338,7 +338,7 @@ def create_grievance():
 
 
 @exam_mgmt_bp.route('/grievances/<int:gid>', methods=['PUT'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def update_grievance(gid):
     grievance = ExamGrievance.query.filter_by(id=gid, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -374,7 +374,7 @@ def apply_grace_marks(exam_id):
 
 
 @exam_mgmt_bp.route('/grace-marks/<int:exam_id>', methods=['GET'])
-@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
 def get_grace_marks(exam_id):
     entries = GraceMarks.query.filter_by(exam_id=exam_id, school_id=g.school_id).all()
     return success_response([e.to_dict() for e in entries])
@@ -385,7 +385,7 @@ def get_grace_marks(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/re-exams/<int:exam_id>', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def create_re_exam(exam_id):
     data = request.get_json()
     re = ReExam(
@@ -435,7 +435,7 @@ def mark_notification_read(nid):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/verification/<int:schedule_id>/generate', methods=['POST'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def generate_verification(schedule_id):
     """Randomly select students for marks verification."""
     data = request.get_json() or {}
@@ -460,7 +460,7 @@ def generate_verification(schedule_id):
 
 
 @exam_mgmt_bp.route('/verification/<int:schedule_id>', methods=['GET'])
-@role_required('exam_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
 def get_verifications(schedule_id):
     vlist = MarksVerification.query.filter_by(
         exam_schedule_id=schedule_id, school_id=g.school_id

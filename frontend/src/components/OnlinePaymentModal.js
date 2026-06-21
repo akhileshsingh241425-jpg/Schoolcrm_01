@@ -76,6 +76,7 @@ export default function OnlinePaymentModal({ open, onClose, paymentData, onSucce
       const res = await paymentAPI.createRazorpayOrder({
         amount: paymentData.amount,
         student_id: paymentData.student_id,
+        admission_no: paymentData.admission_no,
         fee_structure_id: paymentData.fee_structure_id,
         installment_id: paymentData.installment_id,
         late_fee: paymentData.late_fee || 0,
@@ -139,6 +140,7 @@ export default function OnlinePaymentModal({ open, onClose, paymentData, onSucce
       const res = await paymentAPI.initiatePaytm({
         amount: paymentData.amount,
         student_id: paymentData.student_id,
+        admission_no: paymentData.admission_no,
         fee_structure_id: paymentData.fee_structure_id,
         installment_id: paymentData.installment_id,
         late_fee: paymentData.late_fee || 0,

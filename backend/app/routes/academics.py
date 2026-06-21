@@ -588,7 +588,7 @@ def list_exam_types():
 
 
 @academics_bp.route('/exam-types', methods=['POST'])
-@role_required('school_admin', 'academic_controller')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def create_exam_type():
     data = request.get_json()
     et = ExamType(
@@ -605,7 +605,7 @@ def create_exam_type():
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['PUT'])
-@role_required('school_admin', 'academic_controller')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def update_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -617,7 +617,7 @@ def update_exam_type(et_id):
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def delete_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
     db.session.delete(et)
@@ -796,7 +796,7 @@ def get_exam(exam_id):
 
 
 @academics_bp.route('/exams', methods=['POST'])
-@role_required('school_admin', 'teacher', 'exam_controller')
+@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
 def create_exam():
     data = request.get_json()
     exam = Exam(
@@ -818,7 +818,7 @@ def create_exam():
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher', 'exam_controller')
+@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
 def update_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -831,7 +831,7 @@ def update_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def delete_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     db.session.delete(exam)
@@ -840,7 +840,7 @@ def delete_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/status', methods=['PUT'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def update_exam_status(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -865,7 +865,7 @@ def list_exam_schedules(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules', methods=['POST'])
-@role_required('school_admin', 'teacher', 'exam_controller')
+@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
 def add_exam_schedule(exam_id):
     data = request.get_json()
     schedule = ExamSchedule(
@@ -889,7 +889,7 @@ def add_exam_schedule(exam_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher', 'exam_controller')
+@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
 def update_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -902,7 +902,7 @@ def update_exam_schedule(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def delete_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     db.session.delete(schedule)
@@ -911,7 +911,7 @@ def delete_exam_schedule(schedule_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules/bulk', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def bulk_add_schedules(exam_id):
     data = request.get_json()
     schedules = data.get('schedules', [])
@@ -949,7 +949,7 @@ def list_exam_groups():
 
 
 @academics_bp.route('/exam-groups', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def create_exam_group():
     data = request.get_json()
     group = ExamGroup(
@@ -973,7 +973,7 @@ def create_exam_group():
 
 
 @academics_bp.route('/exam-groups/<int:group_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def update_exam_group(group_id):
     group = ExamGroup.query.filter_by(id=group_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -986,7 +986,7 @@ def update_exam_group(group_id):
 
 
 @academics_bp.route('/exam-groups/<int:group_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def delete_exam_group(group_id):
     group = ExamGroup.query.filter_by(id=group_id, school_id=g.school_id).first_or_404()
     db.session.delete(group)
@@ -995,7 +995,7 @@ def delete_exam_group(group_id):
 
 
 @academics_bp.route('/exam-groups/<int:group_id>/exams', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def add_exam_to_group(group_id):
     data = request.get_json()
     mapping = ExamGroupMapping(
@@ -1009,7 +1009,7 @@ def add_exam_to_group(group_id):
 
 
 @academics_bp.route('/exam-groups/mappings/<int:mapping_id>', methods=['DELETE'])
-@role_required('school_admin')
+@role_required('school_admin', 'academic_controller', 'exam_controller')
 def remove_exam_from_group(mapping_id):
     mapping = ExamGroupMapping.query.get_or_404(mapping_id)
     db.session.delete(mapping)
@@ -1029,7 +1029,7 @@ def list_exam_halls():
 
 
 @academics_bp.route('/exam-halls', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def create_exam_hall():
     data = request.get_json()
     hall = ExamHall(
@@ -1048,7 +1048,7 @@ def create_exam_hall():
 
 
 @academics_bp.route('/exam-halls/<int:hall_id>', methods=['PUT'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def update_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -1060,7 +1060,7 @@ def update_exam_hall(hall_id):
 
 
 @academics_bp.route('/exam-halls/<int:hall_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def delete_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
     db.session.delete(hall)
@@ -1082,7 +1082,7 @@ def get_seating(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/seating/auto', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def auto_generate_seating(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
 
@@ -1148,7 +1148,7 @@ def list_invigilators(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/invigilators', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def assign_invigilator(schedule_id):
     data = request.get_json()
     inv = ExamInvigilator(
@@ -1164,7 +1164,7 @@ def assign_invigilator(schedule_id):
 
 
 @academics_bp.route('/exams/invigilators/<int:inv_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def remove_invigilator(inv_id):
     inv = ExamInvigilator.query.filter_by(id=inv_id, school_id=g.school_id).first_or_404()
     db.session.delete(inv)
@@ -1177,7 +1177,7 @@ def remove_invigilator(inv_id):
 # ============================================================
 
 @academics_bp.route('/marks/entry', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'teacher')
+@role_required('school_admin', 'exam_controller', 'academic_controller', 'teacher')
 def bulk_marks_entry():
     """Bulk marks entry - accepts array of {student_id, marks_obtained, is_absent, remarks}"""
     data = request.get_json()
@@ -1383,7 +1383,7 @@ def get_marks_sheet():
 
 
 @academics_bp.route('/marks/lock', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'principal')
+@role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
 def lock_marks():
     data = request.get_json()
     schedule_id = data['exam_schedule_id']
@@ -1394,7 +1394,7 @@ def lock_marks():
 
 
 @academics_bp.route('/marks/unlock', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'principal')
+@role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
 def unlock_marks():
     data = request.get_json()
     schedule_id = data['exam_schedule_id']
@@ -1665,7 +1665,7 @@ def get_toppers():
 # ============================================================
 
 @academics_bp.route('/admit-cards/generate', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def generate_admit_cards():
     data = request.get_json()
     exam_id = data['exam_id']
@@ -1726,7 +1726,7 @@ def list_admit_cards():
 
 
 @academics_bp.route('/admit-cards/<int:card_id>/status', methods=['PUT'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def update_admit_card_status(card_id):
     card = ExamAdmitCard.query.filter_by(id=card_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -1742,7 +1742,7 @@ def update_admit_card_status(card_id):
 # ============================================================
 
 @academics_bp.route('/report-cards/generate', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def generate_report_cards():
     """Generate report cards for students"""
     data = request.get_json()
@@ -1902,7 +1902,7 @@ def get_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/<int:rc_id>', methods=['PUT'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def update_report_card(rc_id):
     rc = ReportCard.query.filter_by(id=rc_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
@@ -1914,7 +1914,7 @@ def update_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/publish', methods=['POST'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def publish_report_cards():
     data = request.get_json()
     exam_id = data['exam_id']
@@ -2631,7 +2631,7 @@ def list_incidents():
 
 
 @academics_bp.route('/exam-incidents', methods=['POST'])
-@role_required('school_admin', 'teacher')
+@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
 def report_incident():
     data = request.get_json()
     incident = ExamIncident(
@@ -2651,7 +2651,7 @@ def report_incident():
 
 
 @academics_bp.route('/exam-incidents/<int:incident_id>', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'exam_controller', 'academic_controller')
 def update_incident(incident_id):
     incident = ExamIncident.query.filter_by(id=incident_id, school_id=g.school_id).first_or_404()
     data = request.get_json()

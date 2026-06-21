@@ -214,6 +214,36 @@ def get_me():
     })
 
 
+@auth_bp.route('/switch-school', methods=['POST'])
+@jwt_required()
+def switch_school():
+    """Super admin can switch school context to view different school's data"""
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+
+    if not user or not user.role or user.role.name != 'super_admin':
+        return error_response('Only super admin can switch schools', 403)
+
+    data = request.get_json()
+    if not data:
+        return error_response('No data provided')
+
+    school_code = data.get('school_code', '').strip()
+    if not school_code:
+        return error_response('School code is required')
+
+    school = School.query.filter_by(code=school_code, is_active=True).first()
+    if not school:
+        return error_response('Invalid or inactive school code', 404)
+
+    features = school.get_enabled_features()
+
+    return success_response({
+        'school': school.to_dict(),
+        'features': features,
+    }, 'School switched successfully')
+
+
 @auth_bp.route('/change-password', methods=['POST'])
 @jwt_required()
 def change_password():

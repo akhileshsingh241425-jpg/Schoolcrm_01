@@ -43,6 +43,17 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  switchSchool: async (schoolCode) => {
+    const res = await authAPI.switchSchool(schoolCode);
+    const { school, features } = res.data.data;
+    set({ school, features: features || [] });
+    return res.data;
+  },
+
+  clearSchool: () => {
+    set({ school: null, features: [] });
+  },
+
   logout: () => {
     localStorage.clear();
     set({ user: null, school: null, features: [], allowedModules: [], isAuthenticated: false });

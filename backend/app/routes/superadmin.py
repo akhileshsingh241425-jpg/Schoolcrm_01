@@ -6,7 +6,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from app import db
 from app.models.school import School, SchoolFeature, Director
-from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment
+from app.models.subscription import SubscriptionPlan, SchoolSubscription, SubscriptionPayment, SubscriptionFeatureAddOn, ADDON_FEATURES_CATALOG
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -86,6 +86,36 @@ def dashboard():
         'total_revenue': float(total_revenue),
         'plan_breakdown': {p: c for p, c in plan_breakdown} if plan_breakdown else {},
         'recent_subscriptions': [s.to_dict() for s in recent_subs],
+    })
+
+
+# ─── Notifications ──────────────────────────────────────────────────
+@superadmin_bp.route('/notifications', methods=['GET'])
+@super_admin_required
+def get_notifications():
+    """Get platform notifications for super admin (recent audit logs)"""
+    limit = request.args.get('limit', 10, type=int)
+
+    logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    unread_count = AuditLog.query.filter(
+        AuditLog.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)
+    ).count()
+
+    notifications = []
+    for log in logs:
+        user = User.query.get(log.user_id) if log.user_id else None
+        notifications.append({
+            'id': log.id,
+            'title': log.action.replace('_', ' ').title(),
+            'message': f"{log.module or 'System'} | {user.first_name + ' ' + (user.last_name or '') if user else 'System'}",
+            'type': 'audit',
+            'created_at': log.created_at.isoformat() if log.created_at else None,
+            'read_at': None,
+        })
+
+    return success_response({
+        'notifications': notifications,
+        'unread_count': unread_count,
     })
 
 
@@ -169,6 +199,16 @@ def toggle_school(school_id):
     db.session.commit()
     status = 'activated' if school.is_active else 'deactivated'
     return success_response(school.to_dict(), f'School {status}')
+
+
+@superadmin_bp.route('/schools/<int:school_id>', methods=['DELETE'])
+@super_admin_required
+def delete_school(school_id):
+    school = School.query.get_or_404(school_id)
+    name = school.name
+    db.session.delete(school)
+    db.session.commit()
+    return success_response(message=f'School "{name}" deleted')
 
 
 @superadmin_bp.route('/schools/<int:school_id>/features', methods=['PUT'])
@@ -450,6 +490,407 @@ def public_plans():
     """Public endpoint for schools to see available plans"""
     plans = SubscriptionPlan.query.filter_by(is_active=True).all()
     return success_response([p.to_dict() for p in plans])
+
+
+# ─── Add-on Features Catalog ────────────────────────────────────────────
+@superadmin_bp.route('/addon-features-catalog', methods=['GET'])
+@super_admin_required
+def addon_features_catalog():
+    """Return the catalog of available add-on features with pricing"""
+    return success_response(ADDON_FEATURES_CATALOG)
+
+
+# ─── Subscription Usage / Balance ────────────────────────────────────────
+@superadmin_bp.route('/subscriptions/<int:sub_id>/usage', methods=['GET'])
+@super_admin_required
+def subscription_usage(sub_id):
+    """Get subscription usage details — like mobile recharge balance view.
+    Shows: plan details, total amount, paid amount, remaining balance,
+    days remaining, student/staff usage vs limits, active add-ons."""
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    school = School.query.get_or_404(sub.school_id)
+    plan = SubscriptionPlan.query.get_or_404(sub.plan_id)
+
+    # Calculate payment totals
+    total_paid = db.session.query(db.func.coalesce(db.func.sum(SubscriptionPayment.amount), 0)).filter(
+        SubscriptionPayment.subscription_id == sub.id,
+        SubscriptionPayment.status == 'completed'
+    ).scalar()
+    total_paid = float(total_paid or 0)
+
+    base_amount = float(sub.amount or 0)
+    addon_amount = float(sub.addon_amount or 0)
+    total_amount = float(sub.total_amount or base_amount + addon_amount)
+    balance_remaining = total_amount - total_paid
+
+    # Days remaining
+    days_remaining = 0
+    if sub.end_date:
+        days_remaining = max(0, (sub.end_date - date.today()).days)
+    total_days = 0
+    if sub.start_date and sub.end_date:
+        total_days = (sub.end_date - sub.start_date).days
+    days_used = total_days - days_remaining if total_days > 0 else 0
+
+    # Student/staff usage vs limits
+    from app.models.student import Student
+    from app.models.staff import Staff
+    current_students = Student.query.filter_by(school_id=school.id, status='active').count()
+    current_staff = Staff.query.filter_by(school_id=school.id, status='active').count()
+    max_students = plan.max_students or school.max_students or 0
+    max_staff = plan.max_staff or school.max_staff or 0
+
+    # Active add-ons
+    addons = [a.to_dict() for a in SubscriptionFeatureAddOn.query.filter_by(
+        subscription_id=sub.id, is_active=True
+    ).all()]
+
+    # Enabled features from plan + add-ons
+    plan_features = plan.features or []
+    addon_features = [a.feature_name for a in SubscriptionFeatureAddOn.query.filter_by(
+        subscription_id=sub.id, is_active=True
+    ).all()]
+    all_features = list(set(plan_features + addon_features))
+
+    # School enabled features
+    enabled_features = school.get_enabled_features()
+
+    return success_response({
+        'subscription': sub.to_dict(),
+        'school': {
+            'id': school.id,
+            'name': school.name,
+            'code': school.code,
+            'plan': school.plan,
+            'is_active': school.is_active,
+        },
+        'plan': plan.to_dict(),
+        'balance': {
+            'base_amount': base_amount,
+            'addon_amount': addon_amount,
+            'total_amount': total_amount,
+            'total_paid': total_paid,
+            'balance_remaining': balance_remaining,
+            'payment_status': sub.payment_status,
+        },
+        'time': {
+            'start_date': sub.start_date.isoformat() if sub.start_date else None,
+            'end_date': sub.end_date.isoformat() if sub.end_date else None,
+            'total_days': total_days,
+            'days_used': days_used,
+            'days_remaining': days_remaining,
+            'is_expired': days_remaining <= 0,
+        },
+        'usage': {
+            'students': {'current': current_students, 'max': max_students,
+                         'percentage': round(current_students / max_students * 100, 1) if max_students > 0 else 0},
+            'staff': {'current': current_staff, 'max': max_staff,
+                      'percentage': round(current_staff / max_staff * 100, 1) if max_staff > 0 else 0},
+        },
+        'features': {
+            'plan_features': plan_features,
+            'addon_features': addon_features,
+            'all_features': all_features,
+            'enabled_features': enabled_features,
+        },
+        'addons': addons,
+    })
+
+
+# ─── Recharge / Renew Subscription ──────────────────────────────────────
+@superadmin_bp.route('/subscriptions/<int:sub_id>/recharge', methods=['POST'])
+@super_admin_required
+def recharge_subscription(sub_id):
+    """Recharge/renew a subscription — like mobile recharge.
+    Extends the end_date and records a payment."""
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    school = School.query.get_or_404(sub.school_id)
+    data = request.get_json()
+
+    # Required: amount, payment_mode
+    if not data.get('amount') or not data.get('payment_mode'):
+        return error_response('Amount and payment mode are required')
+
+    amount = float(data['amount'])
+    billing_cycle = data.get('billing_cycle', sub.billing_cycle)
+
+    # Extend end_date
+    new_end_date = None
+    if data.get('new_end_date'):
+        new_end_date = datetime.strptime(data['new_end_date'], '%Y-%m-%d').date()
+    else:
+        # Auto-extend: monthly → +30 days, yearly → +365 days from current end_date
+        from datetime import timedelta
+        base_date = sub.end_date if sub.end_date >= date.today() else date.today()
+        if billing_cycle == 'monthly':
+            new_end_date = base_date + timedelta(days=30)
+        else:
+            new_end_date = base_date + timedelta(days=365)
+
+    # Update subscription
+    sub.end_date = new_end_date
+    sub.billing_cycle = billing_cycle
+    sub.payment_status = data.get('payment_status', 'paid')
+    if data.get('amount_override'):
+        sub.amount = float(data['amount_override'])
+
+    # Recalculate total_amount
+    addon_sum = db.session.query(db.func.coalesce(db.func.sum(SubscriptionFeatureAddOn.price), 0)).filter(
+        SubscriptionFeatureAddOn.subscription_id == sub.id,
+        SubscriptionFeatureAddOn.is_active == True
+    ).scalar()
+    sub.addon_amount = addon_sum
+    sub.total_amount = float(sub.amount or 0) + float(addon_sum or 0)
+
+    # Update school subscription dates
+    school.subscription_start = sub.start_date
+    school.subscription_end = new_end_date
+
+    # Record payment
+    last = SubscriptionPayment.query.filter_by(school_id=sub.school_id).order_by(SubscriptionPayment.id.desc()).first()
+    next_no = 1
+    if last and last.receipt_no and last.receipt_no.startswith('INV-'):
+        try:
+            next_no = int(last.receipt_no.split('-')[1]) + 1
+        except (IndexError, ValueError):
+            next_no = SubscriptionPayment.query.count() + 1
+    receipt_no = f"INV-{next_no:06d}"
+
+    payment = SubscriptionPayment(
+        subscription_id=sub.id,
+        school_id=sub.school_id,
+        amount=amount,
+        payment_date=datetime.strptime(data['payment_date'], '%Y-%m-%d').date() if data.get('payment_date') else date.today(),
+        payment_mode=data['payment_mode'],
+        transaction_id=data.get('transaction_id'),
+        receipt_no=receipt_no,
+        status=data.get('status', 'completed'),
+        notes=data.get('notes', 'Subscription recharge/renewal'),
+        payment_type='recharge',
+    )
+    db.session.add(payment)
+    db.session.commit()
+
+    return success_response({
+        'subscription': sub.to_dict(),
+        'payment': payment.to_dict(),
+        'message': f'Subscription recharged successfully. New end date: {new_end_date}'
+    })
+
+
+# ─── Add Feature Add-ons ────────────────────────────────────────────────
+@superadmin_bp.route('/subscriptions/<int:sub_id>/addons', methods=['GET'])
+@super_admin_required
+def list_subscription_addons(sub_id):
+    """List all add-ons for a subscription"""
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    addons = SubscriptionFeatureAddOn.query.filter_by(subscription_id=sub.id).all()
+    return success_response([a.to_dict() for a in addons])
+
+
+@superadmin_bp.route('/subscriptions/<int:sub_id>/addons', methods=['POST'])
+@super_admin_required
+def add_subscription_addon(sub_id):
+    """Add a feature add-on to a subscription — increases price like mobile add-on packs.
+    Also enables the feature in the school's feature list."""
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    school = School.query.get_or_404(sub.school_id)
+    data = request.get_json()
+
+    feature_name = data.get('feature_name')
+    if not feature_name:
+        return error_response('feature_name is required')
+
+    # Check if add-on already exists and is active
+    existing = SubscriptionFeatureAddOn.query.filter_by(
+        subscription_id=sub.id, feature_name=feature_name, is_active=True
+    ).first()
+    if existing:
+        return error_response(f'Feature "{feature_name}" is already an active add-on')
+
+    # Find price from catalog
+    catalog_item = next((c for c in ADDON_FEATURES_CATALOG if c['feature_name'] == feature_name), None)
+    if not catalog_item:
+        return error_response(f'Feature "{feature_name}" not found in add-on catalog')
+
+    billing_cycle = data.get('billing_cycle', sub.billing_cycle)
+    price = float(catalog_item['yearly_price'] if billing_cycle == 'yearly' else catalog_item['monthly_price'])
+
+    # Allow custom price override
+    if data.get('custom_price'):
+        price = float(data['custom_price'])
+
+    # Create add-on
+    addon = SubscriptionFeatureAddOn(
+        subscription_id=sub.id,
+        school_id=sub.school_id,
+        feature_name=feature_name,
+        feature_label=catalog_item.get('label', feature_name),
+        price=price,
+        billing_cycle=billing_cycle,
+        is_active=True,
+    )
+    db.session.add(addon)
+
+    # Enable feature in school
+    feat = SchoolFeature.query.filter_by(
+        school_id=school.id, feature_name=feature_name
+    ).first()
+    if feat:
+        feat.is_enabled = True
+    else:
+        db.session.add(SchoolFeature(
+            school_id=school.id, feature_name=feature_name, is_enabled=True
+        ))
+
+    # Recalculate subscription totals
+    addon_sum = db.session.query(db.func.coalesce(db.func.sum(SubscriptionFeatureAddOn.price), 0)).filter(
+        SubscriptionFeatureAddOn.subscription_id == sub.id,
+        SubscriptionFeatureAddOn.is_active == True
+    ).scalar()
+    sub.addon_amount = addon_sum
+    sub.total_amount = float(sub.amount or 0) + float(addon_sum or 0)
+
+    # Optionally record a payment for the add-on
+    if data.get('record_payment', False):
+        amount = price
+        payment_mode = data.get('payment_mode', 'online')
+        last = SubscriptionPayment.query.filter_by(school_id=sub.school_id).order_by(SubscriptionPayment.id.desc()).first()
+        next_no = 1
+        if last and last.receipt_no and last.receipt_no.startswith('INV-'):
+            try:
+                next_no = int(last.receipt_no.split('-')[1]) + 1
+            except (IndexError, ValueError):
+                next_no = SubscriptionPayment.query.count() + 1
+        receipt_no = f"INV-{next_no:06d}"
+
+        payment = SubscriptionPayment(
+            subscription_id=sub.id,
+            school_id=sub.school_id,
+            amount=amount,
+            payment_date=date.today(),
+            payment_mode=payment_mode,
+            transaction_id=data.get('transaction_id'),
+            receipt_no=receipt_no,
+            status='completed',
+            notes=f'Add-on feature: {catalog_item.get("label", feature_name)}',
+            payment_type='addon',
+        )
+        db.session.add(payment)
+
+    db.session.commit()
+
+    return success_response({
+        'addon': addon.to_dict(),
+        'subscription': sub.to_dict(),
+        'message': f'Feature "{catalog_item.get("label", feature_name)}" added. New total: ₹{sub.total_amount:,.2f}'
+    }, 'Add-on feature added')
+
+
+@superadmin_bp.route('/subscriptions/<int:sub_id>/addons/<int:addon_id>', methods=['PUT'])
+@super_admin_required
+def update_subscription_addon(sub_id, addon_id):
+    """Toggle add-on active/inactive or update price"""
+    addon = SubscriptionFeatureAddOn.query.get_or_404(addon_id)
+    if addon.subscription_id != sub_id:
+        return error_response('Add-on does not belong to this subscription')
+
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    school = School.query.get_or_404(sub.school_id)
+    data = request.get_json()
+
+    if 'is_active' in data:
+        addon.is_active = data['is_active']
+
+        # Enable/disable feature in school accordingly
+        feat = SchoolFeature.query.filter_by(
+            school_id=school.id, feature_name=addon.feature_name
+        ).first()
+        if feat:
+            feat.is_enabled = addon.is_active
+        elif addon.is_active:
+            db.session.add(SchoolFeature(
+                school_id=school.id, feature_name=addon.feature_name, is_enabled=True
+            ))
+
+    if 'price' in data:
+        addon.price = float(data['price'])
+
+    # Recalculate subscription totals
+    addon_sum = db.session.query(db.func.coalesce(db.func.sum(SubscriptionFeatureAddOn.price), 0)).filter(
+        SubscriptionFeatureAddOn.subscription_id == sub.id,
+        SubscriptionFeatureAddOn.is_active == True
+    ).scalar()
+    sub.addon_amount = addon_sum
+    sub.total_amount = float(sub.amount or 0) + float(addon_sum or 0)
+
+    db.session.commit()
+
+    return success_response({
+        'addon': addon.to_dict(),
+        'subscription': sub.to_dict(),
+    }, 'Add-on updated')
+
+
+@superadmin_bp.route('/subscriptions/<int:sub_id>/addons/<int:addon_id>', methods=['DELETE'])
+@super_admin_required
+def remove_subscription_addon(sub_id, addon_id):
+    """Remove an add-on feature — reduces price"""
+    addon = SubscriptionFeatureAddOn.query.get_or_404(addon_id)
+    if addon.subscription_id != sub_id:
+        return error_response('Add-on does not belong to this subscription')
+
+    sub = SchoolSubscription.query.get_or_404(sub_id)
+    school = School.query.get_or_404(sub.school_id)
+
+    # Disable feature in school
+    feat = SchoolFeature.query.filter_by(
+        school_id=school.id, feature_name=addon.feature_name
+    ).first()
+    if feat:
+        feat.is_enabled = False
+
+    db.session.delete(addon)
+
+    # Recalculate subscription totals
+    addon_sum = db.session.query(db.func.coalesce(db.func.sum(SubscriptionFeatureAddOn.price), 0)).filter(
+        SubscriptionFeatureAddOn.subscription_id == sub.id,
+        SubscriptionFeatureAddOn.is_active == True
+    ).scalar()
+    sub.addon_amount = addon_sum
+    sub.total_amount = float(sub.amount or 0) + float(addon_sum or 0)
+
+    db.session.commit()
+
+    return success_response({
+        'subscription': sub.to_dict(),
+    }, 'Add-on removed and price adjusted')
+
+
+# ─── School Usage Summary ────────────────────────────────────────────────
+@superadmin_bp.route('/schools/<int:school_id>/usage-summary', methods=['GET'])
+@super_admin_required
+def school_usage_summary(school_id):
+    """Get a school's complete usage summary — like checking mobile balance.
+    Shows: subscription info, balance, usage, features, add-ons."""
+    school = School.query.get_or_404(school_id)
+
+    # Get latest active subscription
+    sub = SchoolSubscription.query.filter_by(school_id=school_id).order_by(
+        SchoolSubscription.id.desc()
+    ).first()
+
+    if not sub:
+        return success_response({
+            'school': {'id': school.id, 'name': school.name, 'code': school.code, 'plan': school.plan},
+            'subscription': None,
+            'message': 'No subscription found for this school'
+        })
+
+    # Redirect to the usage endpoint
+    usage_data = subscription_usage(sub.id)
+    return usage_data
+
 
 # ─── Helper: allowed file types ─────────────────────────────────────────
 ALLOWED_DOC_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'doc', 'docx'}

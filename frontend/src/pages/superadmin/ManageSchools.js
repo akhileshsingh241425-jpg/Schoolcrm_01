@@ -5,7 +5,7 @@ import {
   DialogTitle, DialogContent, DialogActions, Grid, Switch, FormControlLabel,
   InputAdornment, CircularProgress, MenuItem, Select, FormControl, InputLabel, Alert
 } from '@mui/material';
-import { Search, Edit, ToggleOn, Visibility, Business } from '@mui/icons-material';
+import { Search, Edit, ToggleOn, Visibility, Business, Delete } from '@mui/icons-material';
 import { superAdminAPI } from '../../services/api';
 
 const ALL_FEATURES = [
@@ -27,6 +27,7 @@ export default function ManageSchools() {
   const [editDialog, setEditDialog] = useState(false);
   const [detailDialog, setDetailDialog] = useState(false);
   const [featureDialog, setFeatureDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [features, setFeatures] = useState({});
@@ -61,8 +62,12 @@ export default function ManageSchools() {
   };
 
   const handleToggle = async (school) => {
-    await superAdminAPI.toggleSchool(school.id);
-    fetchSchools();
+    try {
+      await superAdminAPI.toggleSchool(school.id);
+      fetchSchools();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to toggle school status');
+    }
   };
 
   const handleViewDetail = async (school) => {
@@ -78,6 +83,21 @@ export default function ManageSchools() {
     (school.features || []).forEach(f => { if (f.is_enabled) featureMap[f.feature_name] = true; });
     setFeatures(featureMap);
     setFeatureDialog(true);
+  };
+
+  const handleDelete = (school) => {
+    setSelected(school);
+    setDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await superAdminAPI.deleteSchool(selected.id);
+      setDeleteDialog(false);
+      fetchSchools();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete school. Check if backend server is running.');
+    }
   };
 
   const handleSaveFeatures = async () => {
@@ -189,6 +209,9 @@ export default function ManageSchools() {
                       <IconButton size="small" onClick={() => handleToggle(school)} title="Toggle Status"
                         color={school.is_active ? 'error' : 'success'}>
                         <ToggleOn fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDelete(school)} title="Delete">
+                        <Delete fontSize="small" color="error" />
                       </IconButton>
                       <Button size="small" onClick={() => handleFeatures(school)}>Features</Button>
                     </TableCell>
@@ -307,6 +330,18 @@ export default function ManageSchools() {
         <DialogActions>
           <Button onClick={() => setFeatureDialog(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSaveFeatures} disabled={saving}>Save Features</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={deleteDialog} onClose={() => setDeleteDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete School?</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete <strong>{selected?.name}</strong>? This will permanently remove all associated data (users, students, staff, etc.).</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

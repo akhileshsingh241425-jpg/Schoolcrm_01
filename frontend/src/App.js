@@ -135,6 +135,7 @@ function RoleRedirect() {
   if (user?.role?.name === 'student') return <Navigate to="/my-portal" replace />;
   if (user?.role?.name === 'principal') return <Navigate to="/principal-dashboard" replace />;
   if (user?.role?.name === 'exam_controller') return <Navigate to="/exam-controller" replace />;
+  if (user?.role?.name === 'academic_controller') return <Navigate to="/academic-controller" replace />;
   if (user?.role?.name === 'store_manager') return <Navigate to="/store" replace />;
   return <Navigate to="/dashboard" replace />;
 }
@@ -282,12 +283,12 @@ function App() {
         <Route path="staff-positions" element={<StaffPositions />} />
 
         {/* Store Management */}
-        <Route path="store" element={<StoreDashboard />} />
-        <Route path="store/items" element={<StoreItems />} />
-        <Route path="store/allocate" element={<StoreAllocation />} />
-        <Route path="store/returns" element={<StoreReturns />} />
-        <Route path="store/stock" element={<StoreStockUpdate />} />
-        <Route path="store/transactions" element={<StoreTransactions />} />
+        <Route path="store" element={<ModuleRoute module="inventory"><StoreDashboard /></ModuleRoute>} />
+        <Route path="store/items" element={<ModuleRoute module="inventory"><StoreItems /></ModuleRoute>} />
+        <Route path="store/allocate" element={<ModuleRoute module="inventory"><StoreAllocation /></ModuleRoute>} />
+        <Route path="store/returns" element={<ModuleRoute module="inventory"><StoreReturns /></ModuleRoute>} />
+        <Route path="store/stock" element={<ModuleRoute module="inventory"><StoreStockUpdate /></ModuleRoute>} />
+        <Route path="store/transactions" element={<ModuleRoute module="inventory"><StoreTransactions /></ModuleRoute>} />
 
         {/* Data Import / Migration */}
         <Route path="data-import" element={<ModuleRoute module="data_import"><DataImport /></ModuleRoute>} />

@@ -3,6 +3,16 @@ import { Box, Typography, Card, CardContent, Grid, TextField, Button, MenuItem, 
 import { storeAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
+const ReturnChip = ({ returned }) => {
+  if (returned === true) {
+    return <Chip label="Returned" size="small" sx={{ fontWeight: 700, bgcolor: alpha('#10b981', 0.1), color: '#10b981' }} />;
+  }
+  if (returned === false) {
+    return <Chip label="Not Returned" size="small" sx={{ fontWeight: 700, bgcolor: alpha('#ef4444', 0.1), color: '#ef4444' }} />;
+  }
+  return <Chip label="Pending" size="small" variant="outlined" sx={{ fontWeight: 700, color: '#94a3b8' }} />;
+};
+
 export default function StoreAllocation() {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -53,7 +63,6 @@ export default function StoreAllocation() {
       const res = await storeAPI.allocate(payload);
       toast.success(res.data.message);
       setForm(f => ({ ...f, quantity: 1, recipient_id: '', issued_to: '', remarks: '', expected_return_date: '' }));
-      // Refresh items list to reflect updated quantity
       const [itemsRes, txnRes] = await Promise.all([
         storeAPI.listItems({ per_page: 200 }),
         storeAPI.getTransactions({ type: 'out', per_page: 50 }),
@@ -136,6 +145,7 @@ export default function StoreAllocation() {
                         <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Qty</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Issue Date</TableCell>
                         <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Expected Return</TableCell>
+                        <TableCell sx={{ fontWeight: 700, color: '#64748b' }}>Return Status</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -146,10 +156,18 @@ export default function StoreAllocation() {
                           <TableCell><Chip label={t.quantity} size="small" sx={{ fontWeight: 700, bgcolor: alpha('#ef4444', 0.1), color: '#ef4444' }} /></TableCell>
                           <TableCell sx={{ color: '#94a3b8' }}>{t.issue_date || (t.created_at ? new Date(t.created_at).toLocaleDateString() : '-')}</TableCell>
                           <TableCell sx={{ color: '#94a3b8' }}>{t.expected_return_date || '-'}</TableCell>
+                          <TableCell>
+                            <ReturnChip returned={t.is_returned} />
+                            {t.returned_qty > 0 && t.returned_qty < t.quantity && (
+                              <Typography variant="caption" sx={{ display: 'block', color: '#f59e0b', fontSize: '0.65rem' }}>
+                                ({t.returned_qty}/{t.quantity} returned)
+                              </Typography>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                       {transactions.length === 0 && (
-                        <TableRow><TableCell colSpan={5} sx={{ textAlign: 'center', color: '#94a3b8' }}>No allocations yet</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} sx={{ textAlign: 'center', color: '#94a3b8' }}>No allocations yet</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>

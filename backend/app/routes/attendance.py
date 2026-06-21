@@ -419,7 +419,7 @@ def mark_period_attendance():
 # =====================================================
 
 @attendance_bp.route('/staff', methods=['GET'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def get_staff_attendance():
     att_date = request.args.get('date', date.today().isoformat())
     records = StaffAttendance.query.options(
@@ -429,7 +429,7 @@ def get_staff_attendance():
 
 
 @attendance_bp.route('/staff', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def mark_staff_attendance():
     data = request.get_json()
     att_date = data.get('date', date.today().isoformat())
@@ -463,7 +463,7 @@ def mark_staff_attendance():
 
 
 @attendance_bp.route('/staff/report', methods=['GET'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def staff_attendance_report():
     staff_id = request.args.get('staff_id', type=int)
     from_date = request.args.get('from_date')

@@ -97,7 +97,7 @@ class School(db.Model):
 
     def has_active_subscription(self):
         if not self.subscription_end:
-            return False
+            return True
         return self.subscription_end >= date.today()
 
     def get_enabled_features(self):

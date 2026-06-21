@@ -299,6 +299,37 @@ def return_item():
     return success_response(_enrich_txn(txn), f'Returned {quantity} item(s)', 201)
 
 
+@store_bp.route('/stock-in', methods=['POST'])
+@school_required
+def stock_in():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    quantity = data.get('quantity', 1)
+    user_remarks = data.get('remarks', '')
+    reference = data.get('reference', 'manual')
+
+    if not item_id or quantity < 1:
+        return error_response('Item ID and quantity are required')
+
+    item = InventoryItem.query.filter_by(id=item_id, school_id=g.school_id).first_or_404()
+
+    remarks = _build_remarks(user_remarks, {'reference': reference})
+
+    txn = InventoryTransaction(
+        school_id=g.school_id,
+        item_id=item_id,
+        transaction_type='in',
+        quantity=quantity,
+        reference_type='stock_in',
+        remarks=remarks,
+        created_by=g.current_user.id,
+    )
+    item.quantity += quantity
+    db.session.add(txn)
+    db.session.commit()
+    return success_response(_enrich_txn(txn), f'Stocked in {quantity} item(s)', 201)
+
+
 @store_bp.route('/adjust-stock', methods=['POST'])
 @school_required
 def adjust_stock():
@@ -348,6 +379,25 @@ def list_transactions():
     per_page = min(request.args.get('per_page', 20, type=int), 100)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     items = [_enrich_txn(t) for t in pagination.items]
+
+    # For 'out' transactions, compute returned quantity per item
+    if txn_type == 'out' or not txn_type:
+        out_item_ids = list(set(t.item_id for t in pagination.items if t.transaction_type == 'out'))
+        if out_item_ids:
+            return_totals = dict(
+                db.session.query(
+                    InventoryTransaction.item_id,
+                    func.coalesce(func.sum(InventoryTransaction.quantity), 0)
+                ).filter(
+                    InventoryTransaction.school_id == g.school_id,
+                    InventoryTransaction.item_id.in_(out_item_ids),
+                    InventoryTransaction.transaction_type == 'return'
+                ).group_by(InventoryTransaction.item_id).all()
+            )
+            for txn_item in items:
+                txn_item['returned_qty'] = int(return_totals.get(txn_item['item_id'], 0))
+                txn_item['is_returned'] = txn_item['returned_qty'] >= txn_item['quantity']
+
     return success_response({
         'items': items,
         'total': pagination.total,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Button, Tabs, Tab, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Grid, TextField,
+  Button, Tabs, Tab, Chip, Dialog as MuiDialog, DialogTitle, DialogContent, DialogActions, Grid, TextField,
   FormControl, InputLabel, Select, MenuItem, TablePagination, Snackbar, Alert, Card, CardContent,
   IconButton, Tooltip, LinearProgress, Divider, Switch, FormControlLabel
 } from '@mui/material';
@@ -14,6 +14,25 @@ import { feesAPI, studentsAPI } from '../../services/api';
 import OnlinePaymentModal from '../../components/OnlinePaymentModal';
 
 const fmt = (v) => Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+// Wrapper to blur the trigger button before MUI sets aria-hidden on the root,
+// preventing the "Blocked aria-hidden on an element because its descendant retained focus" warning.
+// Uses useLayoutEffect so blur runs BEFORE MUI's focus trap moves focus inside the dialog.
+// Only blurs elements that are NOT already inside the dialog content.
+function Dialog(props) {
+  const { open, ...rest } = props;
+  const dialogRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    if (open) {
+      const active = document.activeElement;
+      // Only blur if the focused element is outside the dialog (the trigger button)
+      if (active && active.blur && dialogRef.current && !dialogRef.current.contains(active)) {
+        active.blur();
+      }
+    }
+  }, [open]);
+  return <MuiDialog ref={dialogRef} open={open} {...rest} />;
+}
 
 // ─── Dashboard Tab ───
 function FinanceDashboard({ onSnack }) {
@@ -165,20 +184,81 @@ function PaymentsTab({ onSnack }) {
   const [open, setOpen] = useState(false);
   const [onlinePayOpen, setOnlinePayOpen] = useState(false);
   const [onlinePayData, setOnlinePayData] = useState({});
-  const [form, setForm] = useState({ student_id: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' });
+  const [onlinePayStep, setOnlinePayStep] = useState(0); // 0=closed, 1=search/details, 2=gateway
+  const [form, setForm] = useState({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' });
+  const [feeStructures, setFeeStructures] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentOptions, setStudentOptions] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [onlineStudentSearch, setOnlineStudentSearch] = useState('');
+  const [onlineStudentOptions, setOnlineStudentOptions] = useState([]);
+  const [onlineSelectedStudent, setOnlineSelectedStudent] = useState(null);
   const load = useCallback(() => feesAPI.listPayments({ page: page + 1, per_page: 20 }).then(r => setData(r.data.data || { items: [], total: 0 })).catch(() => {}), [page]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    feesAPI.listStructures({ per_page: 100 }).then(r => {
+      const items = r.data.data?.items || r.data.data || [];
+      setFeeStructures(items.filter(s => s.is_active !== false));
+    }).catch(() => {});
+  }, []);
+
+  // Search students by admission_no or name
+  const searchStudents = useCallback(async (q) => {
+    if (!q || q.length < 2) { setStudentOptions([]); return; }
+    try {
+      const res = await studentsAPI.list({ search: q, per_page: 20 });
+      const items = res.data.data?.items || res.data.data || [];
+      setStudentOptions(items.map(s => ({
+        id: s.id, admission_no: s.admission_no, name: s.full_name || `${s.first_name} ${s.last_name || ''}`,
+        class: s.current_class?.name || '-'
+      })));
+    } catch { setStudentOptions([]); }
+  }, []);
+
+  const handleStudentSelect = (student) => {
+    setSelectedStudent(student);
+    setForm(f => ({ ...f, admission_no: student.admission_no, student_name: student.name }));
+    setStudentSearch('');
+    setStudentOptions([]);
+  };
+
+  // Online payment student search
+  const searchOnlineStudents = useCallback(async (q) => {
+    if (!q || q.length < 2) { setOnlineStudentOptions([]); return; }
+    try {
+      const res = await studentsAPI.list({ search: q, per_page: 20 });
+      const items = res.data.data?.items || res.data.data || [];
+      setOnlineStudentOptions(items.map(s => ({
+        id: s.id, admission_no: s.admission_no, name: s.full_name || `${s.first_name} ${s.last_name || ''}`,
+        class: s.current_class?.name || '-'
+      })));
+    } catch { setOnlineStudentOptions([]); }
+  }, []);
+
+  const handleOnlineStudentSelect = (student) => {
+    setOnlineSelectedStudent(student);
+    setOnlineStudentSearch('');
+    setOnlineStudentOptions([]);
+  };
+
   const save = () => {
-    const payload = { ...form };
+    // Use selectedStudent as fallback in case form.admission_no was lost due to stale closure
+    const admission_no = form.admission_no || selectedStudent?.admission_no;
+    const student_name = form.student_name || selectedStudent?.name;
+    const payload = { ...form, admission_no, student_name, payment_mode: form.payment_method };
+    if (!admission_no) { onSnack('Please select a student first', 'error'); return; }
+    if (!form.fee_structure_id) { onSnack('Please select a fee structure', 'error'); return; }
+    if (!form.amount) { onSnack('Please enter the amount', 'error'); return; }
     if (form.payment_method !== 'cheque') { delete payload.cheque_no; delete payload.bank_name; }
-    feesAPI.recordPayment(payload).then(() => { onSnack('Payment recorded'); setOpen(false); setForm({ student_id: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' }); load(); })
+    delete payload.student_name; delete payload.payment_method;
+    feesAPI.recordPayment(payload).then(() => { onSnack('Payment recorded'); setOpen(false); setForm({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' }); setSelectedStudent(null); setStudentSearch(''); load(); })
       .catch(() => onSnack('Failed', 'error'));
   };
   const statusColor = { completed: 'success', pending: 'warning', failed: 'error', cancelled: 'default' };
   return (
     <Box>
       <Box display="flex" justifyContent="flex-end" mb={2} gap={1}>
-        <Button variant="outlined" color="success" startIcon={<Payment />} onClick={() => setOnlinePayOpen(true)}>Pay Online</Button>
+        <Button variant="outlined" color="success" startIcon={<Payment />} onClick={() => { setOnlinePayOpen(true); setOnlinePayStep(1); }}>Pay Online</Button>
         <Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>Record Payment</Button>
       </Box>
       <TableContainer component={Paper}><Table>
@@ -200,36 +280,73 @@ function PaymentsTab({ onSnack }) {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Record Payment</DialogTitle>
         <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Student ID" type="number" value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} /></Grid>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Fee Structure ID" type="number" value={form.fee_structure_id} onChange={e => setForm({ ...form, fee_structure_id: e.target.value })} /></Grid>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Amount" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></Grid>
-          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Method</InputLabel><Select value={form.payment_method} label="Method" onChange={e => setForm({ ...form, payment_method: e.target.value })}>
+          {/* Student Search by Admission No */}
+          <Grid item xs={12}>
+            {!selectedStudent ? (
+              <TextField fullWidth label="Search Student (Admission No / Name)" value={studentSearch} onChange={e => { setStudentSearch(e.target.value); searchStudents(e.target.value); }} placeholder="Type admission no or student name..." />
+            ) : (
+              <Chip label={`✓ ${selectedStudent.admission_no} - ${selectedStudent.name} (${selectedStudent.class})`} color="success" onDelete={() => { setSelectedStudent(null); setStudentSearch(''); setForm(f => ({ ...f, admission_no: '', student_name: '' })); }} />
+            )}
+            {studentOptions.length > 0 && !selectedStudent && (
+              <Paper sx={{ mt: 1, maxHeight: 200, overflow: 'auto' }}>
+                {studentOptions.map(s => (
+                  <Box key={s.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => handleStudentSelect(s)}>
+                    <Typography variant="body2"><strong>{s.admission_no}</strong> — {s.name} (Class: {s.class})</Typography>
+                  </Box>
+                ))}
+              </Paper>
+            )}
+          </Grid>
+          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Fee Structure</InputLabel><Select value={form.fee_structure_id} label="Fee Structure" onChange={e => setForm(f => ({ ...f, fee_structure_id: e.target.value }))}>
+            {feeStructures.map(s => <MenuItem key={s.id} value={s.id}>{s.category?.name || 'N/A'} - {s.class_name || 'N/A'} (₹{fmt(s.amount)})</MenuItem>)}
+            {!feeStructures.length && <MenuItem disabled>No fee structures found</MenuItem>}
+          </Select></FormControl></Grid>
+          <Grid item xs={12} sm={6}><TextField fullWidth label="Amount" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></Grid>
+          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Method</InputLabel><Select value={form.payment_method} label="Method" onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
             <MenuItem value="cash">Cash</MenuItem><MenuItem value="online">Online</MenuItem><MenuItem value="cheque">Cheque</MenuItem><MenuItem value="dd">DD</MenuItem><MenuItem value="upi">UPI</MenuItem>
           </Select></FormControl></Grid>
           {form.payment_method === 'cheque' && <>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Cheque No" value={form.cheque_no} onChange={e => setForm({ ...form, cheque_no: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Bank Name" value={form.bank_name} onChange={e => setForm({ ...form, bank_name: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Cheque No" value={form.cheque_no} onChange={e => setForm(f => ({ ...f, cheque_no: e.target.value }))} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Bank Name" value={form.bank_name} onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} /></Grid>
           </>}
-          <Grid item xs={12}><TextField fullWidth label="Transaction/Reference ID" value={form.transaction_id} onChange={e => setForm({ ...form, transaction_id: e.target.value })} /></Grid>
+          <Grid item xs={12}><TextField fullWidth label="Transaction/Reference ID" value={form.transaction_id} onChange={e => setForm(f => ({ ...f, transaction_id: e.target.value }))} /></Grid>
         </Grid></DialogContent>
         <DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" onClick={save}>Record</Button></DialogActions>
       </Dialog>
-      {/* Online Payment Dialog */}
-      <Dialog open={onlinePayOpen && !onlinePayData.student_id} onClose={() => setOnlinePayOpen(false)} maxWidth="sm" fullWidth>
+      {/* Online Payment Dialog - Step 1: Student Search & Fee Details */}
+      <Dialog open={onlinePayStep === 1} onClose={() => { setOnlinePayOpen(false); setOnlinePayStep(0); setOnlinePayData({}); setOnlineSelectedStudent(null); setOnlineStudentSearch(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>Online Fee Payment</DialogTitle>
         <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Student ID" type="number" value={onlinePayData.student_id || ''} onChange={e => setOnlinePayData({ ...onlinePayData, student_id: e.target.value })} /></Grid>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Student Name" value={onlinePayData.student_name || ''} onChange={e => setOnlinePayData({ ...onlinePayData, student_name: e.target.value })} /></Grid>
-          <Grid item xs={12} sm={6}><TextField fullWidth label="Fee Structure ID" type="number" value={onlinePayData.fee_structure_id || ''} onChange={e => setOnlinePayData({ ...onlinePayData, fee_structure_id: e.target.value })} /></Grid>
+          {/* Student Search by Admission No */}
+          <Grid item xs={12}>
+            {!onlineSelectedStudent ? (
+              <TextField fullWidth label="Search Student (Admission No / Name)" value={onlineStudentSearch} onChange={e => { setOnlineStudentSearch(e.target.value); searchOnlineStudents(e.target.value); }} placeholder="Type admission no or student name..." />
+            ) : (
+              <Chip label={`✓ ${onlineSelectedStudent.admission_no} - ${onlineSelectedStudent.name} (${onlineSelectedStudent.class})`} color="success" onDelete={() => { setOnlineSelectedStudent(null); setOnlineStudentSearch(''); }} />
+            )}
+            {onlineStudentOptions.length > 0 && !onlineSelectedStudent && (
+              <Paper sx={{ mt: 1, maxHeight: 200, overflow: 'auto' }}>
+                {onlineStudentOptions.map(s => (
+                  <Box key={s.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }} onClick={() => handleOnlineStudentSelect(s)}>
+                    <Typography variant="body2"><strong>{s.admission_no}</strong> — {s.name} (Class: {s.class})</Typography>
+                  </Box>
+                ))}
+              </Paper>
+            )}
+          </Grid>
+          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Fee Structure</InputLabel><Select value={onlinePayData.fee_structure_id || ''} label="Fee Structure" onChange={e => setOnlinePayData({ ...onlinePayData, fee_structure_id: e.target.value })}>
+            {feeStructures.map(s => <MenuItem key={s.id} value={s.id}>{s.category?.name || 'N/A'} - {s.class_name || 'N/A'} (₹{fmt(s.amount)})</MenuItem>)}
+            {!feeStructures.length && <MenuItem disabled>No fee structures found</MenuItem>}
+          </Select></FormControl></Grid>
           <Grid item xs={12} sm={6}><TextField fullWidth label="Amount (₹)" type="number" value={onlinePayData.amount || ''} onChange={e => setOnlinePayData({ ...onlinePayData, amount: e.target.value })} /></Grid>
         </Grid></DialogContent>
-        <DialogActions><Button onClick={() => { setOnlinePayOpen(false); setOnlinePayData({}); }}>Cancel</Button><Button variant="contained" color="success" startIcon={<Payment />} onClick={() => { if (onlinePayData.student_id && onlinePayData.fee_structure_id && onlinePayData.amount) { setOnlinePayData({ ...onlinePayData, student_id: Number(onlinePayData.student_id), fee_structure_id: Number(onlinePayData.fee_structure_id), amount: Number(onlinePayData.amount) }); } }}>Proceed to Pay</Button></DialogActions>
+        <DialogActions><Button onClick={() => { setOnlinePayOpen(false); setOnlinePayStep(0); setOnlinePayData({}); setOnlineSelectedStudent(null); setOnlineStudentSearch(''); }}>Cancel</Button><Button variant="contained" color="success" startIcon={<Payment />} onClick={() => { if (onlineSelectedStudent && onlinePayData.fee_structure_id && onlinePayData.amount) { setOnlinePayData({ student_id: onlineSelectedStudent.id, admission_no: onlineSelectedStudent.admission_no, student_name: onlineSelectedStudent.name, fee_structure_id: Number(onlinePayData.fee_structure_id), amount: Number(onlinePayData.amount) }); setOnlinePayStep(2); } }}>Proceed to Pay</Button></DialogActions>
       </Dialog>
       <OnlinePaymentModal
-        open={onlinePayOpen && !!onlinePayData.student_id && typeof onlinePayData.student_id === 'number'}
-        onClose={() => { setOnlinePayOpen(false); setOnlinePayData({}); }}
+        open={onlinePayStep === 2}
+        onClose={() => { setOnlinePayOpen(false); setOnlinePayStep(0); setOnlinePayData({}); setOnlineSelectedStudent(null); }}
         paymentData={onlinePayData}
-        onSuccess={() => { onSnack('Online payment successful!'); setOnlinePayOpen(false); setOnlinePayData({}); load(); }}
+        onSuccess={() => { onSnack('Online payment successful!'); setOnlinePayOpen(false); setOnlinePayStep(0); setOnlinePayData({}); setOnlineSelectedStudent(null); load(); }}
       />
     </Box>
   );

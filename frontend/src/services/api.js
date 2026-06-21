@@ -55,6 +55,7 @@ export const authAPI = {
   register: (data) => api.post('/auth/register-school', data),
   getMe: () => api.get('/auth/me'),
   changePassword: (data) => api.post('/auth/change-password', data),
+  switchSchool: (schoolCode) => api.post('/auth/switch-school', { school_code: schoolCode }),
   // Roles & Users
   listRoles: () => api.get('/auth/roles'),
   updateRolePermissions: (roleId, data) => api.put(`/auth/roles/${roleId}/permissions`, data),
@@ -804,6 +805,7 @@ export const storeAPI = {
   allocate: (data) => api.post('/store/allocate', data),
   returnItem: (data) => api.post('/store/return', data),
   adjustStock: (data) => api.post('/store/adjust-stock', data),
+  stockIn: (data) => api.post('/store/stock-in', data),
   getTransactions: (params) => api.get('/store/transactions', { params }),
   getStaffList: () => api.get('/store/staff-list'),
   getStudentList: () => api.get('/store/student-list'),
@@ -1186,6 +1188,7 @@ export const platformStaffAPI = {
 
 export const superAdminAPI = {
   dashboard: () => api.get('/superadmin/dashboard'),
+  notifications: (params) => api.get('/superadmin/notifications', { params }),
   // Schools
   listSchools: (params) => api.get('/superadmin/schools', { params }),
   getSchool: (id) => api.get(`/superadmin/schools/${id}`),
@@ -1193,6 +1196,7 @@ export const superAdminAPI = {
   updateSchool: (id, data) => api.put(`/superadmin/schools/${id}`, data),
   toggleSchool: (id) => api.post(`/superadmin/schools/${id}/toggle`),
   updateFeatures: (id, data) => api.put(`/superadmin/schools/${id}/features`, data),
+  deleteSchool: (id) => api.delete(`/superadmin/schools/${id}`),
   // Plans
   listPlans: () => api.get('/superadmin/plans'),
   createPlan: (data) => api.post('/superadmin/plans', data),
@@ -1224,6 +1228,19 @@ export const superAdminAPI = {
   }),
   // Public
   publicPlans: () => api.get('/superadmin/public/plans'),
+  // Add-on Features Catalog
+  addonFeaturesCatalog: () => api.get('/superadmin/addon-features-catalog'),
+  // Subscription Usage & Balance
+  subscriptionUsage: (subId) => api.get(`/superadmin/subscriptions/${subId}/usage`),
+  // Recharge Subscription
+  rechargeSubscription: (subId, data) => api.post(`/superadmin/subscriptions/${subId}/recharge`, data),
+  // Subscription Add-ons
+  listSubscriptionAddons: (subId) => api.get(`/superadmin/subscriptions/${subId}/addons`),
+  addSubscriptionAddon: (subId, data) => api.post(`/superadmin/subscriptions/${subId}/addons`, data),
+  updateSubscriptionAddon: (subId, addonId, data) => api.put(`/superadmin/subscriptions/${subId}/addons/${addonId}`, data),
+  removeSubscriptionAddon: (subId, addonId) => api.delete(`/superadmin/subscriptions/${subId}/addons/${addonId}`),
+  // School Usage Summary
+  schoolUsageSummary: (schoolId) => api.get(`/superadmin/schools/${schoolId}/usage-summary`),
 };
 
 // Payment Gateway API

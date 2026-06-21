@@ -53,13 +53,13 @@ class Config:
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
     # Tata Telebusiness WhatsApp Cloud API
-    WHATSAPP_API_URL = os.getenv('WHATSAPP_API_URL', 'https://wb.omni.tatatelebusiness.com/whatsapp-cloud/messages')
-    WHATSAPP_AUTH_TOKEN = os.getenv('WHATSAPP_AUTH_TOKEN', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwaG9uZU51bWJlciI6Iis5MTg1MjcyODg5MzgiLCJwaG9uZU51bWJlcklkIjoiNDgwNTg4MDkxNzk5NDkwIiwiaWF0IjoxNzI4NTU3MDQ3fQ.jOY6HSv88KZja3dsml3EaUQWrepRDhezsSMZ5IfcUZo')
-    WHATSAPP_PHONE = os.getenv('WHATSAPP_PHONE', '+918527288938')
+    WHATSAPP_API_URL = os.getenv('WHATSAPP_API_URL', '')
+    WHATSAPP_AUTH_TOKEN = os.getenv('WHATSAPP_AUTH_TOKEN', '')
+    WHATSAPP_PHONE = os.getenv('WHATSAPP_PHONE', '')
     WHATSAPP_TEMPLATE = os.getenv('WHATSAPP_TEMPLATE', 'pack_dispatch')
 
     # IVR Solutions Click-to-Call API
-    IVR_API_URL = os.getenv('IVR_API_URL', 'https://api.ivrsolutions.in/api/c2c_get')
+    IVR_API_URL = os.getenv('IVR_API_URL', '')
     IVR_API_TOKEN = os.getenv('IVR_API_TOKEN', '')
     IVR_DID_NO = os.getenv('IVR_DID_NO', '')
     IVR_EXT_NO = os.getenv('IVR_EXT_NO', '')

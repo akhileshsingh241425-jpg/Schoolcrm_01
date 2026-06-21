@@ -15,6 +15,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 from app import db
 from app.models.fee import (AccountingEntry, FeeInstallment, FeePayment,
                              FeeReceipt)
+from app.models.student import Student
 from app.models.school import SchoolSetting
 from app.utils.decorators import role_required, school_required
 from app.utils.helpers import success_response, error_response
@@ -139,7 +140,19 @@ def razorpay_create_order():
     if amount <= 0:
         return error_response('Invalid amount', 400)
 
+    # Resolve student: accept admission_no (string) or student_id (int)
     student_id = data.get('student_id')
+    admission_no = data.get('admission_no')
+    if admission_no and not student_id:
+        student = Student.query.filter_by(
+            school_id=school_id, admission_no=admission_no.strip()
+        ).first()
+        if not student:
+            return error_response(f'Student with admission no "{admission_no}" not found', 404)
+        student_id = student.id
+    elif not student_id:
+        return error_response('Either student_id or admission_no is required', 400)
+
     fee_structure_id = data.get('fee_structure_id')
     installment_id = data.get('installment_id')
 
@@ -319,7 +332,19 @@ def paytm_initiate():
     if amount <= 0:
         return error_response('Invalid amount', 400)
 
+    # Resolve student: accept admission_no (string) or student_id (int)
     student_id = data.get('student_id')
+    admission_no = data.get('admission_no')
+    if admission_no and not student_id:
+        student = Student.query.filter_by(
+            school_id=school_id, admission_no=admission_no.strip()
+        ).first()
+        if not student:
+            return error_response(f'Student with admission no "{admission_no}" not found', 404)
+        student_id = student.id
+    elif not student_id:
+        return error_response('Either student_id or admission_no is required', 400)
+
     fee_structure_id = data.get('fee_structure_id')
     installment_id = data.get('installment_id')
 

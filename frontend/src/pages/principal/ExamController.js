@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Grid, Card, CardContent, Paper, Chip, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -65,7 +66,14 @@ export default function ExamController() {
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
   // View state: 'list' | 'datesheet' | 'papers'
-  const [view, setView] = useState('list');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [view, setViewState] = useState(searchParams.get('view') || 'list');
+  const setView = (v) => { setViewState(v); setSearchParams(v && v !== 'list' ? { view: v } : {}); };
+
+  useEffect(() => {
+    const v = searchParams.get('view');
+    if (v && v !== view) setViewState(v);
+  }, [searchParams]);
   const [selectedExam, setSelectedExam] = useState(null);
 
   // Create exam
@@ -569,7 +577,7 @@ export default function ExamController() {
             ← Back to Exams
           </Button>
           <Typography variant="h5" fontWeight={800}>{selectedExam.name} — Date Sheet</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" component="span">
             {selectedExam.start_date} → {selectedExam.end_date} • 
             Status: <Chip label={dateSheetStatus.replace('_',' ')} size="small" sx={{ ml: 0.5, fontWeight: 600, textTransform: 'capitalize',
               bgcolor: alpha(dateSheetStatus === 'approved' ? '#10b981' : dateSheetStatus === 'pending_approval' ? '#f59e0b' : dateSheetStatus === 'rejected' ? '#ef4444' : '#94a3b8', 0.12),

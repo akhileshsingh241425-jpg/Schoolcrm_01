@@ -15,7 +15,8 @@ import {
   ChildCare, AdminPanelSettings, Star, Receipt, Brush, Payment, Group,
   KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook,
   Email, Sms, Message, Assignment, Edit, Lock, AccountBalance, Store, RateReview,
-  ArrowUpward, SwapHoriz
+  ArrowUpward, SwapHoriz, TrendingUp, FactCheck, AutoGraph,
+  Timeline, HowToVote, TaskAlt, Checklist
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -48,6 +49,7 @@ const menuGroups = [
     items: [
       { text: 'My Dashboard', icon: <Dashboard />, path: '/teacher/dashboard' },
       { text: 'My Classes', icon: <Class />, path: '/teacher/classes' },
+      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance' },
       { text: 'My Timetable', icon: <Schedule />, path: '/teacher/timetable' },
       { text: 'Student Subjects', icon: <MenuBook />, path: '/teacher/class-subjects' },
       { text: 'Subjects & Syllabus', icon: <Book />, path: '/teacher/subjects' },
@@ -314,8 +316,9 @@ export default function DashboardLayout() {
 
   const librarianMenuGroups = [
     { label: 'Library', items: [
-      { text: 'Library', icon: <LocalLibrary />, path: '/library' },
-      { text: 'Books', icon: <MenuBook />, path: '/library' },
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Library', icon: <LocalLibrary />, path: '/library', feature: 'library', module: 'library' },
+      { text: 'Books', icon: <MenuBook />, path: '/library', feature: 'library', module: 'library' },
     ] },
   ];
 
@@ -340,33 +343,171 @@ export default function DashboardLayout() {
       { text: 'Grace Marks', icon: <Star />, path: '/grace-marks' },
     ] },
     { label: 'Academic', items: [
-      { text: 'Academics', icon: <MenuBook />, path: '/academics' },
-      { text: 'Students', icon: <People />, path: '/students' },
-      { text: 'Reports', icon: <Assessment />, path: '/reports' },
+      { text: 'Academics', icon: <MenuBook />, path: '/academics', feature: 'academic', module: 'academics' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
     ] },
   ];
 
   const academicControllerMenuGroups = [
     { label: 'Main', items: [
       { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
-      { text: 'Academic Control', icon: <MenuBook />, path: '/academic-controller' },
+      { text: 'Academic Control', icon: <MenuBook />, path: '/academic-controller', tab: '' },
+    ] },
+    { label: 'Curriculum & Timetable', items: [
+      { text: 'Subjects', icon: <Book />, path: '/academic-controller', tab: 'subjects' },
+      { text: 'Timetable', icon: <Schedule />, path: '/academic-controller', tab: 'timetable' },
+      { text: 'Substitutions', icon: <SwapHoriz />, path: '/academic-controller', tab: 'substitutions' },
+      { text: 'Syllabus Progress', icon: <TrendingUp />, path: '/academic-controller', tab: 'syllabus' },
+      { text: 'Promotions', icon: <ArrowUpward />, path: '/academic-controller', tab: 'promotions' },
+    ] },
+    { label: 'Staff & Students', items: [
+      { text: 'Teacher Assignment', icon: <Assignment />, path: '/academic-controller', tab: 'teachers' },
+      { text: 'Class Teachers', icon: <AdminPanelSettings />, path: '/academic-controller', tab: 'class-teachers' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff' },
+      { text: 'Classes & Sections', icon: <Group />, path: '/academics/classes', feature: 'academic', module: 'academics' },
+    ] },
+    { label: 'Exams & Assessment', items: [
       { text: 'Exam Controller', icon: <EventNote />, path: '/exam-controller' },
+      { text: 'Marks Entry', icon: <RateReview />, path: '/exam-controller/marks-entry-dashboard' },
+      { text: 'Date Sheet', icon: <CalendarMonth />, path: '/exam-controller', view: 'datesheet' },
+      { text: 'Grace Marks', icon: <Star />, path: '/grace-marks' },
     ] },
+    { label: 'Reports & Planning', items: [
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+      { text: 'Academic Calendar', icon: <CalendarMonth />, path: '/academic-controller', tab: 'calendar' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const accountantMenuGroups = [
+    { label: 'Finance', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Fees', icon: <AttachMoney />, path: '/fees', feature: 'fee_management', module: 'fees' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+    ] },
+  ];
+
+  const counselorMenuGroups = [
+    { label: 'Counseling', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const receptionistMenuGroups = [
+    { label: 'Front Desk', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Visitors', icon: <People />, path: '/visitors', feature: 'health_safety', module: 'health' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const transportManagerMenuGroups = [
+    { label: 'Transport', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Transport', icon: <DirectionsBus />, path: '/transport', feature: 'transport', module: 'transport' },
+    ] },
+  ];
+
+  const genericStaffMenuGroups = [
+    { label: 'Staff Portal', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const hrManagerMenuGroups = [
+    { label: 'HR Management', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff' },
+      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const departmentHeadMenuGroups = [
     { label: 'Academic', items: [
-      { text: 'Academics', icon: <Book />, path: '/academics' },
-      { text: 'Students', icon: <People />, path: '/students' },
-      { text: 'Staff', icon: <School />, path: '/staff' },
-      { text: 'Classes & Sections', icon: <Group />, path: '/academics/classes' },
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Academics', icon: <EventNote />, path: '/academics', feature: 'academic', module: 'academics' },
+      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+      { text: 'Library', icon: <LocalLibrary />, path: '/library', feature: 'library', module: 'library' },
     ] },
-    { label: 'Reports & Communication', items: [
-      { text: 'Reports', icon: <Assessment />, path: '/reports' },
-      { text: 'Communication', icon: <Announcement />, path: '/communication' },
+  ];
+
+  const healthOfficerMenuGroups = [
+    { label: 'Health & Safety', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Health', icon: <HealthAndSafety />, path: '/health', feature: 'health_safety', module: 'health' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+    ] },
+  ];
+
+  const canteenManagerMenuGroups = [
+    { label: 'Canteen', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Canteen', icon: <Restaurant />, path: '/canteen', feature: 'canteen', module: 'canteen' },
+      { text: 'Inventory', icon: <Inventory />, path: '/inventory', feature: 'inventory', module: 'inventory' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
+    ] },
+  ];
+
+  const sportsInchargeMenuGroups = [
+    { label: 'Sports', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Sports', icon: <SportsBasketball />, path: '/sports', feature: 'sports', module: 'sports' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Health', icon: <HealthAndSafety />, path: '/health', feature: 'health_safety', module: 'health' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
+    ] },
+  ];
+
+  const labAssistantMenuGroups = [
+    { label: 'Lab', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Inventory', icon: <Inventory />, path: '/inventory', feature: 'inventory', module: 'inventory' },
+      { text: 'Academics', icon: <EventNote />, path: '/academics', feature: 'academic', module: 'academics' },
+    ] },
+  ];
+
+  const hostelWardenMenuGroups = [
+    { label: 'Hostel Management', items: [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Hostel', icon: <Hotel />, path: '/hostel', feature: 'hostel', module: 'hostel' },
+      { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students' },
+      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
+      { text: 'Health', icon: <HealthAndSafety />, path: '/health', feature: 'health_safety', module: 'health' },
+      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
     ] },
   ];
 
   const isAcademicController = user?.role?.name === 'academic_controller';
   const isLibrarian = user?.role?.name === 'librarian';
   const isStoreManager = user?.role?.name === 'store_manager';
+  const roleName = user?.role?.name;
+
+  const roleMenuMap = {
+    accountant: accountantMenuGroups,
+    counselor: counselorMenuGroups,
+    receptionist: receptionistMenuGroups,
+    transport_manager: transportManagerMenuGroups,
+    staff: genericStaffMenuGroups,
+    hr_manager: hrManagerMenuGroups,
+    department_head: departmentHeadMenuGroups,
+    health_officer: healthOfficerMenuGroups,
+    canteen_manager: canteenManagerMenuGroups,
+    sports_incharge: sportsInchargeMenuGroups,
+    lab_assistant: labAssistantMenuGroups,
+    hostel_warden: hostelWardenMenuGroups,
+  };
 
   const activeMenuGroups = isParent
     ? parentMenuGroups
@@ -380,11 +521,23 @@ export default function DashboardLayout() {
             ? librarianMenuGroups
             : isStoreManager
               ? storeManagerMenuGroups
-              : menuGroups;
+              : roleMenuMap[roleName] || menuGroups;
+
+  const matchNavItem = (item) => {
+    if (!location.pathname.startsWith(item.path)) return false;
+    if (item.tab !== undefined) {
+      const expectedSearch = item.tab ? `?tab=${item.tab}` : '';
+      return location.search === expectedSearch || (item.tab === '' && !location.search);
+    }
+    if (item.view !== undefined) {
+      return location.search === `?view=${item.view}`;
+    }
+    return true;
+  };
 
   const currentPage = activeMenuGroups
     .flatMap(g => g.items)
-    .find(i => location.pathname.startsWith(i.path))?.text || 'Dashboard';
+    .find(matchNavItem)?.text || 'Dashboard';
 
   const toggleGroup = (label) => {
     setCollapsedGroups(prev => ({ ...prev, [label]: !prev[label] }));
@@ -451,10 +604,14 @@ export default function DashboardLayout() {
               <Collapse in={!isCollapsed}>
                 <List disablePadding>
                   {visibleItems.map((item) => {
-                    const isActive = location.pathname.startsWith(item.path);
+                    const isActive = matchNavItem(item);
+                    const navTarget = item.path + (
+                      item.tab !== undefined ? (item.tab ? `?tab=${item.tab}` : '') :
+                      item.view !== undefined ? `?view=${item.view}` : ''
+                    );
                     return (
                       <ListItem key={item.text} disablePadding sx={{ mb: 0.2 }}>
-                        <ListItemButton onClick={() => { navigate(item.path); if (isMobile) setMobileOpen(false); }}
+                        <ListItemButton onClick={() => { navigate(navTarget); if (isMobile) setMobileOpen(false); }}
                           sx={{ borderRadius: 2.5, py: 0.85, px: 1.5,
                             bgcolor: isActive ? alpha(PRIMARY, 0.08) : 'transparent',
                             color: isActive ? PRIMARY : '#475569',
