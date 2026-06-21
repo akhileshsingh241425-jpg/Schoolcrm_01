@@ -5,7 +5,7 @@ from app.models.sports import (
     Club, ClubMember, Event, FacilityBooking, FitnessRecord, Certificate
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 
 sports_bp = Blueprint('sports', __name__)
 
@@ -48,8 +48,9 @@ def list_sports():
 @sports_bp.route('/sports', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'name': {'required': True}})
 def create_sport():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     s = Sport(school_id=g.school_id, name=data['name'],
         category=data.get('category'), max_team_size=data.get('max_team_size', 15),
         coach_id=data.get('coach_id'), description=data.get('description'),
@@ -63,7 +64,7 @@ def create_sport():
 @feature_required('sports')
 def update_sport(id):
     s = Sport.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'category', 'max_team_size', 'coach_id', 'description', 'season', 'practice_schedule', 'is_active']:
         if k in data: setattr(s, k, data[k])
     db.session.commit()
@@ -93,8 +94,9 @@ def list_teams():
 @sports_bp.route('/teams', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'name': {'required': True}})
 def create_team():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     t = SportsTeam(school_id=g.school_id, sport_id=data.get('sport_id'),
         name=data['name'], academic_year=data.get('academic_year'),
         captain_id=data.get('captain_id'), coach_id=data.get('coach_id'),
@@ -109,7 +111,7 @@ def create_team():
 @feature_required('sports')
 def update_team(id):
     t = SportsTeam.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['sport_id', 'name', 'academic_year', 'captain_id', 'coach_id', 'members', 'age_group', 'achievements', 'is_active']:
         if k in data: setattr(t, k, data[k])
     db.session.commit()
@@ -139,8 +141,9 @@ def list_tournaments():
 @sports_bp.route('/tournaments', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'name': {'required': True}})
 def create_tournament():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     t = Tournament(school_id=g.school_id, sport_id=data.get('sport_id'),
         name=data['name'], tournament_type=data.get('tournament_type'),
         start_date=data.get('start_date'), end_date=data.get('end_date'),
@@ -155,7 +158,7 @@ def create_tournament():
 @feature_required('sports')
 def update_tournament(id):
     t = Tournament.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['sport_id', 'name', 'tournament_type', 'start_date', 'end_date', 'venue', 'organizer', 'status', 'result', 'medals', 'remarks', 'is_active']:
         if k in data: setattr(t, k, data[k])
     db.session.commit()
@@ -186,7 +189,7 @@ def list_matches():
 @school_required
 @feature_required('sports')
 def create_match():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     m = TournamentMatch(school_id=g.school_id, tournament_id=data.get('tournament_id'),
         team_id=data.get('team_id'), opponent=data.get('opponent'),
         match_date=data.get('match_date'), match_time=data.get('match_time'),
@@ -200,7 +203,7 @@ def create_match():
 @feature_required('sports')
 def update_match(id):
     m = TournamentMatch.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['tournament_id', 'team_id', 'opponent', 'match_date', 'match_time', 'venue', 'result', 'score', 'remarks']:
         if k in data: setattr(m, k, data[k])
     db.session.commit()
@@ -230,8 +233,9 @@ def list_clubs():
 @sports_bp.route('/clubs', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'name': {'required': True}})
 def create_club():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     c = Club(school_id=g.school_id, name=data['name'],
         category=data.get('category'), description=data.get('description'),
         advisor_id=data.get('advisor_id'), president_id=data.get('president_id'),
@@ -246,7 +250,7 @@ def create_club():
 @feature_required('sports')
 def update_club(id):
     c = Club.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'category', 'description', 'advisor_id', 'president_id', 'meeting_schedule', 'max_members', 'achievements', 'is_active']:
         if k in data: setattr(c, k, data[k])
     db.session.commit()
@@ -275,8 +279,9 @@ def list_club_members():
 @sports_bp.route('/club-members', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'club_id': {'required': True, 'type': int}, 'student_id': {'required': True, 'type': int}})
 def add_club_member():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     m = ClubMember(school_id=g.school_id, club_id=data['club_id'],
         student_id=data['student_id'], role=data.get('role', 'member'),
         joined_date=data.get('joined_date'))
@@ -289,7 +294,7 @@ def add_club_member():
 @feature_required('sports')
 def update_club_member(id):
     m = ClubMember.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['role', 'status']:
         if k in data: setattr(m, k, data[k])
     db.session.commit()
@@ -321,8 +326,9 @@ def list_events():
 @sports_bp.route('/events', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'name': {'required': True}})
 def create_event():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     e = Event(school_id=g.school_id, name=data['name'],
         event_type=data.get('event_type'), description=data.get('description'),
         start_date=data.get('start_date'), end_date=data.get('end_date'),
@@ -338,7 +344,7 @@ def create_event():
 @feature_required('sports')
 def update_event(id):
     e = Event.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'event_type', 'description', 'start_date', 'end_date', 'venue', 'organizer_id', 'budget', 'status', 'participants', 'remarks', 'is_active']:
         if k in data: setattr(e, k, data[k])
     db.session.commit()
@@ -368,8 +374,9 @@ def list_bookings():
 @sports_bp.route('/bookings', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'facility_name': {'required': True}, 'booking_date': {'required': True}})
 def create_booking():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     b = FacilityBooking(school_id=g.school_id, facility_name=data['facility_name'],
         facility_type=data.get('facility_type'), booked_by=data.get('booked_by'),
         booking_date=data['booking_date'], start_time=data.get('start_time'),
@@ -384,7 +391,7 @@ def create_booking():
 @feature_required('sports')
 def update_booking(id):
     b = FacilityBooking.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['facility_name', 'facility_type', 'booking_date', 'start_time', 'end_time', 'purpose', 'status', 'approved_by', 'remarks']:
         if k in data: setattr(b, k, data[k])
     db.session.commit()
@@ -414,8 +421,9 @@ def list_fitness():
 @sports_bp.route('/fitness', methods=['POST'])
 @school_required
 @feature_required('sports')
+@validate({'student_id': {'required': True, 'type': int}})
 def create_fitness():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     f = FitnessRecord(school_id=g.school_id, student_id=data['student_id'],
         academic_year=data.get('academic_year'), test_date=data.get('test_date'),
         height=data.get('height'), weight=data.get('weight'),
@@ -432,7 +440,7 @@ def create_fitness():
 @feature_required('sports')
 def update_fitness(id):
     f = FitnessRecord.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['academic_year', 'test_date', 'height', 'weight', 'bmi', 'sprint_50m', 'long_jump', 'flexibility', 'endurance', 'overall_grade', 'remarks', 'tested_by']:
         if k in data: setattr(f, k, data[k])
     db.session.commit()
@@ -463,7 +471,7 @@ def list_certificates():
 @school_required
 @feature_required('sports')
 def create_certificate():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     c = Certificate(school_id=g.school_id, student_id=data.get('student_id'),
         certificate_type=data.get('certificate_type'), event_name=data.get('event_name'),
         issued_date=data.get('issued_date'), description=data.get('description'),
@@ -478,7 +486,7 @@ def create_certificate():
 @feature_required('sports')
 def update_certificate(id):
     c = Certificate.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['student_id', 'certificate_type', 'event_name', 'issued_date', 'description', 'position', 'issued_by', 'template']:
         if k in data: setattr(c, k, data[k])
     db.session.commit()

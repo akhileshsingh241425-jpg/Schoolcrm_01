@@ -7,7 +7,7 @@ from app.models.student import Student, ParentDetail
 from app.models.academic import Exam, ExamSchedule
 from app.models.fee import FeeInstallment, FeePayment
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, send_email, send_whatsapp, make_ivr_call
+from app.utils.helpers import success_response, error_response, paginate, send_email, send_whatsapp, make_ivr_call, validate
 
 communication_bp = Blueprint('communication', __name__)
 
@@ -22,8 +22,9 @@ def list_announcements():
 
 @communication_bp.route('/announcements', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'title': {'required': True}, 'message': {'required': True}})
 def create_announcement():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     announcement = Announcement(
         school_id=g.school_id,
         title=data['title'],
@@ -60,8 +61,9 @@ def mark_read(notif_id):
 
 @communication_bp.route('/send', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
+@validate({'title': {'required': True}})
 def send_notification():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     user_ids = data.get('user_ids', [])
     
     notifications = []
@@ -90,8 +92,9 @@ def list_templates():
 
 @communication_bp.route('/sms-templates', methods=['POST'])
 @role_required('school_admin')
+@validate({'name': {'required': True}, 'template': {'required': True}})
 def create_template():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     template = SmsTemplate(
         school_id=g.school_id,
         name=data['name'],
@@ -115,7 +118,7 @@ def list_alert_settings():
 @role_required('school_admin')
 def save_alert_settings():
     """Create or update alert settings"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     alert_type = data.get('alert_type')
     if not alert_type:
         return error_response('alert_type is required')
@@ -219,7 +222,7 @@ def trigger_late_arrival_alert():
     """Send alert to parents of students who haven't arrived by cutoff time.
     Can be triggered manually or by a cron job.
     """
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     target_date = data.get('date', date.today().isoformat())
     cutoff_time = data.get('cutoff_time', '10:00')
 
@@ -300,7 +303,7 @@ def trigger_late_arrival_alert():
 @role_required('school_admin', 'principal')
 def trigger_monthly_attendance_report():
     """Send monthly attendance summary to all parents"""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     month = data.get('month', date.today().month)
     year = data.get('year', date.today().year)
 
@@ -396,7 +399,7 @@ def trigger_monthly_attendance_report():
 @role_required('school_admin', 'teacher', 'principal')
 def trigger_exam_notification():
     """Send exam schedule / result notification to parents"""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     exam_id = data.get('exam_id')
     notify_type = data.get('type', 'schedule')  # 'schedule' or 'result'
 
@@ -524,7 +527,7 @@ def trigger_exam_notification():
 @school_required
 def send_whatsapp_message():
     """Send a WhatsApp message via SensiBOT API"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     phone = data.get('phone')
     message = data.get('message')
     if not phone or not message:
@@ -556,7 +559,7 @@ def send_whatsapp_message():
 @school_required
 def initiate_ivr_call():
     """Initiate a Click-to-Call via IVR Solutions API"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     phone = data.get('phone')
     if not phone:
         return error_response('Phone number is required')
@@ -587,7 +590,7 @@ def initiate_ivr_call():
 @role_required('school_admin', 'accountant')
 def trigger_fee_reminder():
     """Send fee reminder to parents of students with pending/overdue installments."""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     school_id = g.school_id
 
     setting = AlertSetting.query.filter_by(
@@ -737,7 +740,7 @@ def get_api_config():
 @role_required('school_admin', 'super_admin')
 def test_whatsapp():
     """Send a test WhatsApp message to verify API integration"""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     phone = data.get('phone', '9773983859')
 
     template_params = {
@@ -762,7 +765,7 @@ def test_whatsapp():
 def broadcast_notice():
     """Post a notice and create an in-app notification for every active user in the school."""
     from app.models.user import User
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     title = (data.get('title') or '').strip()
     message = (data.get('message') or '').strip()
     target_audience = data.get('target_audience', 'all')  # all, teachers, students, parents, staff

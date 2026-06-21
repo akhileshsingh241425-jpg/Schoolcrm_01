@@ -5,15 +5,19 @@ from app import db
 from app.models.user import User, Role, Permission, RolePermission
 from app.models.school import School, SchoolFeature
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response
+from app.utils.helpers import success_response, error_response, validate
 
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['POST'])
+@validate({
+    'email': {'required': True},
+    'password': {'required': True},
+})
 def login():
     try:
-        data = request.get_json()
+        data = g.get('validated_data') or request.get_json()
         if not data:
             return error_response('No data provided')
         
@@ -100,16 +104,18 @@ def login():
 
 
 @auth_bp.route('/register-school', methods=['POST'])
+@validate({
+    'school_name': {'required': True},
+    'school_code': {'required': True},
+    'admin_email': {'required': True},
+    'admin_password': {'required': True},
+    'admin_first_name': {'required': True},
+})
 def register_school():
     """Register a new school (tenant)"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if not data:
         return error_response('No data provided')
-    
-    required = ['school_name', 'school_code', 'admin_email', 'admin_password', 'admin_first_name']
-    for field in required:
-        if not data.get(field):
-            return error_response(f'{field} is required')
     
     # Check unique constraints
     if School.query.filter_by(code=data['school_code']).first():
@@ -188,6 +194,7 @@ def register_school():
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
+@validate({})
 def refresh():
     user_id = get_jwt_identity()
     access_token = create_access_token(identity=str(user_id))
@@ -216,6 +223,9 @@ def get_me():
 
 @auth_bp.route('/switch-school', methods=['POST'])
 @jwt_required()
+@validate({
+    'school_code': {'required': True},
+})
 def switch_school():
     """Super admin can switch school context to view different school's data"""
     user_id = get_jwt_identity()
@@ -224,13 +234,11 @@ def switch_school():
     if not user or not user.role or user.role.name != 'super_admin':
         return error_response('Only super admin can switch schools', 403)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if not data:
         return error_response('No data provided')
 
     school_code = data.get('school_code', '').strip()
-    if not school_code:
-        return error_response('School code is required')
 
     school = School.query.filter_by(code=school_code, is_active=True).first()
     if not school:
@@ -246,22 +254,20 @@ def switch_school():
 
 @auth_bp.route('/change-password', methods=['POST'])
 @jwt_required()
+@validate({
+    'old_password': {'required': True},
+    'new_password': {'required': True, 'min_len': 8},
+})
 def change_password():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     
     if not user:
         return error_response('User not found', 404)
     
-    if not data.get('old_password') or not data.get('new_password'):
-        return error_response('Old and new passwords are required')
-    
     if not user.check_password(data['old_password']):
         return error_response('Current password is incorrect')
-    
-    if len(data['new_password']) < 8:
-        return error_response('Password must be at least 8 characters')
     
     user.set_password(data['new_password'])
     db.session.commit()
@@ -302,13 +308,14 @@ def list_roles():
 
 @auth_bp.route('/roles/<int:role_id>/permissions', methods=['PUT'])
 @role_required('school_admin')
+@validate({})
 def update_role_permissions(role_id):
     """Update module permissions for a role (school-specific override)"""
     role = Role.query.get(role_id)
     if not role:
         return error_response('Role not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     modules = data.get('modules', [])
 
     # Remove existing school-specific permissions for this role
@@ -370,16 +377,17 @@ def list_users():
 
 @auth_bp.route('/users', methods=['POST'])
 @role_required('school_admin')
+@validate({
+    'email': {'required': True},
+    'password': {'required': True, 'min_len': 6},
+    'first_name': {'required': True},
+    'role_id': {'required': True, 'type': int},
+})
 def create_user():
     """Create a new user (staff login account)"""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if not data:
         return error_response('No data provided')
-
-    required = ['email', 'password', 'first_name', 'role_id']
-    for field in required:
-        if not data.get(field):
-            return error_response(f'{field} is required')
 
     # Check email unique within school
     if User.query.filter_by(school_id=g.school_id, email=data['email']).first():
@@ -389,9 +397,6 @@ def create_user():
     role = Role.query.get(data['role_id'])
     if not role:
         return error_response('Invalid role')
-
-    if len(data['password']) < 6:
-        return error_response('Password must be at least 6 characters')
 
     user = User(
         school_id=g.school_id,
@@ -413,13 +418,14 @@ def create_user():
 
 @auth_bp.route('/users/<int:user_id>', methods=['PUT'])
 @role_required('school_admin')
+@validate({})
 def update_user(user_id):
     """Update user details (role, status, etc.)"""
     user = User.query.filter_by(id=user_id, school_id=g.school_id).first()
     if not user:
         return error_response('User not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     if 'role_id' in data:
         role = Role.query.get(data['role_id'])

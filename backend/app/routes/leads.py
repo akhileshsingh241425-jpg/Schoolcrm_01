@@ -2,7 +2,7 @@ from flask import Blueprint, request, g
 from app import db
 from app.models.lead import Lead, LeadSource, LeadFollowup, LeadActivity, Campaign
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 
 leads_bp = Blueprint('leads', __name__)
 
@@ -53,10 +53,9 @@ def get_lead(lead_id):
 @leads_bp.route('/', methods=['POST'])
 @school_required
 @feature_required('marketing_crm')
+@validate({'student_name': {'required': True}, 'phone': {'required': True}})
 def create_lead():
-    data = request.get_json()
-    if not data.get('student_name') or not data.get('phone'):
-        return error_response('Student name and phone are required')
+    data = g.get('validated_data') or request.get_json()
     
     lead = Lead(
         school_id=g.school_id,
@@ -94,7 +93,7 @@ def create_lead():
 @feature_required('marketing_crm')
 def update_lead(lead_id):
     lead = Lead.query.filter_by(id=lead_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     
     old_status = lead.status
     
@@ -124,9 +123,10 @@ def update_lead(lead_id):
 @leads_bp.route('/<int:lead_id>/followups', methods=['POST'])
 @school_required
 @feature_required('marketing_crm')
+@validate({'followup_type': {'required': True}, 'followup_date': {'required': True}})
 def add_followup(lead_id):
     lead = Lead.query.filter_by(id=lead_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     
     followup = LeadFollowup(
         lead_id=lead.id,
@@ -153,8 +153,9 @@ def list_sources():
 
 @leads_bp.route('/sources', methods=['POST'])
 @role_required('school_admin', 'counselor')
+@validate({'name': {'required': True}})
 def create_source():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     source = LeadSource(school_id=g.school_id, name=data['name'])
     db.session.add(source)
     db.session.commit()
@@ -173,8 +174,9 @@ def list_campaigns():
 
 @leads_bp.route('/campaigns', methods=['POST'])
 @role_required('school_admin', 'counselor')
+@validate({'name': {'required': True}})
 def create_campaign():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     campaign = Campaign(
         school_id=g.school_id,
         name=data['name'],

@@ -6,7 +6,7 @@ from app.models.transport import (
     SOSAlert, TripManagement, RouteChangeRequest, SpeedAlert
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload, subqueryload
 from datetime import datetime
 
@@ -63,8 +63,9 @@ def list_vehicles():
 
 @transport_bp.route('/vehicles', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'vehicle_number': {'required': True}, 'year': {'type': int}, 'capacity': {'type': int}, 'current_odometer': {'type': int}})
 def create_vehicle():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     v = Vehicle(school_id=g.school_id, vehicle_number=data['vehicle_number'])
     for f in ['vehicle_type', 'make', 'model', 'year', 'capacity', 'fuel_type',
               'registration_date', 'insurance_expiry', 'fitness_expiry', 'permit_expiry',
@@ -89,11 +90,12 @@ def get_vehicle(vid):
 
 @transport_bp.route('/vehicles/<int:vid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'year': {'type': int}, 'capacity': {'type': int}, 'current_odometer': {'type': int}})
 def update_vehicle(vid):
     v = Vehicle.query.filter_by(id=vid, school_id=g.school_id).first()
     if not v:
         return error_response('Vehicle not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['vehicle_number', 'vehicle_type', 'make', 'model', 'year', 'capacity',
               'fuel_type', 'registration_date', 'insurance_expiry', 'fitness_expiry',
               'permit_expiry', 'pollution_expiry', 'chassis_number', 'engine_number',
@@ -132,8 +134,9 @@ def list_drivers():
 
 @transport_bp.route('/drivers', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'name': {'required': True}, 'experience_years': {'type': int}, 'driving_score': {'type': float}})
 def create_driver():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     d = Driver(school_id=g.school_id, name=data['name'])
     for f in ['phone', 'email', 'license_number', 'license_type', 'license_expiry',
               'medical_fitness_expiry', 'aadhar_number', 'address', 'blood_group',
@@ -158,11 +161,12 @@ def get_driver(did):
 
 @transport_bp.route('/drivers/<int:did>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'experience_years': {'type': int}, 'driving_score': {'type': float}})
 def update_driver(did):
     d = Driver.query.filter_by(id=did, school_id=g.school_id).first()
     if not d:
         return error_response('Driver not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['name', 'phone', 'email', 'license_number', 'license_type', 'license_expiry',
               'medical_fitness_expiry', 'aadhar_number', 'address', 'blood_group',
               'emergency_contact', 'experience_years', 'driving_score', 'photo_url',
@@ -204,8 +208,9 @@ def list_routes():
 
 @transport_bp.route('/routes', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'route_name': {'required': True}, 'vehicle_id': {'type': int}, 'driver_id': {'type': int}, 'total_distance_km': {'type': float}, 'estimated_time_min': {'type': int}})
 def create_route():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     route = TransportRoute(school_id=g.school_id, route_name=data['route_name'])
     for f in ['route_code', 'description', 'vehicle_id', 'driver_id', 'helper_name',
               'helper_phone', 'start_location', 'end_location', 'total_distance_km',
@@ -229,11 +234,12 @@ def get_route(route_id):
 
 @transport_bp.route('/routes/<int:route_id>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'vehicle_id': {'type': int}, 'driver_id': {'type': int}, 'total_distance_km': {'type': float}, 'estimated_time_min': {'type': int}})
 def update_route(route_id):
     route = TransportRoute.query.filter_by(id=route_id, school_id=g.school_id).first()
     if not route:
         return error_response('Route not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['route_name', 'route_code', 'description', 'vehicle_id', 'driver_id',
               'helper_name', 'helper_phone', 'start_location', 'end_location',
               'total_distance_km', 'estimated_time_min', 'shift', 'status',
@@ -266,8 +272,9 @@ def list_stops(route_id):
 
 @transport_bp.route('/routes/<int:route_id>/stops', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'stop_name': {'required': True}, 'fare': {'type': float}, 'stop_order': {'type': int}, 'radius_meters': {'type': float}})
 def add_stop(route_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     stop = TransportStop(route_id=route_id, school_id=g.school_id, stop_name=data['stop_name'])
     for f in ['latitude', 'longitude', 'pickup_time', 'drop_time', 'fare', 'stop_order', 'radius_meters']:
         if f in data:
@@ -279,10 +286,11 @@ def add_stop(route_id):
 
 @transport_bp.route('/stops/add-by-name', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'route_name': {'required': True}, 'stop_name': {'required': True}, 'fare': {'type': float}, 'stop_order': {'type': int}})
 def add_stop_by_name():
     """Add a stop using the route's NAME (no IDs needed).
     Body: { route_name, stop_name, pickup_time?, drop_time?, fare? }"""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     route_name = (data.get('route_name') or '').strip()
     stop_name = (data.get('stop_name') or '').strip()
     if not route_name or not stop_name:
@@ -306,11 +314,12 @@ def add_stop_by_name():
 
 @transport_bp.route('/stops/<int:stop_id>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'fare': {'type': float}, 'stop_order': {'type': int}, 'radius_meters': {'type': float}})
 def update_stop(stop_id):
     stop = TransportStop.query.filter_by(id=stop_id, school_id=g.school_id).first()
     if not stop:
         return error_response('Stop not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['stop_name', 'latitude', 'longitude', 'pickup_time', 'drop_time', 'fare', 'stop_order', 'radius_meters']:
         if f in data:
             setattr(stop, f, data[f])
@@ -383,6 +392,7 @@ def student_lookup():
 
 @transport_bp.route('/assign', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'monthly_fee': {'type': float}, 'fare': {'type': float}})
 def assign_transport():
     """Assign a student to a route+stop. Accepts either IDs or human-friendly
     names so the user never has to know internal IDs:
@@ -392,7 +402,7 @@ def assign_transport():
       - monthly_fee (number)   → stored as the stop fare (transport fee)
     """
     from app.models.student import Student
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
 
     # ── Resolve student ──
     student_id = data.get('student_id')
@@ -460,11 +470,12 @@ def assign_transport():
 
 @transport_bp.route('/assign/<int:aid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({})
 def update_assignment(aid):
     a = StudentTransport.query.filter_by(id=aid, school_id=g.school_id).first()
     if not a:
         return error_response('Assignment not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['route_id', 'stop_id', 'pickup_type', 'rfid_card_no', 'effective_from', 'effective_to', 'status']:
         if f in data:
             setattr(a, f, data[f])
@@ -489,8 +500,9 @@ def list_gps():
 
 @transport_bp.route('/gps', methods=['POST'])
 @school_required
+@validate({'vehicle_id': {'required': True, 'type': int}, 'latitude': {'required': True}, 'longitude': {'required': True}, 'speed_kmh': {'type': float}})
 def log_gps():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     gps = GPSTracking(
         school_id=g.school_id, vehicle_id=data['vehicle_id'],
         latitude=data['latitude'], longitude=data['longitude'],
@@ -538,8 +550,9 @@ def list_maintenance():
 
 @transport_bp.route('/maintenance', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'vehicle_id': {'required': True, 'type': int}, 'maintenance_type': {'required': True}, 'cost': {'type': float}, 'odometer_reading': {'type': int}, 'next_due_km': {'type': int}})
 def create_maintenance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     m = VehicleMaintenance(school_id=g.school_id, vehicle_id=data['vehicle_id'],
                            maintenance_type=data['maintenance_type'])
     for f in ['description', 'vendor_name', 'cost', 'odometer_reading', 'scheduled_date',
@@ -553,11 +566,12 @@ def create_maintenance():
 
 @transport_bp.route('/maintenance/<int:mid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'cost': {'type': float}, 'odometer_reading': {'type': int}, 'next_due_km': {'type': int}})
 def update_maintenance(mid):
     m = VehicleMaintenance.query.filter_by(id=mid, school_id=g.school_id).first()
     if not m:
         return error_response('Record not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['maintenance_type', 'description', 'vendor_name', 'cost', 'odometer_reading',
               'scheduled_date', 'completed_date', 'next_due_date', 'next_due_km', 'status',
               'invoice_no', 'notes']:
@@ -584,8 +598,9 @@ def list_fuel_logs():
 
 @transport_bp.route('/fuel-logs', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'vehicle_id': {'required': True, 'type': int}, 'fill_date': {'required': True}, 'quantity_liters': {'required': True, 'type': float}, 'rate_per_liter': {'type': float}, 'total_cost': {'type': float}, 'odometer_reading': {'type': int}, 'mileage_kmpl': {'type': float}})
 def create_fuel_log():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     fl = FuelLog(school_id=g.school_id, vehicle_id=data['vehicle_id'],
                  fill_date=data['fill_date'], quantity_liters=data['quantity_liters'])
     for f in ['fuel_type', 'rate_per_liter', 'total_cost', 'odometer_reading',
@@ -602,11 +617,12 @@ def create_fuel_log():
 
 @transport_bp.route('/fuel-logs/<int:fid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'quantity_liters': {'type': float}, 'rate_per_liter': {'type': float}, 'total_cost': {'type': float}, 'odometer_reading': {'type': int}, 'mileage_kmpl': {'type': float}})
 def update_fuel_log(fid):
     fl = FuelLog.query.filter_by(id=fid, school_id=g.school_id).first()
     if not fl:
         return error_response('Fuel log not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['fill_date', 'fuel_type', 'quantity_liters', 'rate_per_liter', 'total_cost',
               'odometer_reading', 'mileage_kmpl', 'pump_name', 'receipt_no', 'filled_by', 'notes']:
         if f in data:
@@ -632,11 +648,12 @@ def list_transport_fees():
 
 @transport_bp.route('/fees', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'amount': {'required': True, 'type': float}, 'distance_km': {'type': float}, 'rate_per_km': {'type': float}})
 def create_transport_fee():
     """Record a transport fee for a student. Accepts admission_no (string),
     distance_km, amount and paid_date — no internal IDs needed."""
     from app.models.student import Student
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
 
     student_id = data.get('student_id')
     if not student_id and data.get('admission_no'):
@@ -662,11 +679,12 @@ def create_transport_fee():
 
 @transport_bp.route('/fees/<int:fid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'amount': {'type': float}, 'distance_km': {'type': float}, 'rate_per_km': {'type': float}})
 def update_transport_fee(fid):
     tf = TransportFee.query.filter_by(id=fid, school_id=g.school_id).first()
     if not tf:
         return error_response('Fee not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['route_id', 'stop_id', 'academic_year', 'fee_type', 'amount',
               'distance_based', 'distance_km', 'rate_per_km', 'effective_from', 'effective_to', 'status']:
         if f in data:
@@ -692,8 +710,9 @@ def list_sos_alerts():
 
 @transport_bp.route('/sos-alerts', methods=['POST'])
 @school_required
+@validate({'alert_type': {'required': True}})
 def create_sos_alert():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     sos = SOSAlert(school_id=g.school_id, alert_type=data['alert_type'],
                    triggered_by=g.current_user.id)
     for f in ['vehicle_id', 'route_id', 'driver_id', 'description', 'latitude', 'longitude']:
@@ -706,11 +725,12 @@ def create_sos_alert():
 
 @transport_bp.route('/sos-alerts/<int:sid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({})
 def update_sos_alert(sid):
     sos = SOSAlert.query.filter_by(id=sid, school_id=g.school_id).first()
     if not sos:
         return error_response('Alert not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if data.get('status') == 'resolved':
         sos.resolved_by = g.current_user.id
         sos.resolved_at = datetime.utcnow()
@@ -738,8 +758,9 @@ def list_trips():
 
 @transport_bp.route('/trips', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'trip_name': {'required': True}, 'vehicle_id': {'type': int}, 'driver_id': {'type': int}, 'total_students': {'type': int}, 'total_staff': {'type': int}, 'estimated_cost': {'type': float}, 'actual_cost': {'type': float}})
 def create_trip():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     trip = TripManagement(school_id=g.school_id, trip_name=data['trip_name'],
                           organizer_id=g.current_user.id)
     for f in ['trip_type', 'destination', 'vehicle_id', 'driver_id', 'departure_datetime',
@@ -754,11 +775,12 @@ def create_trip():
 
 @transport_bp.route('/trips/<int:tid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'vehicle_id': {'type': int}, 'driver_id': {'type': int}, 'total_students': {'type': int}, 'total_staff': {'type': int}, 'estimated_cost': {'type': float}, 'actual_cost': {'type': float}})
 def update_trip(tid):
     trip = TripManagement.query.filter_by(id=tid, school_id=g.school_id).first()
     if not trip:
         return error_response('Trip not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['trip_name', 'trip_type', 'destination', 'vehicle_id', 'driver_id',
               'departure_datetime', 'return_datetime', 'total_students', 'total_staff',
               'estimated_cost', 'actual_cost', 'notes', 'status']:
@@ -785,8 +807,9 @@ def list_route_requests():
 
 @transport_bp.route('/route-requests', methods=['POST'])
 @school_required
+@validate({})
 def create_route_request():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     req = RouteChangeRequest(school_id=g.school_id, requested_by=g.current_user.id)
     for f in ['student_id', 'current_route_id', 'requested_route_id',
               'current_stop_id', 'requested_stop_id', 'reason', 'effective_date']:
@@ -799,11 +822,12 @@ def create_route_request():
 
 @transport_bp.route('/route-requests/<int:rid>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({})
 def approve_route_request(rid):
     req = RouteChangeRequest.query.filter_by(id=rid, school_id=g.school_id).first()
     if not req:
         return error_response('Request not found', 404)
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     req.status = data.get('status', req.status)
     req.admin_remarks = data.get('admin_remarks', req.admin_remarks)
     if req.status == 'approved':
@@ -829,8 +853,9 @@ def list_speed_alerts():
 
 @transport_bp.route('/speed-alerts', methods=['POST'])
 @school_required
+@validate({'vehicle_id': {'required': True, 'type': int}, 'speed_kmh': {'required': True, 'type': float}, 'speed_limit_kmh': {'type': float}})
 def create_speed_alert():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     sa = SpeedAlert(school_id=g.school_id, vehicle_id=data['vehicle_id'],
                     speed_kmh=data['speed_kmh'])
     for f in ['driver_id', 'speed_limit_kmh', 'latitude', 'longitude', 'location_name']:
@@ -843,6 +868,7 @@ def create_speed_alert():
 
 @transport_bp.route('/speed-alerts/<int:said>', methods=['PUT'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({})
 def acknowledge_speed_alert(said):
     sa = SpeedAlert.query.filter_by(id=said, school_id=g.school_id).first()
     if not sa:
@@ -892,6 +918,7 @@ def _transport_recipient_user_ids(school_id, route_id=None):
 
 @transport_bp.route('/emergency-alert', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({})
 def emergency_alert():
     """Broadcast an EMERGENCY transport alert that pops up with sound on
     recipients' screens. Title is prefixed so the frontend can detect it.
@@ -899,7 +926,7 @@ def emergency_alert():
             audience? ('route'|'all_transport'|'everyone') }"""
     from app.models.communication import Notification
     from app.models.user import User
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     title = (data.get('title') or 'Emergency Alert').strip()
     message = (data.get('message') or '').strip()
     route_id = data.get('route_id')
@@ -940,12 +967,13 @@ def emergency_alert():
 
 @transport_bp.route('/notify', methods=['POST'])
 @role_required('school_admin', 'transport_manager', 'principal')
+@validate({'title': {'required': True}})
 def transport_notify():
     """Send a NORMAL transport notification (no sound). Examples:
     'Bus reached school', 'Bus left school', 'Bus will not come today'.
     Body: { title, message, route_id? }"""
     from app.models.communication import Notification
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     title = (data.get('title') or '').strip()
     message = (data.get('message') or '').strip()
     route_id = data.get('route_id')

@@ -18,7 +18,7 @@ from app.models.fee import (AccountingEntry, FeeInstallment, FeePayment,
 from app.models.student import Student
 from app.models.school import SchoolSetting
 from app.utils.decorators import role_required, school_required
-from app.utils.helpers import success_response, error_response
+from app.utils.helpers import success_response, error_response, validate
 
 payment_bp = Blueprint('payment', __name__)
 
@@ -129,7 +129,7 @@ def get_gateway_config():
 @role_required('school_admin', 'accountant', 'parent')
 def razorpay_create_order():
     """Create a Razorpay order for fee payment."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     school_id = g.school_id
 
     client = _get_razorpay_client(school_id)
@@ -217,7 +217,7 @@ def razorpay_create_order():
 @school_required
 def razorpay_verify():
     """Verify Razorpay payment signature and complete the payment."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     school_id = g.school_id
 
     razorpay_payment_id = data.get('razorpay_payment_id')
@@ -321,7 +321,7 @@ def razorpay_verify():
 @role_required('school_admin', 'accountant', 'parent')
 def paytm_initiate():
     """Initiate a Paytm transaction for fee payment."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     school_id = g.school_id
 
     config = _get_paytm_config(school_id)
@@ -403,7 +403,7 @@ def paytm_initiate():
 @school_required
 def paytm_verify():
     """Verify Paytm payment callback and complete the payment."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     school_id = g.school_id
 
     order_id = data.get('ORDER_ID') or data.get('order_id')
@@ -525,7 +525,7 @@ def get_payment_settings():
 @role_required('school_admin')
 def save_payment_settings():
     """Save payment gateway settings for the school."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     school_id = g.school_id
 
     # Allowed settings keys

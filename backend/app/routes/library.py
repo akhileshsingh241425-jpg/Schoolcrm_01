@@ -8,7 +8,7 @@ from app.models.library import (
     ReadingHistory, LibraryBudget
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload
 
 library_bp = Blueprint('library', __name__)
@@ -60,8 +60,9 @@ def list_categories():
 
 @library_bp.route('/categories', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'name': {'required': True}})
 def create_category():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cat = LibraryCategory(school_id=g.school_id, name=data['name'], description=data.get('description'))
     db.session.add(cat)
     db.session.commit()
@@ -70,9 +71,10 @@ def create_category():
 
 @library_bp.route('/categories/<int:cid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def update_category(cid):
     cat = LibraryCategory.query.filter_by(id=cid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'description', 'is_active']:
         if k in data:
             setattr(cat, k, data[k])
@@ -112,8 +114,9 @@ def list_books():
 
 @library_bp.route('/books', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'title': {'required': True}, 'publication_year': {'type': int}, 'pages': {'type': int}, 'total_copies': {'type': int}, 'price': {'type': float}})
 def create_book():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     book = LibraryBook(
         school_id=g.school_id,
         category_id=data.get('category_id'),
@@ -139,9 +142,10 @@ def create_book():
 
 @library_bp.route('/books/<int:bid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({'publication_year': {'type': int}, 'pages': {'type': int}, 'total_copies': {'type': int}, 'price': {'type': float}})
 def update_book(bid):
     book = LibraryBook.query.filter_by(id=bid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['title', 'author', 'isbn', 'publisher', 'edition', 'language', 'subject',
               'publication_year', 'pages', 'total_copies', 'available_copies',
               'rack_no', 'price', 'condition', 'category_id', 'is_active']:
@@ -176,8 +180,9 @@ def list_copies():
 
 @library_bp.route('/copies', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'book_id': {'required': True, 'type': int}, 'accession_no': {'required': True}})
 def create_copy():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     copy = BookCopy(
         school_id=g.school_id,
         book_id=data['book_id'],
@@ -194,9 +199,10 @@ def create_copy():
 
 @library_bp.route('/copies/<int:cid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def update_copy(cid):
     copy = BookCopy.query.filter_by(id=cid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['accession_no', 'barcode', 'condition', 'location', 'is_available', 'notes']:
         if k in data:
             setattr(copy, k, data[k])
@@ -232,8 +238,9 @@ def list_issues():
 
 @library_bp.route('/issue', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'book_id': {'required': True, 'type': int}, 'issued_to': {'required': True}, 'copy_id': {'type': int}})
 def issue_book():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     book = LibraryBook.query.filter_by(id=data['book_id'], school_id=g.school_id).first_or_404()
     if book.available_copies < 1:
         return error_response('No copies available')
@@ -256,6 +263,7 @@ def issue_book():
 
 @library_bp.route('/return/<int:issue_id>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def return_book(issue_id):
     issue = LibraryIssue.query.filter_by(id=issue_id, school_id=g.school_id).first_or_404()
     if issue.status == 'returned':
@@ -293,8 +301,9 @@ def list_reservations():
 @library_bp.route('/reservations', methods=['POST'])
 @school_required
 @feature_required('library')
+@validate({'book_id': {'required': True, 'type': int}, 'reserved_by': {'required': True}})
 def create_reservation():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     res = BookReservation(
         school_id=g.school_id,
         book_id=data['book_id'],
@@ -311,9 +320,10 @@ def create_reservation():
 
 @library_bp.route('/reservations/<int:rid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def update_reservation(rid):
     res = BookReservation.query.filter_by(id=rid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['status', 'notes', 'expiry_date']:
         if k in data:
             setattr(res, k, data[k])
@@ -346,8 +356,9 @@ def list_fines():
 
 @library_bp.route('/fines', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'issue_id': {'required': True, 'type': int}, 'student_id': {'required': True, 'type': int}, 'amount': {'required': True, 'type': float}})
 def create_fine():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     fine = BookFine(
         school_id=g.school_id,
         issue_id=data['issue_id'],
@@ -363,9 +374,10 @@ def create_fine():
 
 @library_bp.route('/fines/<int:fid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({'paid_amount': {'type': float}, 'amount': {'type': float}})
 def update_fine(fid):
     fine = BookFine.query.filter_by(id=fid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['paid_amount', 'status', 'paid_date', 'notes']:
         if k in data:
             setattr(fine, k, data[k])
@@ -387,8 +399,9 @@ def list_ebooks():
 
 @library_bp.route('/ebooks', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'title': {'required': True}})
 def create_ebook():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     eb = EbookResource(
         school_id=g.school_id,
         title=data['title'], author=data.get('author'),
@@ -405,9 +418,10 @@ def create_ebook():
 
 @library_bp.route('/ebooks/<int:eid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def update_ebook(eid):
     eb = EbookResource.query.filter_by(id=eid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['title', 'author', 'resource_type', 'subject', 'url', 'file_path',
               'description', 'access_level', 'is_active']:
         if k in data:
@@ -439,8 +453,9 @@ def list_periodicals():
 
 @library_bp.route('/periodicals', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({'title': {'required': True}, 'subscription_cost': {'type': float}})
 def create_periodical():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     p = Periodical(
         school_id=g.school_id,
         title=data['title'],
@@ -459,9 +474,10 @@ def create_periodical():
 
 @library_bp.route('/periodicals/<int:pid>', methods=['PUT'])
 @role_required('school_admin', 'librarian')
+@validate({'subscription_cost': {'type': float}})
 def update_periodical(pid):
     p = Periodical.query.filter_by(id=pid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['title', 'periodical_type', 'publisher', 'frequency',
               'subscription_start', 'subscription_end', 'subscription_cost', 'status', 'notes']:
         if k in data:
@@ -496,8 +512,9 @@ def list_reading_history():
 @library_bp.route('/reading-history', methods=['POST'])
 @school_required
 @feature_required('library')
+@validate({'student_id': {'required': True, 'type': int}, 'book_id': {'required': True, 'type': int}, 'rating': {'type': int}, 'pages_read': {'type': int}})
 def create_reading_history():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     rh = ReadingHistory(
         school_id=g.school_id,
         student_id=data['student_id'],
@@ -515,9 +532,10 @@ def create_reading_history():
 @library_bp.route('/reading-history/<int:rid>', methods=['PUT'])
 @school_required
 @feature_required('library')
+@validate({'rating': {'type': int}, 'pages_read': {'type': int}})
 def update_reading_history(rid):
     rh = ReadingHistory.query.filter_by(id=rid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['end_date', 'rating', 'review', 'pages_read', 'status']:
         if k in data:
             setattr(rh, k, data[k])
@@ -549,8 +567,9 @@ def list_budget():
 
 @library_bp.route('/budget', methods=['POST'])
 @role_required('school_admin')
+@validate({'academic_year': {'required': True}, 'allocated_amount': {'required': True, 'type': float}, 'spent_amount': {'type': float}})
 def create_budget():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     b = LibraryBudget(
         school_id=g.school_id,
         academic_year=data['academic_year'],
@@ -567,9 +586,10 @@ def create_budget():
 
 @library_bp.route('/budget/<int:bid>', methods=['PUT'])
 @role_required('school_admin')
+@validate({'allocated_amount': {'type': float}, 'spent_amount': {'type': float}})
 def update_budget(bid):
     b = LibraryBudget.query.filter_by(id=bid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['academic_year', 'category', 'allocated_amount', 'spent_amount', 'description', 'status']:
         if k in data:
             setattr(b, k, data[k])
@@ -628,11 +648,12 @@ def isbn_lookup(isbn):
 # ── Bulk Import Books ─────────────────────────────────────
 @library_bp.route('/books/bulk-import', methods=['POST'])
 @role_required('school_admin', 'librarian')
+@validate({})
 def bulk_import_books():
     """Import multiple books at once from JSON array.
     Each item needs at minimum: title. Optional: author, isbn, publisher, etc.
     """
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     books_data = data.get('books', [])
     if not books_data:
         return error_response('No books provided')

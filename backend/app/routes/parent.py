@@ -13,7 +13,7 @@ from app.models.fee import FeeInstallment, FeePayment
 from app.models.academic import ExamResult, ExamSchedule, Exam, ReportCard, Homework, Timetable
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload
 
 parent_bp = Blueprint('parent', __name__)
@@ -33,8 +33,9 @@ def list_profiles():
 
 @parent_bp.route('/profiles', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'name': {'required': True}})
 def create_profile():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     profile = ParentProfile(
         school_id=g.school_id,
         user_id=data.get('user_id'),
@@ -70,7 +71,7 @@ def get_profile(profile_id):
 @role_required('school_admin', 'teacher')
 def update_profile(profile_id):
     profile = ParentProfile.query.filter_by(id=profile_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['name', 'phone', 'email', 'address', 'occupation', 'preferred_language', 'photo_url']:
         if field in data:
             setattr(profile, field, data[field])
@@ -132,8 +133,9 @@ def list_ptm_slots():
 
 @parent_bp.route('/ptm/slots', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'title': {'required': True}, 'ptm_date': {'required': True}, 'start_time': {'required': True}, 'end_time': {'required': True}})
 def create_ptm_slot():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     slot = PTMSlot(
         school_id=g.school_id,
         title=data['title'],
@@ -156,7 +158,7 @@ def create_ptm_slot():
 @role_required('school_admin', 'teacher')
 def update_ptm_slot(slot_id):
     slot = PTMSlot.query.filter_by(id=slot_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'ptm_date', 'start_time', 'end_time', 'slot_duration', 'teacher_id', 'class_id', 'max_bookings', 'status']:
         if field in data:
             setattr(slot, field, data[field])
@@ -189,8 +191,9 @@ def list_ptm_bookings():
 
 @parent_bp.route('/ptm/bookings', methods=['POST'])
 @school_required
+@validate({'slot_id': {'required': True, 'type': int}})
 def create_ptm_booking():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     # Check if slot has capacity
     slot = PTMSlot.query.filter_by(id=data['slot_id'], school_id=g.school_id).first_or_404()
     current_bookings = PTMBooking.query.filter_by(slot_id=slot.id, status='booked').count()
@@ -215,7 +218,7 @@ def create_ptm_booking():
 @school_required
 def update_ptm_booking(booking_id):
     booking = PTMBooking.query.filter_by(id=booking_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['status', 'notes', 'feedback', 'rating']:
         if field in data:
             setattr(booking, field, data[field])
@@ -237,8 +240,9 @@ def list_surveys():
 
 @parent_bp.route('/surveys', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'title': {'required': True}})
 def create_survey():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     survey = FeedbackSurvey(
         school_id=g.school_id,
         title=data['title'],
@@ -261,7 +265,7 @@ def create_survey():
 @role_required('school_admin', 'teacher')
 def update_survey(survey_id):
     survey = FeedbackSurvey.query.filter_by(id=survey_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'description', 'survey_type', 'target_audience', 'questions', 'is_anonymous', 'is_active', 'start_date', 'end_date']:
         if field in data:
             setattr(survey, field, data[field])
@@ -292,7 +296,7 @@ def list_survey_responses(survey_id):
 @parent_bp.route('/surveys/<int:survey_id>/responses', methods=['POST'])
 @school_required
 def submit_survey_response(survey_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     response = FeedbackResponse(
         school_id=g.school_id,
         survey_id=survey_id,
@@ -327,8 +331,9 @@ def list_grievances():
 
 @parent_bp.route('/grievances', methods=['POST'])
 @school_required
+@validate({'subject': {'required': True}, 'description': {'required': True}})
 def create_grievance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     # Generate ticket number
     count = Grievance.query.filter_by(school_id=g.school_id).count()
     ticket_no = f"GRV-{g.school_id}-{count + 1:04d}"
@@ -361,7 +366,7 @@ def get_grievance(grievance_id):
 @role_required('school_admin', 'teacher')
 def update_grievance(grievance_id):
     grievance = Grievance.query.filter_by(id=grievance_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['category', 'subject', 'description', 'priority', 'status', 'assigned_to', 'resolution']:
         if field in data:
             setattr(grievance, field, data[field])
@@ -386,8 +391,9 @@ def list_consent_forms():
 
 @parent_bp.route('/consent', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'title': {'required': True}})
 def create_consent_form():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     form = ConsentForm(
         school_id=g.school_id,
         title=data['title'],
@@ -408,7 +414,7 @@ def create_consent_form():
 @role_required('school_admin', 'teacher')
 def update_consent_form(form_id):
     form = ConsentForm.query.filter_by(id=form_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['title', 'description', 'consent_type', 'class_id', 'deadline', 'is_mandatory', 'is_active']:
         if field in data:
             setattr(form, field, data[field])
@@ -435,7 +441,7 @@ def list_consent_responses(form_id):
 @parent_bp.route('/consent/<int:form_id>/responses', methods=['POST'])
 @school_required
 def submit_consent_response(form_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     resp = ConsentResponse(
         school_id=g.school_id,
         consent_form_id=form_id,
@@ -493,8 +499,9 @@ def list_messages():
 
 @parent_bp.route('/messages', methods=['POST'])
 @school_required
+@validate({'receiver_id': {'required': True, 'type': int}, 'message': {'required': True}})
 def send_message():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     # Determine sender type based on role
     sender_type = 'parent' if (g.current_user.role and g.current_user.role.name == 'parent') else data.get('sender_type', 'staff')
     msg = ParentMessage(
@@ -539,7 +546,7 @@ def list_activities():
 @parent_bp.route('/activities', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def create_activity():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     activity = DailyActivity(
         school_id=g.school_id,
         class_id=data.get('class_id'),
@@ -579,8 +586,9 @@ def list_notifications():
 
 @parent_bp.route('/notifications', methods=['POST'])
 @role_required('school_admin', 'teacher')
+@validate({'title': {'required': True}})
 def send_notification():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     notif = ParentNotification(
         school_id=g.school_id,
         parent_id=data.get('parent_id'),
@@ -616,8 +624,9 @@ def list_volunteers():
 
 @parent_bp.route('/volunteers', methods=['POST'])
 @school_required
+@validate({'event_name': {'required': True}})
 def register_volunteer():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     vol = VolunteerRegistration(
         school_id=g.school_id,
         parent_id=data.get('parent_id'),
@@ -637,7 +646,7 @@ def register_volunteer():
 @role_required('school_admin')
 def update_volunteer(vol_id):
     vol = VolunteerRegistration.query.filter_by(id=vol_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['status', 'role', 'notes']:
         if field in data:
             setattr(vol, field, data[field])
@@ -659,8 +668,9 @@ def list_pickup_auth():
 
 @parent_bp.route('/pickup', methods=['POST'])
 @school_required
+@validate({'authorized_person': {'required': True}, 'phone': {'required': True}})
 def create_pickup_auth():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     auth = PickupAuthorization(
         school_id=g.school_id,
         student_id=data.get('student_id'),
@@ -679,7 +689,7 @@ def create_pickup_auth():
 @school_required
 def update_pickup_auth(auth_id):
     auth = PickupAuthorization.query.filter_by(id=auth_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for field in ['authorized_person', 'relation', 'phone', 'id_proof', 'is_active']:
         if field in data:
             setattr(auth, field, data[field])

@@ -6,7 +6,7 @@ from app.models.inventory import (
     PurchaseRequest, PurchaseOrderInv, VendorQuotation, AssetDisposal
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from datetime import datetime, date
 from sqlalchemy import func
 
@@ -72,8 +72,9 @@ def list_asset_categories():
 
 @inventory_bp.route('/asset-categories', methods=['POST'])
 @school_required
+@validate({'name': {'required': True}})
 def create_asset_category():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cat = AssetCategory(
         school_id=g.school_id, name=data['name'],
         description=data.get('description'),
@@ -116,7 +117,7 @@ def list_assets():
 @inventory_bp.route('/assets', methods=['POST'])
 @school_required
 def create_asset():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     asset = Asset(school_id=g.school_id)
     for k in ['category_id', 'asset_code', 'name', 'description', 'asset_type',
               'brand', 'model', 'serial_number', 'purchase_date', 'purchase_price',
@@ -144,7 +145,7 @@ def get_asset(id):
 @school_required
 def update_asset(id):
     asset = Asset.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['category_id', 'asset_code', 'name', 'description', 'asset_type',
               'brand', 'model', 'serial_number', 'purchase_date', 'purchase_price',
               'vendor_id', 'warranty_expiry', 'warranty_details', 'location',
@@ -186,7 +187,7 @@ def list_maintenance():
 @inventory_bp.route('/maintenance', methods=['POST'])
 @school_required
 def create_maintenance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     m = AssetMaintenance(school_id=g.school_id)
     for k in ['asset_id', 'maintenance_type', 'description', 'reported_date',
               'scheduled_date', 'completed_date', 'vendor_name', 'cost',
@@ -205,7 +206,7 @@ def create_maintenance():
 @school_required
 def update_maintenance(id):
     m = AssetMaintenance.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['maintenance_type', 'description', 'scheduled_date', 'completed_date',
               'vendor_name', 'cost', 'status', 'priority', 'technician', 'notes']:
         if k in data:
@@ -230,8 +231,9 @@ def list_categories():
 
 @inventory_bp.route('/categories', methods=['POST'])
 @school_required
+@validate({'name': {'required': True}})
 def create_category():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     cat = InventoryCategory(
         school_id=g.school_id, name=data['name'],
         description=data.get('description'),
@@ -268,7 +270,7 @@ def list_items():
 @inventory_bp.route('/items', methods=['POST'])
 @school_required
 def create_item():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item = InventoryItem(school_id=g.school_id)
     for k in ['category_id', 'name', 'description', 'sku', 'quantity', 'unit',
               'unit_price', 'min_stock_level', 'max_stock_level', 'reorder_quantity',
@@ -287,7 +289,7 @@ def create_item():
 @school_required
 def update_item(id):
     item = InventoryItem.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['category_id', 'name', 'description', 'sku', 'quantity', 'unit',
               'unit_price', 'min_stock_level', 'max_stock_level', 'reorder_quantity',
               'location', 'expiry_date', 'is_lab_item']:
@@ -317,8 +319,9 @@ def list_transactions():
 
 @inventory_bp.route('/transactions', methods=['POST'])
 @school_required
+@validate({'item_id': {'required': True, 'type': int}, 'quantity': {'required': True, 'type': int}})
 def add_transaction():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item = InventoryItem.query.filter_by(id=data['item_id'], school_id=g.school_id).first_or_404()
 
     txn = InventoryTransaction(
@@ -365,7 +368,7 @@ def list_purchase_requests():
 @inventory_bp.route('/purchase-requests', methods=['POST'])
 @school_required
 def create_purchase_request():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     pr = PurchaseRequest(
         school_id=g.school_id,
         request_number=f"PR-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
@@ -384,7 +387,7 @@ def create_purchase_request():
 @school_required
 def update_purchase_request(id):
     pr = PurchaseRequest.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['title', 'description', 'priority', 'department', 'items_json',
               'estimated_total', 'status', 'rejection_reason', 'notes']:
         if k in data:
@@ -414,7 +417,7 @@ def list_purchase_orders():
 @inventory_bp.route('/purchase-orders', methods=['POST'])
 @school_required
 def create_purchase_order():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     po = PurchaseOrderInv(
         school_id=g.school_id,
         po_number=f"PO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
@@ -438,7 +441,7 @@ def create_purchase_order():
 @school_required
 def update_purchase_order(id):
     po = PurchaseOrderInv.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['vendor_name', 'vendor_contact', 'vendor_email', 'vendor_address',
               'expected_delivery', 'actual_delivery', 'items_json',
               'subtotal', 'tax_amount', 'discount_amount', 'total_amount',
@@ -471,7 +474,7 @@ def list_quotations():
 @inventory_bp.route('/quotations', methods=['POST'])
 @school_required
 def create_quotation():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     q = VendorQuotation(school_id=g.school_id)
     for k in ['purchase_request_id', 'vendor_name', 'vendor_contact', 'vendor_email',
               'quotation_number', 'quotation_date', 'valid_until', 'items_json',
@@ -491,7 +494,7 @@ def create_quotation():
 @school_required
 def update_quotation(id):
     q = VendorQuotation.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['vendor_name', 'vendor_contact', 'total_amount', 'delivery_days',
               'payment_terms', 'warranty_terms', 'rating', 'is_selected', 'notes']:
         if k in data:
@@ -518,7 +521,7 @@ def list_disposals():
 @inventory_bp.route('/disposals', methods=['POST'])
 @school_required
 def create_disposal():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     d = AssetDisposal(school_id=g.school_id)
     for k in ['asset_id', 'disposal_type', 'disposal_date', 'reason',
               'book_value', 'disposal_value', 'buyer_name', 'buyer_contact',
@@ -542,7 +545,7 @@ def create_disposal():
 @school_required
 def update_disposal(id):
     d = AssetDisposal.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['disposal_type', 'disposal_date', 'reason', 'book_value', 'disposal_value',
               'buyer_name', 'buyer_contact', 'status', 'notes']:
         if k in data:

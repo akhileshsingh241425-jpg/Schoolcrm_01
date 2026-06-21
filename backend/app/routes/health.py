@@ -7,7 +7,7 @@ from app.models.health import (
     WellbeingRecord, SanitizationLog, TemperatureScreen
 )
 from app.models.user import User
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from app.utils.decorators import school_required
 from datetime import datetime, date
 
@@ -62,8 +62,9 @@ def list_records():
 
 @health_bp.route('/records', methods=['POST'])
 @school_required
+@validate({'height_cm': {'type': float}, 'weight_kg': {'type': float}, 'bmi': {'type': float}, 'vision_left': {'type': float}, 'vision_right': {'type': float}})
 def create_record():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     rec = HealthRecord(school_id=g.school_id, **{k: d.get(k) for k in [
         'person_type', 'person_id', 'blood_group', 'height_cm', 'weight_kg', 'bmi',
         'allergies', 'chronic_conditions', 'vaccinations', 'disabilities',
@@ -79,9 +80,10 @@ def create_record():
 
 @health_bp.route('/records/<int:id>', methods=['PUT'])
 @school_required
+@validate({'height_cm': {'type': float}, 'weight_kg': {'type': float}, 'bmi': {'type': float}, 'vision_left': {'type': float}, 'vision_right': {'type': float}})
 def update_record(id):
     rec = HealthRecord.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['person_type', 'person_id', 'blood_group', 'height_cm', 'weight_kg', 'bmi',
               'allergies', 'chronic_conditions', 'vaccinations', 'disabilities',
               'vision_left', 'vision_right', 'dental_status',
@@ -119,8 +121,9 @@ def list_infirmary():
 
 @health_bp.route('/infirmary', methods=['POST'])
 @school_required
+@validate({'temperature': {'type': float}})
 def create_infirmary():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     v = InfirmaryVisit(school_id=g.school_id)
     for k in ['person_type', 'person_id', 'visit_date', 'complaint', 'diagnosis',
               'treatment', 'medicines_given', 'temperature', 'blood_pressure',
@@ -139,9 +142,10 @@ def create_infirmary():
 
 @health_bp.route('/infirmary/<int:id>', methods=['PUT'])
 @school_required
+@validate({'temperature': {'type': float}})
 def update_infirmary(id):
     v = InfirmaryVisit.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['diagnosis', 'treatment', 'medicines_given', 'temperature', 'blood_pressure',
               'referred_to_hospital', 'hospital_name', 'parent_notified',
               'attended_by', 'status', 'follow_up_date', 'notes', 'discharge_time']:
@@ -170,8 +174,9 @@ def list_incidents():
 
 @health_bp.route('/incidents', methods=['POST'])
 @school_required
+@validate({})
 def create_incident():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     inc = IncidentReport(school_id=g.school_id, reported_by=g.current_user.id)
     for k in ['incident_type', 'severity', 'title', 'description', 'incident_date', 'incident_time',
               'location', 'persons_involved', 'witnesses', 'first_aid_given', 'first_aid_details',
@@ -185,9 +190,10 @@ def create_incident():
 
 @health_bp.route('/incidents/<int:id>', methods=['PUT'])
 @school_required
+@validate({'insurance_amount': {'type': float}})
 def update_incident(id):
     inc = IncidentReport.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['severity', 'description', 'action_taken', 'status', 'resolution_notes',
               'insurance_claimed', 'insurance_claim_no', 'insurance_amount',
               'parent_notified', 'police_notified']:
@@ -213,8 +219,9 @@ def list_checkups():
 
 @health_bp.route('/checkups', methods=['POST'])
 @school_required
+@validate({'height_cm': {'type': float}, 'weight_kg': {'type': float}, 'bmi': {'type': float}})
 def create_checkup():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     c = HealthCheckup(school_id=g.school_id)
     for k in ['checkup_name', 'checkup_type', 'checkup_date', 'person_type', 'person_id',
               'height_cm', 'weight_kg', 'bmi', 'vision_left', 'vision_right',
@@ -229,9 +236,10 @@ def create_checkup():
 
 @health_bp.route('/checkups/<int:id>', methods=['PUT'])
 @school_required
+@validate({'height_cm': {'type': float}, 'weight_kg': {'type': float}, 'bmi': {'type': float}})
 def update_checkup(id):
     c = HealthCheckup.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['findings', 'recommendations', 'follow_up_required', 'status',
               'height_cm', 'weight_kg', 'bmi', 'vision_left', 'vision_right',
               'dental_status', 'hearing_status', 'blood_pressure', 'hemoglobin', 'doctor_name']:
@@ -258,8 +266,9 @@ def list_visitors():
 
 @health_bp.route('/visitors', methods=['POST'])
 @school_required
+@validate({})
 def create_visitor():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     v = VisitorLog(school_id=g.school_id)
     for k in ['visitor_name', 'visitor_phone', 'visitor_email', 'visitor_photo_url',
               'id_type', 'id_number', 'purpose', 'visiting_person', 'visiting_department',
@@ -275,9 +284,10 @@ def create_visitor():
 
 @health_bp.route('/visitors/<int:id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_visitor(id):
     v = VisitorLog.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['remarks', 'status']:
         if k in d:
             setattr(v, k, d[k])
@@ -311,8 +321,9 @@ def list_drills():
 
 @health_bp.route('/drills', methods=['POST'])
 @school_required
+@validate({})
 def create_drill():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     dr = SafetyDrill(school_id=g.school_id)
     for k in ['drill_type', 'drill_name', 'scheduled_date', 'scheduled_time',
               'assembly_point', 'conducted_by', 'status', 'next_drill_date']:
@@ -325,9 +336,10 @@ def create_drill():
 
 @health_bp.route('/drills/<int:id>', methods=['PUT'])
 @school_required
+@validate({'duration_minutes': {'type': int}, 'evacuation_time_seconds': {'type': int}, 'participants_count': {'type': int}, 'rating': {'type': int, 'min': 1, 'max': 5}})
 def update_drill(id):
     dr = SafetyDrill.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['actual_date', 'duration_minutes', 'evacuation_time_seconds',
               'participants_count', 'observations', 'issues_found', 'corrective_actions',
               'rating', 'status', 'next_drill_date', 'conducted_by']:
@@ -351,8 +363,9 @@ def list_medications():
 
 @health_bp.route('/medications', methods=['POST'])
 @school_required
+@validate({})
 def create_medication():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     m = MedicationTracking(school_id=g.school_id)
     for k in ['person_type', 'person_id', 'medication_name', 'dosage', 'frequency',
               'timing', 'prescribed_by', 'start_date', 'end_date', 'condition',
@@ -366,9 +379,10 @@ def create_medication():
 
 @health_bp.route('/medications/<int:id>', methods=['PUT'])
 @school_required
+@validate({})
 def update_medication(id):
     m = MedicationTracking.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['dosage', 'frequency', 'timing', 'end_date', 'status', 'notes',
               'administered_by', 'parent_consent']:
         if k in d:
@@ -396,8 +410,9 @@ def list_emergency():
 
 @health_bp.route('/emergency-contacts', methods=['POST'])
 @school_required
+@validate({'priority': {'type': int}})
 def create_emergency():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     ec = EmergencyContact(school_id=g.school_id)
     for k in ['person_type', 'person_id', 'contact_name', 'relationship',
               'phone_primary', 'phone_secondary', 'email', 'address', 'priority']:
@@ -410,9 +425,10 @@ def create_emergency():
 
 @health_bp.route('/emergency-contacts/<int:id>', methods=['PUT'])
 @school_required
+@validate({'priority': {'type': int}})
 def update_emergency(id):
     ec = EmergencyContact.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['contact_name', 'relationship', 'phone_primary', 'phone_secondary',
               'email', 'address', 'priority', 'is_active']:
         if k in d:
@@ -447,8 +463,9 @@ def list_wellbeing():
 
 @health_bp.route('/wellbeing', methods=['POST'])
 @school_required
+@validate({'mood_score': {'type': int, 'min': 1, 'max': 10}, 'stress_level': {'type': int, 'min': 1, 'max': 10}, 'sleep_hours': {'type': float}})
 def create_wellbeing():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     w = WellbeingRecord(school_id=g.school_id, recorded_by=g.current_user.id)
     for k in ['student_id', 'record_date', 'mood', 'mood_score', 'sleep_hours',
               'stress_level', 'notes', 'counselor_referral', 'counselor_name',
@@ -462,9 +479,10 @@ def create_wellbeing():
 
 @health_bp.route('/wellbeing/<int:id>', methods=['PUT'])
 @school_required
+@validate({'mood_score': {'type': int, 'min': 1, 'max': 10}, 'stress_level': {'type': int, 'min': 1, 'max': 10}})
 def update_wellbeing(id):
     w = WellbeingRecord.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['mood', 'mood_score', 'stress_level', 'notes', 'counselor_referral',
               'counselor_name', 'intervention_type', 'intervention_notes',
               'follow_up_date', 'status']:
@@ -491,8 +509,9 @@ def list_sanitization():
 
 @health_bp.route('/sanitization', methods=['POST'])
 @school_required
+@validate({'rating': {'type': int, 'min': 1, 'max': 5}})
 def create_sanitization():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     s = SanitizationLog(school_id=g.school_id)
     for k in ['area_name', 'area_type', 'scheduled_time', 'actual_time',
               'cleaned_by', 'verified_by', 'cleaning_date', 'chemicals_used',
@@ -506,9 +525,10 @@ def create_sanitization():
 
 @health_bp.route('/sanitization/<int:id>', methods=['PUT'])
 @school_required
+@validate({'rating': {'type': int, 'min': 1, 'max': 5}})
 def update_sanitization(id):
     s = SanitizationLog.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     for k in ['actual_time', 'cleaned_by', 'verified_by', 'chemicals_used',
               'rating', 'photo_url', 'status', 'remarks']:
         if k in d:
@@ -534,8 +554,9 @@ def list_temperature():
 
 @health_bp.route('/temperature', methods=['POST'])
 @school_required
+@validate({'temperature': {'type': float}})
 def create_temperature():
-    d = request.get_json()
+    d = g.get('validated_data') or request.get_json()
     t = TemperatureScreen(school_id=g.school_id)
     for k in ['person_type', 'person_id', 'screen_date', 'screen_time',
               'temperature', 'symptoms', 'action_taken', 'screened_by']:

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, g
 from app import db
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response
+from app.utils.helpers import success_response, error_response, validate
 from app.services.marks_entry_service import (
     bulk_assign, manual_assign, validate_marks_entry, calculate_grade,
     get_entry_progress, check_deadlines_and_lock, check_exam_completion,
@@ -28,7 +28,7 @@ marks_entry_bp = Blueprint('marks_entry', __name__)
 @role_required('exam_controller', 'school_admin', 'principal')
 def bulk_assign_route():
     """Bulk assign teachers from TeacherSubject allocations to ExamSchedules."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_id = data.get('exam_id')
 
     if not exam_id:
@@ -47,7 +47,7 @@ def bulk_assign_route():
 @role_required('exam_controller', 'school_admin')
 def manual_assign_route():
     """Manually assign a single teacher to an ExamSchedule."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_schedule_id = data.get('exam_schedule_id')
     teacher_id = data.get('teacher_id')
     reassign = data.get('reassign', False)
@@ -203,7 +203,7 @@ def set_deadlines():
     - {exam_schedule_id, deadline_date, auto_lock}  (single)
     - {exam_id, deadline_date, auto_lock}  (all schedules for an exam)
     """
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     # Support bulk via exam_id (set same deadline for all schedules in an exam)
     if 'exam_id' in data and 'deadlines' not in data:
@@ -321,7 +321,7 @@ def update_deadline(deadline_id):
     if not deadline:
         return error_response('Deadline not found', 404)
 
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
 
     if 'deadline_date' in data:
         try:
@@ -387,7 +387,7 @@ def submit_marks():
     - Calculates grade/percentage
     - Records entered_by and entered_at
     """
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_schedule_id = data.get('exam_schedule_id')
     marks_data = data.get('marks', [])
 
@@ -504,7 +504,7 @@ def submit_marks():
 @role_required('exam_controller', 'principal', 'school_admin')
 def lock_marks():
     """Lock marks entry for an exam schedule (sets is_marks_locked=True)."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_schedule_id = data.get('exam_schedule_id')
 
     if not exam_schedule_id:
@@ -538,7 +538,7 @@ def unlock_marks():
     Unlock takes precedence in concurrent scenarios — if a teacher submits
     while an admin unlocks, the unlock wins and the schedule remains editable.
     """
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_schedule_id = data.get('exam_schedule_id')
 
     if not exam_schedule_id:
@@ -570,7 +570,7 @@ def unlock_marks():
 @role_required('exam_controller', 'school_admin')
 def check_exam_status():
     """Check and auto-update exam completion status based on schedule end times."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     exam_id = data.get('exam_id')
 
     if not exam_id:

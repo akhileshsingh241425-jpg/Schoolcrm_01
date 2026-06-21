@@ -5,7 +5,7 @@ from app.models.canteen import (
     CanteenInventory, CanteenVendor, CanteenPreorder
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload
 
 canteen_bp = Blueprint('canteen', __name__)
@@ -51,8 +51,9 @@ def list_menu():
 @canteen_bp.route('/menu', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'name': {'required': True}, 'price': {'required': True, 'type': float}, 'calories': {'type': int}})
 def create_menu_item():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item = CanteenMenuItem(school_id=g.school_id, name=data['name'],
         category=data.get('category'), price=data['price'],
         description=data.get('description'), calories=data.get('calories'),
@@ -65,9 +66,10 @@ def create_menu_item():
 @canteen_bp.route('/menu/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('canteen')
+@validate({'price': {'type': float}, 'calories': {'type': int}})
 def update_menu_item(id):
     item = CanteenMenuItem.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'category', 'price', 'description', 'calories', 'allergens', 'is_vegetarian', 'is_available', 'image_url']:
         if k in data: setattr(item, k, data[k])
     db.session.commit()
@@ -97,8 +99,9 @@ def list_wallets():
 @canteen_bp.route('/wallets', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'student_id': {'required': True, 'type': int}, 'balance': {'type': float}, 'daily_limit': {'type': float}})
 def create_wallet():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     w = CanteenWallet(school_id=g.school_id, student_id=data['student_id'],
         balance=data.get('balance', 0), daily_limit=data.get('daily_limit', 200))
     db.session.add(w)
@@ -108,9 +111,10 @@ def create_wallet():
 @canteen_bp.route('/wallets/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('canteen')
+@validate({'balance': {'type': float}, 'daily_limit': {'type': float}})
 def update_wallet(id):
     w = CanteenWallet.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['balance', 'daily_limit', 'is_active']:
         if k in data: setattr(w, k, data[k])
     db.session.commit()
@@ -119,9 +123,10 @@ def update_wallet(id):
 @canteen_bp.route('/wallets/<int:id>/topup', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'amount': {'required': True, 'type': float}})
 def topup_wallet(id):
     w = CanteenWallet.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     amount = float(data['amount'])
     w.balance = float(w.balance or 0) + amount
     txn = CanteenTransaction(school_id=g.school_id, student_id=w.student_id,
@@ -150,8 +155,9 @@ def list_transactions():
 @canteen_bp.route('/transactions', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'student_id': {'required': True, 'type': int}, 'transaction_type': {'required': True}, 'amount': {'required': True, 'type': float}, 'wallet_id': {'type': int}, 'item_id': {'type': int}, 'quantity': {'type': int, 'min': 1}})
 def create_transaction():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     txn = CanteenTransaction(school_id=g.school_id, student_id=data['student_id'],
         wallet_id=data.get('wallet_id'), transaction_type=data['transaction_type'],
         amount=data['amount'], item_id=data.get('item_id'),
@@ -178,8 +184,9 @@ def list_inventory():
 @canteen_bp.route('/inventory', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'item_name': {'required': True}, 'quantity': {'type': int, 'min': 0}, 'unit_price': {'type': float, 'min': 0}, 'min_stock': {'type': int, 'min': 0}})
 def create_inventory():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     inv = CanteenInventory(school_id=g.school_id, item_name=data['item_name'],
         category=data.get('category'), quantity=data.get('quantity', 0),
         unit=data.get('unit'), unit_price=data.get('unit_price', 0),
@@ -192,9 +199,10 @@ def create_inventory():
 @canteen_bp.route('/inventory/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('canteen')
+@validate({'quantity': {'type': int, 'min': 0}, 'unit_price': {'type': float, 'min': 0}, 'min_stock': {'type': int, 'min': 0}})
 def update_inventory(id):
     inv = CanteenInventory.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['item_name', 'category', 'quantity', 'unit', 'unit_price', 'min_stock', 'supplier', 'last_restocked', 'expiry_date', 'is_active']:
         if k in data: setattr(inv, k, data[k])
     db.session.commit()
@@ -222,8 +230,9 @@ def list_vendors():
 @canteen_bp.route('/vendors', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'name': {'required': True}, 'rating': {'type': int, 'min': 1, 'max': 5}})
 def create_vendor():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     v = CanteenVendor(school_id=g.school_id, name=data['name'],
         contact_person=data.get('contact_person'), phone=data.get('phone'),
         email=data.get('email'), address=data.get('address'),
@@ -236,9 +245,10 @@ def create_vendor():
 @canteen_bp.route('/vendors/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('canteen')
+@validate({'rating': {'type': int, 'min': 1, 'max': 5}})
 def update_vendor(id):
     v = CanteenVendor.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'contact_person', 'phone', 'email', 'address', 'supply_items', 'rating', 'fssai_license', 'is_active']:
         if k in data: setattr(v, k, data[k])
     db.session.commit()
@@ -271,8 +281,9 @@ def list_preorders():
 @canteen_bp.route('/preorders', methods=['POST'])
 @school_required
 @feature_required('canteen')
+@validate({'item_id': {'required': True, 'type': int}, 'student_id': {'required': True, 'type': int}, 'order_date': {'required': True}, 'quantity': {'type': int, 'min': 1}})
 def create_preorder():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     item = CanteenMenuItem.query.get(data['item_id'])
     total = float(item.price) * int(data.get('quantity', 1)) if item else 0
     po = CanteenPreorder(school_id=g.school_id, student_id=data['student_id'],
@@ -286,9 +297,10 @@ def create_preorder():
 @canteen_bp.route('/preorders/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('canteen')
+@validate({'quantity': {'type': int, 'min': 1}})
 def update_preorder(id):
     po = CanteenPreorder.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['quantity', 'pickup_time', 'status', 'remarks']:
         if k in data: setattr(po, k, data[k])
     db.session.commit()

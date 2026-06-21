@@ -13,7 +13,7 @@ from app.models.academic import (
 from app.models.communication import Announcement
 from app.models.principal import ClassObservation, DisciplineCase, TeacherPerformanceScore
 from app.utils.decorators import role_required, school_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload
 
 principal_bp = Blueprint('principal', __name__)
@@ -271,8 +271,9 @@ def list_observations():
 
 @principal_bp.route('/observations', methods=['POST'])
 @role_required('principal', 'school_admin', 'super_admin')
+@validate({'teacher_id': {'required': True, 'type': int}, 'observation_date': {'required': True}})
 def create_observation():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     # Calculate overall rating
     ratings = [
         data.get('teaching_methodology', 3), data.get('classroom_management', 3),
@@ -309,7 +310,7 @@ def create_observation():
 @role_required('principal', 'school_admin', 'super_admin')
 def update_observation(obs_id):
     obs = ClassObservation.query.filter_by(id=obs_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['teaching_methodology', 'classroom_management', 'student_engagement',
               'subject_knowledge', 'use_of_aids', 'communication_skills',
               'strengths', 'improvements', 'remarks', 'follow_up_date', 'status']:
@@ -343,8 +344,9 @@ def list_discipline():
 
 @principal_bp.route('/discipline', methods=['POST'])
 @role_required('principal', 'school_admin', 'super_admin', 'teacher')
+@validate({'student_id': {'required': True, 'type': int}, 'description': {'required': True}})
 def create_discipline_case():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     case = DisciplineCase(
         school_id=g.school_id, student_id=data['student_id'],
         reported_by=g.user_id, case_date=data.get('case_date', date.today().isoformat()),
@@ -363,7 +365,7 @@ def create_discipline_case():
 @role_required('principal', 'school_admin', 'super_admin')
 def update_discipline_case(case_id):
     case = DisciplineCase.query.filter_by(id=case_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['level', 'action_taken', 'parent_notified', 'parent_meeting_date',
               'suspension_from', 'suspension_to', 'status', 'resolution_notes']:
         if f in data:
@@ -392,7 +394,7 @@ def pending_leaves():
 @role_required('principal', 'school_admin', 'super_admin')
 def approve_leave(leave_id):
     leave = StaffLeave.query.filter_by(id=leave_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     action = data.get('action', 'approved')  # approved or rejected
     leave.status = action
     leave.approved_by = g.user_id
@@ -421,7 +423,7 @@ def exam_approvals():
 @role_required('principal', 'school_admin', 'super_admin')
 def update_exam_approval(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'status' in data:
         exam.status = data['status']  # results_published
     db.session.commit()

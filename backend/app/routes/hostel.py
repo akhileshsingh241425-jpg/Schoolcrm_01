@@ -6,7 +6,7 @@ from app.models.hostel import (
     HostelComplaint, HostelInspection
 )
 from app.utils.decorators import school_required, role_required, feature_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from sqlalchemy.orm import joinedload
 
 hostel_bp = Blueprint('hostel', __name__)
@@ -57,8 +57,9 @@ def list_blocks():
 @hostel_bp.route('/blocks', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'name': {'required': True}, 'total_floors': {'type': int}, 'warden_id': {'type': int}})
 def create_block():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     block = HostelBlock(school_id=g.school_id, name=data['name'], code=data.get('code'),
         block_type=data.get('block_type', 'boys'), warden_id=data.get('warden_id'),
         total_floors=data.get('total_floors', 1), description=data.get('description'),
@@ -70,9 +71,10 @@ def create_block():
 @hostel_bp.route('/blocks/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({'total_floors': {'type': int}, 'warden_id': {'type': int}})
 def update_block(id):
     block = HostelBlock.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['name', 'code', 'block_type', 'warden_id', 'total_floors', 'description', 'address', 'contact_number', 'is_active']:
         if k in data:
             setattr(block, k, data[k])
@@ -109,8 +111,9 @@ def list_rooms():
 @hostel_bp.route('/rooms', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'block_id': {'required': True, 'type': int}, 'room_number': {'required': True}, 'floor': {'type': int}, 'capacity': {'type': int}, 'monthly_rent': {'type': float}})
 def create_room():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     room = HostelRoom(school_id=g.school_id, block_id=data['block_id'],
         room_number=data['room_number'], floor=data.get('floor', 0),
         room_type=data.get('room_type', 'shared'), capacity=data.get('capacity', 2),
@@ -123,9 +126,10 @@ def create_room():
 @hostel_bp.route('/rooms/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({'block_id': {'type': int}, 'floor': {'type': int}, 'capacity': {'type': int}, 'monthly_rent': {'type': float}})
 def update_room(id):
     room = HostelRoom.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['block_id', 'room_number', 'floor', 'room_type', 'capacity', 'amenities', 'monthly_rent', 'status', 'is_active']:
         if k in data:
             setattr(room, k, data[k])
@@ -163,8 +167,9 @@ def list_allocations():
 @hostel_bp.route('/allocations', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'student_id': {'required': True, 'type': int}, 'room_id': {'required': True, 'type': int}})
 def create_allocation():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     alloc = HostelAllocation(school_id=g.school_id, student_id=data['student_id'],
         room_id=data['room_id'], bed_number=data.get('bed_number'),
         allocation_date=data['allocation_date'], remarks=data.get('remarks'))
@@ -181,9 +186,10 @@ def create_allocation():
 @hostel_bp.route('/allocations/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({})
 def update_allocation(id):
     alloc = HostelAllocation.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if data.get('status') == 'vacated' and alloc.status == 'active':
         room = HostelRoom.query.get(alloc.room_id)
         if room:
@@ -230,8 +236,9 @@ def list_mess_menu():
 @hostel_bp.route('/mess-menu', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'day_of_week': {'required': True}, 'meal_type': {'required': True}, 'menu_items': {'required': True}, 'calories': {'type': int}})
 def create_mess_menu():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     menu = MessMenu(school_id=g.school_id, day_of_week=data['day_of_week'],
         meal_type=data['meal_type'], menu_items=data['menu_items'],
         special_diet=data.get('special_diet'), calories=data.get('calories'),
@@ -243,9 +250,10 @@ def create_mess_menu():
 @hostel_bp.route('/mess-menu/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({'calories': {'type': int}})
 def update_mess_menu(id):
     menu = MessMenu.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['day_of_week', 'meal_type', 'menu_items', 'special_diet', 'calories', 'effective_from', 'effective_to', 'is_active']:
         if k in data:
             setattr(menu, k, data[k])
@@ -282,8 +290,9 @@ def list_mess_attendance():
 @hostel_bp.route('/mess-attendance', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'student_id': {'required': True, 'type': int}, 'date': {'required': True}, 'meal_type': {'required': True}})
 def create_mess_attendance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     att = MessAttendance(school_id=g.school_id, student_id=data['student_id'],
         date=data['date'], meal_type=data['meal_type'],
         status=data.get('status', 'present'), remarks=data.get('remarks'))
@@ -294,9 +303,10 @@ def create_mess_attendance():
 @hostel_bp.route('/mess-attendance/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({})
 def update_mess_attendance(id):
     att = MessAttendance.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['status', 'remarks']:
         if k in data:
             setattr(att, k, data[k])
@@ -321,8 +331,9 @@ def list_outpass():
 @hostel_bp.route('/outpass', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'student_id': {'required': True, 'type': int}, 'reason': {'required': True}, 'from_date': {'required': True}, 'to_date': {'required': True}})
 def create_outpass():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     op = OutpassRequest(school_id=g.school_id, student_id=data['student_id'],
         outpass_type=data.get('outpass_type', 'day'), reason=data['reason'],
         from_date=data['from_date'], to_date=data['to_date'],
@@ -334,9 +345,10 @@ def create_outpass():
 @hostel_bp.route('/outpass/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({})
 def update_outpass(id):
     op = OutpassRequest.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if 'status' in data and data['status'] == 'approved':
         op.approved_by = g.current_user.id
         from datetime import datetime
@@ -377,8 +389,9 @@ def list_visitors():
 @hostel_bp.route('/visitors', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'student_id': {'required': True, 'type': int}, 'visitor_name': {'required': True}, 'visit_date': {'required': True}})
 def create_visitor():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     v = HostelVisitor(school_id=g.school_id, student_id=data['student_id'],
         visitor_name=data['visitor_name'], relation=data.get('relation'),
         contact_number=data.get('contact_number'), id_proof_type=data.get('id_proof_type'),
@@ -391,9 +404,10 @@ def create_visitor():
 @hostel_bp.route('/visitors/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({})
 def update_visitor(id):
     v = HostelVisitor.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['visitor_name', 'relation', 'contact_number', 'check_out', 'status', 'remarks']:
         if k in data:
             setattr(v, k, data[k])
@@ -430,8 +444,9 @@ def list_complaints():
 @hostel_bp.route('/complaints', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'student_id': {'required': True, 'type': int}, 'complaint_type': {'required': True}, 'subject': {'required': True}, 'description': {'required': True}})
 def create_complaint():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     c = HostelComplaint(school_id=g.school_id, student_id=data['student_id'],
         complaint_type=data['complaint_type'], subject=data['subject'],
         description=data['description'], priority=data.get('priority', 'medium'))
@@ -442,9 +457,10 @@ def create_complaint():
 @hostel_bp.route('/complaints/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({})
 def update_complaint(id):
     c = HostelComplaint.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     if data.get('status') == 'resolved' and c.status != 'resolved':
         from datetime import datetime
         c.resolved_at = datetime.utcnow()
@@ -484,8 +500,9 @@ def list_inspections():
 @hostel_bp.route('/inspections', methods=['POST'])
 @school_required
 @feature_required('hostel')
+@validate({'room_id': {'required': True, 'type': int}, 'inspection_date': {'required': True}, 'inspector_id': {'type': int}, 'cleanliness_score': {'type': int, 'min': 0, 'max': 10}, 'maintenance_score': {'type': int, 'min': 0, 'max': 10}, 'discipline_score': {'type': int, 'min': 0, 'max': 10}, 'overall_score': {'type': int, 'min': 0, 'max': 10}})
 def create_inspection():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     insp = HostelInspection(school_id=g.school_id, room_id=data['room_id'],
         inspection_date=data['inspection_date'],
         inspection_type=data.get('inspection_type', 'routine'),
@@ -500,9 +517,10 @@ def create_inspection():
 @hostel_bp.route('/inspections/<int:id>', methods=['PUT'])
 @school_required
 @feature_required('hostel')
+@validate({'inspector_id': {'type': int}, 'cleanliness_score': {'type': int, 'min': 0, 'max': 10}, 'maintenance_score': {'type': int, 'min': 0, 'max': 10}, 'discipline_score': {'type': int, 'min': 0, 'max': 10}, 'overall_score': {'type': int, 'min': 0, 'max': 10}})
 def update_inspection(id):
     insp = HostelInspection.query.filter_by(id=id, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for k in ['inspection_date', 'inspection_type', 'inspector_id', 'cleanliness_score', 'maintenance_score', 'discipline_score', 'overall_score', 'findings', 'action_taken', 'status']:
         if k in data:
             setattr(insp, k, data[k])

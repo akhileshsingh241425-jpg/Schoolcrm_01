@@ -14,7 +14,7 @@ from app.models.student import Student, Class, Section
 from app.models.staff import Staff
 from app.models.user import User
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate
+from app.utils.helpers import success_response, error_response, paginate, validate
 from app.services.result_service import process_results, get_subject_analysis
 from app.services.seating_service import generate_seating
 from app.services import notification_service
@@ -48,6 +48,7 @@ def get_date_sheet(exam_id):
 
 @exam_mgmt_bp.route('/date-sheet/<int:exam_id>/submit', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({})
 def submit_date_sheet(exam_id):
     """Submit date sheet for Principal approval."""
     ds = ExamDateSheet.query.filter_by(exam_id=exam_id, school_id=g.school_id).first()
@@ -61,6 +62,7 @@ def submit_date_sheet(exam_id):
 
 @exam_mgmt_bp.route('/date-sheet/<int:exam_id>/approve', methods=['POST'])
 @role_required('principal', 'school_admin', 'super_admin')
+@validate({})
 def approve_date_sheet(exam_id):
     """Principal approves date sheet."""
     ds = ExamDateSheet.query.filter_by(exam_id=exam_id, school_id=g.school_id).first()
@@ -75,9 +77,10 @@ def approve_date_sheet(exam_id):
 
 @exam_mgmt_bp.route('/date-sheet/<int:exam_id>/reject', methods=['POST'])
 @role_required('principal', 'school_admin', 'super_admin')
+@validate({})
 def reject_date_sheet(exam_id):
     """Principal rejects date sheet."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     ds = ExamDateSheet.query.filter_by(exam_id=exam_id, school_id=g.school_id).first()
     if not ds:
         return error_response('Date sheet not found', 404)
@@ -149,13 +152,14 @@ def upload_question_paper(exam_id):
 
 @exam_mgmt_bp.route('/question-papers/paper/<int:paper_id>/approve', methods=['POST'])
 @school_required
+@validate({})
 def approve_paper(paper_id):
     """Approve question paper. Allowed: exam_controller, principal, school_admin, teacher (for HOD approval)."""
     allowed = ['exam_controller', 'principal', 'school_admin', 'super_admin', 'teacher', 'academic_controller']
     if g.current_user.role and g.current_user.role.name not in allowed:
         return error_response('Insufficient permissions', 403)
     paper = QuestionPaper.query.filter_by(id=paper_id, school_id=g.school_id).first_or_404()
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     paper.status = data.get('status', 'hod_approved')
     # reviewed_by needs staff_id, not user_id
     staff = Staff.query.filter_by(user_id=g.user_id, school_id=g.school_id).first()
@@ -179,8 +183,13 @@ def get_deadlines(exam_id):
 
 @exam_mgmt_bp.route('/deadlines/<int:exam_id>', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({
+    'class_id': {'required': True, 'type': int},
+    'subject_id': {'required': True, 'type': int},
+    'deadline_date': {'required': True},
+})
 def set_deadline(exam_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     dl = MarksEntryDeadline(
         school_id=g.school_id, exam_id=exam_id,
         class_id=data['class_id'], subject_id=data['subject_id'],
@@ -237,6 +246,7 @@ def marks_entry_status(exam_id):
 
 @exam_mgmt_bp.route('/results/<int:exam_id>/process', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({})
 def process_exam_results(exam_id):
     """Trigger result processing."""
     result = process_results(exam_id, g.school_id)
@@ -260,9 +270,10 @@ def result_analysis(exam_id):
 
 @exam_mgmt_bp.route('/seating/<int:schedule_id>/generate', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({})
 def generate_seating_arrangement(schedule_id):
     """Generate seating for an exam schedule."""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     mode = data.get('mode', 'roll_number')
     hall_ids = data.get('hall_ids')
     result = generate_seating(schedule_id, g.school_id, mode, hall_ids)
@@ -277,9 +288,10 @@ def generate_seating_arrangement(schedule_id):
 
 @exam_mgmt_bp.route('/exam-attendance/<int:schedule_id>', methods=['POST'])
 @school_required
+@validate({})
 def mark_exam_attendance(schedule_id):
     """Mark exam day attendance."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     entries = data.get('entries', [])
     for entry in entries:
         existing = ExamAttendanceRecord.query.filter_by(
@@ -325,8 +337,13 @@ def list_grievances():
 
 @exam_mgmt_bp.route('/grievances', methods=['POST'])
 @school_required
+@validate({
+    'student_id': {'required': True, 'type': int},
+    'exam_schedule_id': {'required': True, 'type': int},
+    'reason': {'required': True},
+})
 def create_grievance():
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     grievance = ExamGrievance(
         school_id=g.school_id, student_id=data['student_id'],
         exam_schedule_id=data['exam_schedule_id'],
@@ -339,9 +356,10 @@ def create_grievance():
 
 @exam_mgmt_bp.route('/grievances/<int:gid>', methods=['PUT'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({})
 def update_grievance(gid):
     grievance = ExamGrievance.query.filter_by(id=gid, school_id=g.school_id).first_or_404()
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     for f in ['status', 'assigned_to', 'resolution_remarks', 'corrected_marks']:
         if f in data:
             setattr(grievance, f, data[f])
@@ -358,9 +376,14 @@ def update_grievance(gid):
 
 @exam_mgmt_bp.route('/grace-marks/<int:exam_id>', methods=['POST'])
 @role_required('principal', 'school_admin', 'super_admin')
+@validate({
+    'marks_value': {'required': True, 'type': float, 'min': 0},
+    'reason': {'required': True},
+    'level': {'required': True},
+})
 def apply_grace_marks(exam_id):
     """Apply grace marks (Principal only)."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     gm = GraceMarks(
         school_id=g.school_id, exam_id=exam_id,
         class_id=data.get('class_id'), subject_id=data.get('subject_id'),
@@ -386,8 +409,12 @@ def get_grace_marks(exam_id):
 
 @exam_mgmt_bp.route('/re-exams/<int:exam_id>', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({
+    're_exam_type': {'required': True},
+    'new_exam_date': {'required': True},
+})
 def create_re_exam(exam_id):
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     re = ReExam(
         school_id=g.school_id, original_exam_id=exam_id,
         original_schedule_id=data.get('original_schedule_id'),
@@ -423,6 +450,7 @@ def get_notifications():
 
 @exam_mgmt_bp.route('/notifications/<int:nid>/read', methods=['PUT'])
 @school_required
+@validate({})
 def mark_notification_read(nid):
     notif = ExamNotification.query.filter_by(id=nid, recipient_user_id=g.user_id).first_or_404()
     notif.is_read = True
@@ -436,9 +464,10 @@ def mark_notification_read(nid):
 
 @exam_mgmt_bp.route('/verification/<int:schedule_id>/generate', methods=['POST'])
 @role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@validate({})
 def generate_verification(schedule_id):
     """Randomly select students for marks verification."""
-    data = request.get_json() or {}
+    data = g.get('validated_data') or request.get_json() or {}
     count = data.get('count', 5)
     
     results = ExamResult.query.filter_by(
@@ -496,9 +525,10 @@ def get_room_seating(exam_id, hall_id):
 
 @exam_mgmt_bp.route('/room-seating/<int:exam_id>/<int:hall_id>', methods=['POST'])
 @school_required
+@validate({})
 def save_room_seating(exam_id, hall_id):
     """Save seating grid for a room. Grid is a 2D array: columns x rows, each cell = {class_name, roll_no}."""
-    data = request.get_json()
+    data = g.get('validated_data') or request.get_json()
     grid_data = data.get('grid', [])
     date = data.get('date')
     start_time = data.get('start_time')
