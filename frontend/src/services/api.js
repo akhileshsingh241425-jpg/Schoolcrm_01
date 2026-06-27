@@ -1285,3 +1285,16 @@ export const marksEntryAPI = {
   checkExamStatus: (data) => api.post('/marks-entry/check-exam-status', data),
   getDashboard: (params) => api.get('/marks-entry/dashboard', { params }),
 };
+
+// Roles & Permissions
+export const rolesAPI = {
+  getModules: () => api.get('/roles/modules'),
+  listRoles: () => api.get('/roles/roles'),
+  getRole: (id) => api.get(`/roles/roles/${id}`),
+  createRole: (data) => api.post('/roles/roles', data),
+  updateRole: (id, data) => api.put(`/roles/roles/${id}`, data),
+  deleteRole: (id) => api.delete(`/roles/roles/${id}`),
+  initDefaults: () => api.post('/roles/roles/init-defaults'),
+  getMyPermissions: () => api.get('/roles/my-permissions'),
+  getUserPermissions: (userId) => api.get(`/roles/user-permissions/${userId}`),
+};

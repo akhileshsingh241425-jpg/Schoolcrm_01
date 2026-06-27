@@ -16,7 +16,7 @@ import {
   KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook,
   Email, Sms, Message, Assignment, Edit, Lock, AccountBalance, Store, RateReview,
   ArrowUpward, SwapHoriz, TrendingUp, FactCheck, AutoGraph,
-  Timeline, HowToVote, TaskAlt, Checklist
+  Timeline, HowToVote, TaskAlt, Checklist, Security
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
@@ -139,6 +139,7 @@ const menuGroups = [
       { text: 'Data Import', icon: <CloudUpload />, path: '/data-import', module: 'data_import' },
       { text: 'School Branding', icon: <Brush />, path: '/school-branding', module: 'settings' },
       { text: 'Payment Gateway', icon: <Payment />, path: '/payment-settings', module: 'settings' },
+      { text: 'Roles & Permissions', icon: <Security />, path: '/roles-permissions', module: 'settings', role: ['school_admin', 'super_admin'] },
       { text: 'Settings', icon: <Settings />, path: '/settings', module: 'settings' },
     ],
   },

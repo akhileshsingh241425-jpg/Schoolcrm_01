@@ -55,6 +55,7 @@ import CalendarManagement from './pages/academics/CalendarManagement';
 import Communication from './pages/communication/Communication';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
+import RolesPermissions from './pages/settings/RolesPermissions';
 import Inventory from './pages/inventory/Inventory';
 import Transport from './pages/transport/Transport';
 import Library from './pages/library/Library';
@@ -263,6 +264,7 @@ function App() {
         
         {/* Settings - admin only */}
         <Route path="settings" element={<ModuleRoute module="settings"><Settings /></ModuleRoute>} />
+        <Route path="roles-permissions" element={<ModuleRoute module="settings"><RolesPermissions /></ModuleRoute>} />
         
         {/* Parent Portal */}
         <Route path="my-children" element={<ParentPortal />} />
