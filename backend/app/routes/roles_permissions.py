@@ -24,7 +24,10 @@ def list_modules():
 @school_required
 def list_roles():
     """Get all custom roles for this school"""
-    roles = CustomRole.query.filter_by(school_id=g.school_id).order_by(CustomRole.name).all()
+    school_id = request.args.get('school_id') or g.school_id
+    if not school_id:
+        return success_response([])
+    roles = CustomRole.query.filter_by(school_id=school_id).order_by(CustomRole.name).all()
     return success_response([r.to_dict() for r in roles])
 
 
@@ -37,12 +40,16 @@ def create_role():
     if not name:
         return error_response('Role name is required')
 
-    existing = CustomRole.query.filter_by(school_id=g.school_id, name=name).first()
+    school_id = data.get('school_id') or g.school_id
+    if not school_id:
+        return error_response('school_id is required')
+
+    existing = CustomRole.query.filter_by(school_id=school_id, name=name).first()
     if existing:
         return error_response(f'Role "{name}" already exists')
 
     role = CustomRole(
-        school_id=g.school_id,
+        school_id=school_id,
         name=name,
         display_name=data.get('display_name', name.replace('_', ' ').title()),
         description=data.get('description', ''),
@@ -57,7 +64,7 @@ def create_role():
         if level in PERMISSION_LEVELS:
             perm = RoleModulePermission(
                 custom_role_id=role.id,
-                school_id=g.school_id,
+                school_id=school_id,
                 module=module_key,
                 level=level,
             )
@@ -125,14 +132,20 @@ def delete_role(role_id):
 @role_required('school_admin')
 def init_default_roles():
     """Initialize default role templates for this school"""
+    # Allow super_admin to pass school_id in body
+    data = request.get_json(silent=True) or {}
+    school_id = data.get('school_id') or g.school_id
+    if not school_id:
+        return error_response('school_id is required (super admin must pass it in body)')
+
     created = []
     for role_name, template in DEFAULT_ROLE_TEMPLATES.items():
-        existing = CustomRole.query.filter_by(school_id=g.school_id, name=role_name).first()
+        existing = CustomRole.query.filter_by(school_id=school_id, name=role_name).first()
         if existing:
             continue
 
         role = CustomRole(
-            school_id=g.school_id,
+            school_id=school_id,
             name=role_name,
             display_name=template['display_name'],
             description=template['description'],
@@ -144,7 +157,7 @@ def init_default_roles():
         for module_key, level in template['permissions'].items():
             perm = RoleModulePermission(
                 custom_role_id=role.id,
-                school_id=g.school_id,
+                school_id=school_id,
                 module=module_key,
                 level=level,
             )
