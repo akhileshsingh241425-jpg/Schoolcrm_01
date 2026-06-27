@@ -411,6 +411,26 @@ def create_user():
     )
     user.set_password(data['password'])
     db.session.add(user)
+    db.session.flush()
+
+    # Auto-create staff record for non-student/parent roles
+    non_staff_roles = ['parent', 'student']
+    if role.name not in non_staff_roles:
+        from app.models.staff import Staff
+        existing_staff = Staff.query.filter_by(school_id=g.school_id, user_id=user.id).first()
+        if not existing_staff:
+            staff = Staff(
+                school_id=g.school_id,
+                user_id=user.id,
+                name=f"{data['first_name']} {data.get('last_name', '')}".strip(),
+                email=data['email'],
+                phone=data.get('phone'),
+                designation=role.description or role.name.replace('_', ' ').title(),
+                department=role.name,
+                status='active',
+            )
+            db.session.add(staff)
+
     db.session.commit()
 
     return success_response({
