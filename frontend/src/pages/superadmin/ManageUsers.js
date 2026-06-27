@@ -183,7 +183,7 @@ export default function ManageUsers() {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {u.school ? `${u.school.name} (#${u.school.id})` : '-'}
+                      {u.school ? `${u.school.name} (${u.school.code})` : '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
