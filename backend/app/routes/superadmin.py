@@ -1,4 +1,4 @@
-from flask import Blueprint, request, current_app
+from flask import Blueprint, request, current_app, g
 from datetime import datetime, date
 from werkzeug.security import generate_password_hash
 import os
