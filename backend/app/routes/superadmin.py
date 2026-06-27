@@ -356,15 +356,32 @@ def create_subscription():
     plan = SubscriptionPlan.query.get_or_404(data['plan_id'])
 
     billing = data.get('billing_cycle', 'yearly')
-    amount = float(plan.yearly_price) if billing == 'yearly' else float(plan.monthly_price)
+    amount = float(plan.yearly_price or 0) if billing == 'yearly' else float(plan.monthly_price or 0)
+
+    start = data.get('start_date', date.today().isoformat())
+    if isinstance(start, str):
+        from datetime import datetime as dt
+        start_date = dt.strptime(start, '%Y-%m-%d').date() if start else date.today()
+    else:
+        start_date = start or date.today()
+
+    # Auto-calculate end_date if not provided
+    if data.get('end_date'):
+        end_date = data['end_date']
+    else:
+        from datetime import timedelta
+        if billing == 'monthly':
+            end_date = (start_date + timedelta(days=30)).isoformat()
+        else:
+            end_date = (start_date + timedelta(days=365)).isoformat()
 
     sub = SchoolSubscription(
         school_id=school.id,
         plan_id=plan.id,
         billing_cycle=billing,
         amount=data.get('amount', amount),
-        start_date=data.get('start_date', date.today().isoformat()),
-        end_date=data['end_date'],
+        start_date=start,
+        end_date=end_date,
         payment_status=data.get('payment_status', 'paid'),
     )
     db.session.add(sub)
