@@ -1192,20 +1192,29 @@ def list_users():
     if role:
         query = query.filter(Role.name == role)
 
-    result = paginate(query)
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 20, type=int), 100)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
     # Enrich users with role and school info
     users = []
-    for u in result.get('items', result if isinstance(result, list) else []):
-        d = u.to_dict() if hasattr(u, 'to_dict') else u
-        if hasattr(u, 'role') and u.role:
+    for u in pagination.items:
+        d = u.to_dict()
+        if u.role:
             d['role'] = {'id': u.role.id, 'name': u.role.name}
-        school = School.query.get(u.school_id) if hasattr(u, 'school_id') else None
-        d['school'] = {'id': school.id, 'name': school.name} if school else None
+        school = School.query.get(u.school_id) if u.school_id else None
+        d['school'] = {'id': school.id, 'name': school.name, 'code': school.code} if school else None
         users.append(d)
 
-    if isinstance(result, dict):
-        result['items'] = users
-        result['users'] = users
+    result = {
+        'items': users,
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': pagination.per_page,
+        'pages': pagination.pages,
+        'has_next': pagination.has_next,
+        'has_prev': pagination.has_prev
+    }
     return success_response(result)
 
 
