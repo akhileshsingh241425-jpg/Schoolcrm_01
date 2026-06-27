@@ -45,7 +45,7 @@ export default function ManageUsers() {
     setLoading(true);
     superAdminAPI.listUsers({ page, search, school_id: filterSchool, role: filterRole })
       .then(res => {
-        setUsers(res.data.data?.users || res.data.data || []);
+        setUsers(res.data.data?.items || res.data.data?.users || res.data.data || []);
         setTotalPages(res.data.data?.pages || 1);
       })
       .catch(() => setError('Failed to load users'))
