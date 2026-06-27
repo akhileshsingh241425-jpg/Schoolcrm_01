@@ -212,32 +212,33 @@ def delete_school(school_id):
     school = School.query.get_or_404(school_id)
     name = school.name
     try:
-        # Use raw SQL to delete everything - avoids SQLAlchemy relationship issues
-        tables_to_clean = [
-            'student_achievements', 'student_behavior', 'student_promotions',
-            'student_documents', 'parent_documents', 'parent_details',
-            'transport_fees', 'transport_student_assignments', 'transport_stops',
-            'transport_gps_logs', 'transport_maintenance', 'transport_fuel_logs',
-            'transport_sos_alerts', 'transport_trips', 'transport_route_requests',
-            'transport_speed_alerts', 'transport_routes', 'vehicles', 'drivers',
-            'attendance', 'fee_payments', 'fee_structures', 'invoices',
-            'exam_marks', 'exam_subjects', 'exams', 'marks_entries', 'marks_locks',
-            'school_subscription_addons', 'subscription_payments', 'school_subscriptions',
-            'school_features', 'school_settings',
-            'communications', 'notifications', 'directors',
-            'users', 'students', 'staff', 'sections', 'classes', 'academic_years',
-        ]
-        for table in tables_to_clean:
+        # Disable FK checks to avoid ordering issues
+        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 0"))
+        
+        # Get all tables that have school_id column
+        result = db.session.execute(db.text("""
+            SELECT TABLE_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE COLUMN_NAME = 'school_id' 
+            AND TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME != 'schools'
+        """))
+        tables = [row[0] for row in result]
+        
+        for table in tables:
             try:
                 db.session.execute(db.text(f"DELETE FROM `{table}` WHERE school_id = :sid"), {'sid': school_id})
             except Exception:
-                pass  # Table might not exist or column name differs
+                pass
         
-        # Delete the school itself using raw SQL to avoid relationship issues
-        db.session.execute(db.text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
+        # Delete the school itself
+        db.session.execute(db.text("DELETE FROM `schools` WHERE id = :sid"), {'sid': school_id})
+        
+        # Re-enable FK checks
+        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
         db.session.commit()
         return success_response(message=f'School "{name}" and all associated data deleted')
     except Exception as e:
+        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
         db.session.rollback()
         return error_response(f'Failed to delete school: {str(e)}', 500)
 
