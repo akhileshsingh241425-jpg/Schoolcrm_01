@@ -1331,12 +1331,13 @@ def get_audit_logs():
     if action:
         query = query.filter(AuditLog.action == action)
 
-    result = paginate(query)
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 20, type=int), 100)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
     # Enrich logs with user info
     logs = []
-    items = result.get('items', result) if isinstance(result, dict) else result
-    for log in items:
+    for log in pagination.items:
         d = {
             'id': log.id,
             'action': log.action,
@@ -1349,14 +1350,20 @@ def get_audit_logs():
         user = User.query.get(log.user_id) if log.user_id else None
         d['user_name'] = f"{user.first_name} {user.last_name}".strip() if user else 'System'
         d['user_email'] = user.email if user else ''
-        # Apply search filter
         if search:
             searchable = f"{d['user_name']} {d['user_email']} {d['action']} {d['details']}".lower()
             if search.lower() not in searchable:
                 continue
         logs.append(d)
 
-    if isinstance(result, dict):
-        result['logs'] = logs
-        result['items'] = logs
+    result = {
+        'items': logs,
+        'logs': logs,
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': pagination.per_page,
+        'pages': pagination.pages,
+        'has_next': pagination.has_next,
+        'has_prev': pagination.has_prev
+    }
     return success_response(result)
