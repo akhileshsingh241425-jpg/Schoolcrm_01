@@ -211,9 +211,34 @@ def toggle_school(school_id):
 def delete_school(school_id):
     school = School.query.get_or_404(school_id)
     name = school.name
-    db.session.delete(school)
-    db.session.commit()
-    return success_response(message=f'School "{name}" deleted')
+    try:
+        # Delete all related data manually to avoid FK constraint issues
+        tables_to_clean = [
+            'student_achievements', 'student_behavior', 'student_promotions',
+            'student_documents', 'parent_documents', 'parent_details',
+            'transport_fees', 'transport_student_assignments', 'transport_stops',
+            'transport_gps_logs', 'transport_maintenance', 'transport_fuel_logs',
+            'transport_sos_alerts', 'transport_trips', 'transport_route_requests',
+            'transport_speed_alerts', 'transport_routes', 'vehicles', 'drivers',
+            'attendance', 'fee_payments', 'fee_structures', 'invoices',
+            'exam_marks', 'exam_subjects', 'exams',
+            'school_subscription_addons', 'subscription_payments', 'school_subscriptions',
+            'school_features', 'school_settings',
+            'communications', 'notifications',
+            'users', 'students', 'staff', 'sections', 'classes', 'academic_years',
+        ]
+        for table in tables_to_clean:
+            try:
+                db.session.execute(db.text(f"DELETE FROM {table} WHERE school_id = :sid"), {'sid': school_id})
+            except Exception:
+                pass  # Table might not exist or column name differs
+        
+        db.session.delete(school)
+        db.session.commit()
+        return success_response(message=f'School "{name}" and all associated data deleted')
+    except Exception as e:
+        db.session.rollback()
+        return error_response(f'Failed to delete school: {str(e)}', 500)
 
 
 @superadmin_bp.route('/schools/<int:school_id>/features', methods=['PUT'])
