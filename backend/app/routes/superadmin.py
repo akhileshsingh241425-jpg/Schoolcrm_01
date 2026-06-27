@@ -1118,7 +1118,9 @@ def create_school():
             return error_response(f'Invalid value for {field}. Please check your input and try again.', 400)
         if '(pymysql.err.IntegrityError)' in err_msg:
             return error_response('This school email is already registered.', 409)
-        return error_response('Failed to create school. Please check all fields and try again.', 500)
+        import traceback
+        traceback.print_exc()
+        return error_response(f'Failed to create school: {err_msg}', 500)
 
 
 @superadmin_bp.route('/schools/upload-doc', methods=['POST'])
