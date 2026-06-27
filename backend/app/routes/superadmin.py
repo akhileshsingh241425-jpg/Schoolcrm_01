@@ -40,6 +40,44 @@ def _audit(action, module=None, record_id=None, details=None):
         pass
 
 
+def _build_audit_description(action, details):
+    """Convert raw audit data into human-readable description"""
+    if not details or not isinstance(details, dict):
+        return action.replace('_', ' ').title()
+    
+    name = details.get('name', '')
+    code = details.get('code', '')
+    school_name = ''
+    if details.get('school_id'):
+        try:
+            s = School.query.get(details['school_id'])
+            school_name = s.name if s else f"School #{details['school_id']}"
+        except Exception:
+            school_name = f"School #{details['school_id']}"
+
+    if action == 'school_created':
+        return f'New school "{name}" created with code {code}'
+    elif action == 'school_deleted':
+        return f'School "{name}" and all its data permanently deleted'
+    elif action == 'school_toggled':
+        status = 'activated' if details.get('is_active') else 'deactivated'
+        return f'School "{name}" {status}'
+    elif action == 'subscription_created':
+        plan = details.get('plan', 'Unknown')
+        billing = details.get('billing', 'yearly')
+        return f'{billing.title()} {plan} subscription assigned to {school_name}'
+    elif action == 'user_toggled':
+        email = details.get('email', '')
+        status = 'enabled' if details.get('is_active') else 'disabled'
+        return f'User {email} {status}'
+    elif action == 'user_created':
+        email = details.get('email', '')
+        role = details.get('role', '')
+        return f'New user {email} created with role {role}'
+    else:
+        return f"{action.replace('_', ' ').title()}: {name or str(details)}"
+
+
 # ─── Dashboard Stats ───────────────────────────────────────────────
 @superadmin_bp.route('/dashboard', methods=['GET'])
 @super_admin_required
@@ -1338,6 +1376,10 @@ def get_audit_logs():
     # Enrich logs with user info
     logs = []
     for log in pagination.items:
+        # Build human-readable description
+        details_raw = log.new_values or log.old_values or {}
+        description = _build_audit_description(log.action, details_raw)
+        
         d = {
             'id': log.id,
             'action': log.action,
@@ -1345,7 +1387,7 @@ def get_audit_logs():
             'resource_id': log.record_id,
             'ip_address': log.ip_address,
             'created_at': log.created_at.isoformat() if log.created_at else None,
-            'details': str(log.new_values or log.old_values or ''),
+            'details': description,
         }
         user = User.query.get(log.user_id) if log.user_id else None
         d['user_name'] = f"{user.first_name} {user.last_name}".strip() if user else 'System'
