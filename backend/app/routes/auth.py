@@ -93,7 +93,7 @@ def login():
             'access_token': access_token,
             'refresh_token': refresh_token,
             'user': user.to_dict(),
-            'school': school.to_dict() if school else {},
+            'school': school.to_dict() if school else None,
             'features': features,
             'allowed_modules': allowed_modules
         }, 'Login successful')
