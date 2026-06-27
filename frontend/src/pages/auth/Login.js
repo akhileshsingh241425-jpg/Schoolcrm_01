@@ -54,7 +54,6 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     const errs = validateForm(form, {
-      school_code: ['required'],
       email: ['required', 'email'],
       password: ['required', { minLength: 6 }],
     });
