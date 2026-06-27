@@ -21,9 +21,9 @@ def login():
         if not data:
             return error_response('No data provided')
         
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-        school_code = data.get('school_code', '').strip()
+        email = (data.get('email') or '').strip()
+        password = data.get('password') or ''
+        school_code = (data.get('school_code') or '').strip()
         
         if not email or not password:
             return error_response('Email and password are required')
@@ -209,9 +209,12 @@ def get_me():
     if not user:
         return error_response('User not found', 404)
     
-    school = School.query.get(user.school_id)
+    school = School.query.get(user.school_id) if user.school_id else None
     features = school.get_enabled_features() if school else []
-    allowed_modules = user.get_allowed_modules()
+    try:
+        allowed_modules = user.get_allowed_modules()
+    except Exception:
+        allowed_modules = []
     
     return success_response({
         'user': user.to_dict(),
