@@ -23,6 +23,23 @@ from app.utils.helpers import success_response, error_response, paginate, valida
 superadmin_bp = Blueprint('superadmin', __name__)
 
 
+def _audit(action, module=None, record_id=None, details=None):
+    """Quick audit log helper for superadmin actions"""
+    try:
+        log = AuditLog(
+            school_id=g.get('school_id'),
+            user_id=g.get('user_id'),
+            action=action,
+            module=module,
+            record_id=record_id,
+            new_values=details,
+            ip_address=request.remote_addr,
+        )
+        db.session.add(log)
+    except Exception:
+        pass
+
+
 # ─── Dashboard Stats ───────────────────────────────────────────────
 @superadmin_bp.route('/dashboard', methods=['GET'])
 @super_admin_required
@@ -201,6 +218,7 @@ def update_school(school_id):
 def toggle_school(school_id):
     school = School.query.get_or_404(school_id)
     school.is_active = not school.is_active
+    _audit('school_toggled', 'schools', school_id, {'is_active': school.is_active, 'name': school.name})
     db.session.commit()
     status = 'activated' if school.is_active else 'deactivated'
     return success_response(school.to_dict(), f'School {status}')
@@ -246,6 +264,8 @@ def delete_school(school_id):
         
         # Re-enable FK checks
         db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
+        db.session.commit()
+        _audit('school_deleted', 'schools', school_id, {'name': name})
         db.session.commit()
         return success_response(message=f'School "{name}" and all associated data deleted')
     except Exception as e:
@@ -405,6 +425,8 @@ def create_subscription():
                 school_id=school.id, feature_name=feature_name, is_enabled=True
             ))
 
+    db.session.commit()
+    _audit('subscription_created', 'subscriptions', sub.id, {'school_id': school.id, 'plan': plan.name, 'billing': billing})
     db.session.commit()
     return success_response(sub.to_dict(), 'Subscription created')
 
@@ -1120,6 +1142,9 @@ def create_school():
                     dir_user.set_password(default_pass)
                     db.session.add(dir_user)
 
+        db.session.commit()
+
+        _audit('school_created', 'schools', school.id, {'name': school.name, 'code': school.code})
         db.session.commit()
 
         result = school.to_dict()
