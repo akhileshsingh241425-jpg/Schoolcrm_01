@@ -226,7 +226,18 @@ def delete_school(school_id):
         
         for table in tables:
             try:
-                db.session.execute(db.text(f"DELETE FROM `{table}` WHERE school_id = :sid"), {'sid': school_id})
+                if table == 'users':
+                    # Protect super_admin users - don't delete them, just unlink
+                    db.session.execute(db.text("""
+                        UPDATE `users` SET school_id = NULL 
+                        WHERE school_id = :sid AND role_id = (SELECT id FROM roles WHERE name = 'super_admin')
+                    """), {'sid': school_id})
+                    # Delete non-super_admin users
+                    db.session.execute(db.text("""
+                        DELETE FROM `users` WHERE school_id = :sid
+                    """), {'sid': school_id})
+                else:
+                    db.session.execute(db.text(f"DELETE FROM `{table}` WHERE school_id = :sid"), {'sid': school_id})
             except Exception:
                 pass
         
@@ -238,7 +249,10 @@ def delete_school(school_id):
         db.session.commit()
         return success_response(message=f'School "{name}" and all associated data deleted')
     except Exception as e:
-        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
+        try:
+            db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
+        except Exception:
+            pass
         db.session.rollback()
         return error_response(f'Failed to delete school: {str(e)}', 500)
 
