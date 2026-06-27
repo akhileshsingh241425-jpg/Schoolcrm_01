@@ -26,7 +26,7 @@ class School(db.Model):
     subdomain = db.Column(db.String(100), unique=True)
     custom_domain = db.Column(db.String(255))
     theme_color = db.Column(db.String(50))
-    plan = db.Column(db.Enum('basic', 'standard', 'premium'), default='basic')
+    plan = db.Column(db.String(50), default='basic')
     session = db.Column(db.String(50))
     subscription_start = db.Column(db.Date)
     subscription_end = db.Column(db.Date)
