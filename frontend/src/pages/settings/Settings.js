@@ -205,6 +205,8 @@ function UsersTab({ showSnack }) {
     if (user.role?.name === 'school_admin') {
       showSnack('Admin ko deactivate nahi kar sakte', 'error'); return;
     }
+    const action = user.is_active ? 'deactivate' : 'activate';
+    if (!window.confirm(`Are you sure you want to ${action} "${user.first_name} ${user.last_name || ''}" (${user.email})?`)) return;
     authAPI.updateUser(user.id, { is_active: !user.is_active })
       .then(() => { showSnack(user.is_active ? 'User deactivated' : 'User activated'); loadUsers(); })
       .catch(() => showSnack('Failed', 'error'));

@@ -248,7 +248,7 @@ export default function Transport() {
                     <TableCell><Chip size="small" label={v.status} color={statColor(v.status)} /></TableCell>
                     <TableCell>
                       <IconButton size="small" onClick={() => { setVehicleForm(v); setEditVehicleId(v.id); setOpenVehicle(true); }}><Edit fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { transportAPI.deleteVehicle(v.id).then(() => { msg('Deleted'); fetchVehicles(); }).catch(() => msg('Failed','error')); }}><Delete fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (!window.confirm(`Delete vehicle "${v.vehicle_number}"? This cannot be undone.`)) return; transportAPI.deleteVehicle(v.id).then(() => { msg('Deleted'); fetchVehicles(); }).catch(() => msg('Failed','error')); }}><Delete fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -285,7 +285,7 @@ export default function Transport() {
                     <TableCell><Chip size="small" label={d.status} color={statColor(d.status)} /></TableCell>
                     <TableCell>
                       <IconButton size="small" onClick={() => { setDriverForm(d); setEditDriverId(d.id); setOpenDriver(true); }}><Edit fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { transportAPI.deleteDriver(d.id).then(() => { msg('Deleted'); fetchDrivers(); }).catch(() => msg('Failed','error')); }}><Delete fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (!window.confirm(`Delete driver "${d.name}"? This cannot be undone.`)) return; transportAPI.deleteDriver(d.id).then(() => { msg('Deleted'); fetchDrivers(); }).catch(() => msg('Failed','error')); }}><Delete fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}

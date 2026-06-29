@@ -992,7 +992,7 @@ function RulesTab({ snack, setSnack }) {
                 <TableCell>{d.last_sync || 'Never'}</TableCell>
                 <TableCell>
                   <IconButton size="small" color="error"
-                    onClick={() => attendanceAPI.deleteDevice(d.id).then(() => setDevices(devices.filter(x => x.id !== d.id)))}>
+                    onClick={() => { if (!window.confirm('Delete this device?')) return; attendanceAPI.deleteDevice(d.id).then(() => setDevices(devices.filter(x => x.id !== d.id))); }}>
                     <Delete fontSize="small" />
                   </IconButton>
                 </TableCell>

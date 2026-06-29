@@ -262,7 +262,7 @@ export default function Inventory() {
                   <TableCell>{a.current_value ? `₹${Number(a.current_value).toLocaleString()}` : '-'}</TableCell>
                   <TableCell>
                     <IconButton size="small" onClick={() => { setAstForm(a); setEditAstId(a.id); setOpenAst(true); }}><Edit fontSize="small" /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => inventoryAPI.deleteAsset(a.id).then(() => { msg('Deleted'); fetchAssets(); }).catch(() => msg('Failed','error'))}><Delete fontSize="small" /></IconButton>
+                    <IconButton size="small" color="error" onClick={() => { if (!window.confirm(`Delete asset "${a.name}"? This cannot be undone.`)) return; inventoryAPI.deleteAsset(a.id).then(() => { msg('Deleted'); fetchAssets(); }).catch(() => msg('Failed','error'))}}><Delete fontSize="small" /></IconButton>
                   </TableCell>
                 </TableRow>
               ))}

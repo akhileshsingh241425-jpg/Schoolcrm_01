@@ -59,6 +59,8 @@ export default function ManageUsers() {
   }, []);
 
   const handleToggleUser = (u) => {
+    const action = u.is_active ? 'disable' : 'enable';
+    if (!window.confirm(`Are you sure you want to ${action} user "${u.email}"?`)) return;
     superAdminAPI.toggleUser(u.id)
       .then(() => fetchUsers())
       .catch(() => setError('Failed to toggle user status'));

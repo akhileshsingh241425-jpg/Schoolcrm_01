@@ -245,7 +245,7 @@ export default function Health() {
                     <TableCell>{r.chronic_conditions || '-'}</TableCell>
                     <TableCell>
                       <IconButton size="small" onClick={() => { setRecForm(r); setEditRecId(r.id); setOpenRec(true); }}><Edit fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => healthAPI.deleteRecord(r.id).then(() => { msg('Deleted'); fetchRecords(); }).catch(() => msg('Failed','error'))}><Delete fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (!window.confirm('Delete this health record? This cannot be undone.')) return; healthAPI.deleteRecord(r.id).then(() => { msg('Deleted'); fetchRecords(); }).catch(() => msg('Failed','error'))}}><Delete fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -487,7 +487,7 @@ export default function Health() {
                     <TableCell>{e.phone_secondary || '-'}</TableCell>
                     <TableCell>{e.email || '-'}</TableCell>
                     <TableCell>
-                      <IconButton size="small" color="error" onClick={() => healthAPI.deleteEmergency(e.id).then(() => { msg('Deleted'); fetchEmergency(); }).catch(() => msg('Failed','error'))}><Delete fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (!window.confirm('Delete this emergency contact?')) return; healthAPI.deleteEmergency(e.id).then(() => { msg('Deleted'); fetchEmergency(); }).catch(() => msg('Failed','error'))}}><Delete fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
