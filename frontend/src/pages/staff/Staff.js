@@ -10,7 +10,8 @@ import {
 import {
   Add, Search, Person, Payment, EventNote, Star, Work, School, Assignment,
   Description, Edit, Delete, Check, Close, Visibility, Download, Upload,
-  Business, Group, TrendingUp, Warning, AccessTime, CalendarMonth, PictureAsPdf
+  Business, Group, TrendingUp, Warning, AccessTime, CalendarMonth, PictureAsPdf,
+  HowToReg, Block, VpnKey
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { staffAPI } from '../../services/api';
@@ -803,6 +804,7 @@ export default function Staff() {
           <Tab icon={<School />} label="Training" iconPosition="start" />
           <Tab icon={<Assignment />} label="Duty Roster" iconPosition="start" />
           <Tab icon={<AccessTime />} label="Workload" iconPosition="start" />
+          <Tab icon={<HowToReg />} label="Approvals" iconPosition="start" />
         </Tabs>
       </Paper>
       <Box>
@@ -815,7 +817,181 @@ export default function Staff() {
         {tab === 6 && <TrainingTab />}
         {tab === 7 && <DutyRosterTab />}
         {tab === 8 && <WorkloadTab />}
+        {tab === 9 && <ApprovalsTab />}
       </Box>
+    </Box>
+  );
+}
+
+
+// ─── Staff Approvals Tab ──────────────────────────────────
+function ApprovalsTab() {
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loginDialog, setLoginDialog] = useState(null);
+  const [loginData, setLoginData] = useState({ password: 'Welcome@123', role: 'teacher' });
+  const [creating, setCreating] = useState(false);
+
+  const fetchPending = useCallback(() => {
+    setLoading(true);
+    staffAPI.listPendingApprovals()
+      .then(r => setPending(r.data.data || []))
+      .catch(() => toast.error('Failed to load'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchPending(); }, [fetchPending]);
+
+  const handleApprove = (staff) => {
+    if (!window.confirm(`Approve "${staff.full_name}"?`)) return;
+    staffAPI.approveStaff(staff.id)
+      .then(r => { toast.success(r.data.message); fetchPending(); })
+      .catch(e => toast.error(e.response?.data?.message || 'Failed'));
+  };
+
+  const handleReject = (staff) => {
+    const reason = window.prompt(`Reject "${staff.full_name}"? Enter reason:`);
+    if (reason === null) return;
+    staffAPI.rejectStaff(staff.id, { reason })
+      .then(r => { toast.success(r.data.message); fetchPending(); })
+      .catch(e => toast.error(e.response?.data?.message || 'Failed'));
+  };
+
+  const handleCreateLogin = () => {
+    setCreating(true);
+    staffAPI.createLogin(loginDialog.id, loginData)
+      .then(r => {
+        toast.success(r.data.message);
+        setLoginDialog(null);
+        fetchPending();
+      })
+      .catch(e => toast.error(e.response?.data?.message || 'Failed'))
+      .finally(() => setCreating(false));
+  };
+
+  return (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h6" fontWeight={700}>Staff Pending Approval</Typography>
+        <Chip label={`${pending.length} pending`} color="warning" />
+      </Box>
+
+      {loading ? <LinearProgress /> : pending.length === 0 ? (
+        <Alert severity="success" sx={{ borderRadius: 2 }}>
+          No pending approvals! All staff have been reviewed.
+        </Alert>
+      ) : (
+        <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Phone</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Designation</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Department</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Added On</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Login</TableCell>
+                <TableCell sx={{ fontWeight: 700 }} align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {pending.map(s => (
+                <TableRow key={s.id} hover>
+                  <TableCell><strong>{s.full_name}</strong></TableCell>
+                  <TableCell>{s.email || '-'}</TableCell>
+                  <TableCell>{s.phone || '-'}</TableCell>
+                  <TableCell>{s.designation || '-'}</TableCell>
+                  <TableCell>{s.department || '-'}</TableCell>
+                  <TableCell>{s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</TableCell>
+                  <TableCell>
+                    {s.login_created ? (
+                      <Chip label="Created" size="small" color="success" />
+                    ) : s.approval_status === 'approved' ? (
+                      <Button size="small" variant="outlined" startIcon={<VpnKey />}
+                        onClick={() => { setLoginDialog(s); setLoginData({ password: 'Welcome@123', role: s.department || 'teacher' }); }}>
+                        Create Login
+                      </Button>
+                    ) : '-'}
+                  </TableCell>
+                  <TableCell align="center">
+                    {s.approval_status === 'pending' && (
+                      <>
+                        <Tooltip title="Approve">
+                          <IconButton size="small" color="success" onClick={() => handleApprove(s)}>
+                            <Check />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Reject">
+                          <IconButton size="small" color="error" onClick={() => handleReject(s)}>
+                            <Block />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
+                    {s.approval_status === 'approved' && !s.login_created && (
+                      <Chip label="Approved ✓" size="small" color="info" variant="outlined" />
+                    )}
+                    {s.approval_status === 'rejected' && (
+                      <Chip label="Rejected" size="small" color="error" variant="outlined" />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Create Login Dialog */}
+      <Dialog open={Boolean(loginDialog)} onClose={() => setLoginDialog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Login for {loginDialog?.full_name}</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
+            Staff email: <strong>{loginDialog?.email}</strong>. This will be their login ID.
+          </Alert>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Email (Login ID)" value={loginDialog?.email || ''} disabled />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Password" value={loginData.password}
+                onChange={e => setLoginData({ ...loginData, password: e.target.value })}
+                helperText="Default: Welcome@123. Staff can change after first login." />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Role</InputLabel>
+                <Select value={loginData.role} label="Role"
+                  onChange={e => setLoginData({ ...loginData, role: e.target.value })}>
+                  <MenuItem value="teacher">Teacher</MenuItem>
+                  <MenuItem value="accountant">Accountant</MenuItem>
+                  <MenuItem value="librarian">Librarian</MenuItem>
+                  <MenuItem value="hr_manager">HR Manager</MenuItem>
+                  <MenuItem value="transport_manager">Transport Manager</MenuItem>
+                  <MenuItem value="hostel_warden">Hostel Warden</MenuItem>
+                  <MenuItem value="canteen_manager">Canteen Manager</MenuItem>
+                  <MenuItem value="receptionist">Receptionist</MenuItem>
+                  <MenuItem value="health_officer">Health Officer</MenuItem>
+                  <MenuItem value="sports_incharge">Sports Incharge</MenuItem>
+                  <MenuItem value="counselor">Counselor</MenuItem>
+                  <MenuItem value="lab_assistant">Lab Assistant</MenuItem>
+                  <MenuItem value="department_head">Department Head</MenuItem>
+                  <MenuItem value="data_operator">Data Operator</MenuItem>
+                  <MenuItem value="it_admin">IT Admin</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLoginDialog(null)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateLogin} disabled={creating}
+            startIcon={<VpnKey />}>
+            {creating ? 'Creating...' : 'Create Login'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
