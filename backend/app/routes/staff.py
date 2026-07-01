@@ -84,7 +84,7 @@ def get_staff_profile(staff_id):
 
 
 @staff_bp.route('/', methods=['POST'])
-@role_required('school_admin', 'principal')
+@role_required('school_admin', 'principal', 'hr_manager')
 @validate({
     'first_name': {'required': True, 'message': 'First name is required'},
     'email': {'type': str},
@@ -130,6 +130,9 @@ def create_staff():
         blood_group=clean_val(data.get('blood_group')),
         marital_status=clean_val(data.get('marital_status')),
         spouse_name=clean_val(data.get('spouse_name')),
+        # Approval workflow: admin auto-approves, others go to pending
+        approval_status='approved' if g.current_user.role.name == 'school_admin' else 'pending',
+        status='active' if g.current_user.role.name == 'school_admin' else 'inactive',
     )
     db.session.add(member)
     db.session.flush()
@@ -188,6 +191,103 @@ def update_staff(staff_id):
 
     db.session.commit()
     return success_response(member.to_dict(), 'Staff updated')
+
+
+# ─── Staff Approval Workflow ───────────────────────────────
+
+@staff_bp.route('/pending-approvals', methods=['GET'])
+@role_required('school_admin')
+def list_pending_approvals():
+    """Get all staff pending admin approval"""
+    pending = Staff.query.filter_by(school_id=g.school_id, approval_status='pending').order_by(Staff.created_at.desc()).all()
+    return success_response([s.to_dict() for s in pending])
+
+
+@staff_bp.route('/<int:staff_id>/approve', methods=['POST'])
+@role_required('school_admin')
+def approve_staff(staff_id):
+    """Admin approves a staff member"""
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    if member.approval_status == 'approved':
+        return error_response('Staff already approved')
+    
+    member.approval_status = 'approved'
+    member.approved_by = g.user_id
+    member.approved_at = datetime.utcnow()
+    member.status = 'active'
+    db.session.commit()
+    return success_response(member.to_dict(), f'{member.first_name} approved successfully')
+
+
+@staff_bp.route('/<int:staff_id>/reject', methods=['POST'])
+@role_required('school_admin')
+def reject_staff(staff_id):
+    """Admin rejects a staff member"""
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    data = request.get_json() or {}
+    
+    member.approval_status = 'rejected'
+    member.rejection_reason = data.get('reason', '')
+    member.status = 'inactive'
+    db.session.commit()
+    return success_response(member.to_dict(), f'{member.first_name} rejected')
+
+
+@staff_bp.route('/<int:staff_id>/create-login', methods=['POST'])
+@role_required('school_admin', 'hr_manager')
+def create_staff_login(staff_id):
+    """HR creates login credentials for approved staff"""
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    
+    if member.approval_status != 'approved':
+        return error_response('Staff must be approved before creating login', 400)
+    
+    if member.login_created or member.user_id:
+        return error_response('Login already exists for this staff member', 400)
+    
+    if not member.email:
+        return error_response('Staff must have an email to create login', 400)
+
+    data = request.get_json() or {}
+    password = data.get('password', 'Welcome@123')
+    role_name = data.get('role', member.department or 'teacher')
+    
+    # Find role
+    role = Role.query.filter_by(name=role_name).first()
+    if not role:
+        role = Role.query.filter_by(name='teacher').first()
+    
+    # Check if email already used
+    existing = User.query.filter_by(school_id=g.school_id, email=member.email).first()
+    if existing:
+        return error_response(f'Email {member.email} is already in use', 400)
+    
+    # Create user
+    user = User(
+        school_id=g.school_id,
+        role_id=role.id,
+        email=member.email,
+        first_name=member.first_name,
+        last_name=member.last_name or '',
+        phone=member.phone,
+        is_active=True,
+    )
+    user.set_password(password)
+    db.session.add(user)
+    db.session.flush()
+    
+    member.user_id = user.id
+    member.login_created = True
+    db.session.commit()
+    
+    return success_response({
+        'staff': member.to_dict(),
+        'login': {
+            'email': member.email,
+            'password': password,
+            'role': role.name,
+        }
+    }, f'Login created for {member.first_name}. Email: {member.email}, Password: {password}')
 
 
 # ─── HR Dashboard ──────────────────────────────────────────

@@ -44,6 +44,12 @@ class Staff(db.Model):
     marital_status = db.Column(db.Enum('single', 'married', 'divorced', 'widowed'))
     spouse_name = db.Column(db.String(100))
     status = db.Column(db.Enum('active', 'inactive', 'resigned', 'terminated', 'on_notice'), default='active')
+    # Approval workflow
+    approval_status = db.Column(db.String(20), default='pending')  # pending, approved, rejected
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    approved_at = db.Column(db.DateTime)
+    rejection_reason = db.Column(db.Text)
+    login_created = db.Column(db.Boolean, default=False)
     exit_date = db.Column(db.Date)
     exit_reason = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -89,6 +95,9 @@ class Staff(db.Model):
             'blood_group': self.blood_group,
             'marital_status': self.marital_status,
             'status': self.status,
+            'approval_status': self.approval_status,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'login_created': self.login_created,
             'exit_date': self.exit_date.isoformat() if self.exit_date else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

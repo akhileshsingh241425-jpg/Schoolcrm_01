@@ -215,6 +215,11 @@ export const staffAPI = {
   completeExit: (staffId, data) => api.post(`/staff/${staffId}/exit/complete`, data),
   // Workload
   getWorkload: () => api.get('/staff/workload'),
+  // Approval Workflow
+  listPendingApprovals: () => api.get('/staff/pending-approvals'),
+  approveStaff: (id) => api.post(`/staff/${id}/approve`),
+  rejectStaff: (id, data) => api.post(`/staff/${id}/reject`, data),
+  createLogin: (id, data) => api.post(`/staff/${id}/create-login`, data),
 };
 
 // Leads (CRM)
