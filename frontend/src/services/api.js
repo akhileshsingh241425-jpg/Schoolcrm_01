@@ -41,6 +41,13 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+    // Show user-friendly permission error
+    if (error.response?.status === 403) {
+      const msg = error.response?.data?.message || 'You do not have permission to perform this action.';
+      if (typeof window !== 'undefined' && !error.config._silent403) {
+        alert(msg);
+      }
+    }
     return Promise.reject(error);
   }
 );

@@ -67,16 +67,19 @@ def role_required(*roles):
             if not user:
                 return jsonify({'error': 'User not found'}), 404
 
-            # Super admin bypasses all role checks and school checks
-            if user.role and user.role.name == 'super_admin':
+            # Super admin and principal bypass all role checks
+            if user.role and user.role.name in ('super_admin', 'principal'):
                 g.current_user = user
                 g.user_id = user.id
                 g.school_id = user.school_id
-                g.school = None
+                if user.role.name == 'super_admin':
+                    g.school = None
+                else:
+                    g.school = School.query.get(user.school_id)
                 return f(*args, **kwargs)
 
             if not user.role or user.role.name not in roles:
-                return jsonify({'error': 'Insufficient permissions'}), 403
+                return jsonify({'success': False, 'message': 'You do not have permission to perform this action. Contact your administrator.'}), 403
 
             school = School.query.get(user.school_id)
             if not school or not school.is_active:
