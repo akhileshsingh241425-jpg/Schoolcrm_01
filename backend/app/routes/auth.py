@@ -422,7 +422,8 @@ def create_user():
             staff = Staff(
                 school_id=g.school_id,
                 user_id=user.id,
-                name=f"{data['first_name']} {data.get('last_name', '')}".strip(),
+                first_name=data['first_name'],
+                last_name=data.get('last_name', ''),
                 email=data['email'],
                 phone=data.get('phone'),
                 designation=role.description or role.name.replace('_', ' ').title(),
