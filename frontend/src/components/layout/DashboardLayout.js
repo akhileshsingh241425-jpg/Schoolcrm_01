@@ -424,9 +424,6 @@ export default function DashboardLayout() {
     { label: 'HR Management', items: [
       { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
       { text: 'Staff', icon: <School />, path: '/staff', feature: 'staff_management', module: 'staff' },
-      { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
-      { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
-      { text: 'Communication', icon: <Announcement />, path: '/communication', feature: 'communication', module: 'communication' },
     ] },
   ];
 
