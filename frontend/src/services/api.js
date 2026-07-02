@@ -1310,3 +1310,16 @@ export const rolesAPI = {
   getMyPermissions: () => api.get('/roles/my-permissions'),
   getUserPermissions: (userId) => api.get(`/roles/user-permissions/${userId}`),
 };
+
+// Support Tickets
+export const supportAPI = {
+  // Client side
+  listTickets: (params) => api.get('/support/tickets', { params }),
+  createTicket: (data) => api.post('/support/tickets', data),
+  getTicket: (id) => api.get(`/support/tickets/${id}`),
+  // Admin side
+  adminListTickets: (params) => api.get('/support/admin/tickets', { params }),
+  respondTicket: (id, data) => api.post(`/support/admin/tickets/${id}/respond`, data),
+  updateStatus: (id, data) => api.put(`/support/admin/tickets/${id}/status`, data),
+  adminDashboard: () => api.get('/support/admin/dashboard'),
+};

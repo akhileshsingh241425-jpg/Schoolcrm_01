@@ -83,6 +83,8 @@ import SystemSettings from './pages/superadmin/SystemSettings';
 import AuditLogs from './pages/superadmin/AuditLogs';
 import CreateSchool from './pages/superadmin/CreateSchool';
 import StaffManagement from './pages/superadmin/StaffManagement';
+import SupportTickets from './pages/superadmin/SupportTickets';
+import Support from './pages/support/Support';
 import VisitorManagement from './pages/visitors/VisitorManagement';
 import CertificateGeneration from './pages/certificates/CertificateGeneration';
 import MarksEntryDashboard from './pages/exam-controller/MarksEntryDashboard';
@@ -265,6 +267,7 @@ function App() {
         {/* Settings - admin only */}
         <Route path="settings" element={<ModuleRoute module="settings"><Settings /></ModuleRoute>} />
         <Route path="roles-permissions" element={<ModuleRoute module="settings"><RolesPermissions /></ModuleRoute>} />
+        <Route path="support" element={<Support />} />
         
         {/* Parent Portal */}
         <Route path="my-children" element={<ParentPortal />} />
@@ -318,6 +321,7 @@ function App() {
         <Route path="settings" element={<SystemSettings />} />
         <Route path="audit" element={<AuditLogs />} />
         <Route path="staff" element={<StaffManagement />} />
+        <Route path="support" element={<SupportTickets />} />
       </Route>
     </Routes>
   );

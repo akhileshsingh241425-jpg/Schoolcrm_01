@@ -141,6 +141,7 @@ const menuGroups = [
       { text: 'Payment Gateway', icon: <Payment />, path: '/payment-settings', module: 'settings', role: ['school_admin', 'super_admin'] },
       { text: 'Roles & Permissions', icon: <Security />, path: '/roles-permissions', module: 'settings', role: ['school_admin', 'super_admin'] },
       { text: 'Settings', icon: <Settings />, path: '/settings', module: 'settings', role: ['school_admin', 'super_admin'] },
+      { text: 'Support', icon: <Email />, path: '/support' },
     ],
   },
   {

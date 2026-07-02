@@ -34,6 +34,7 @@ const navItems = [
     { text: 'Platform Staff', icon: <Group />, path: '/super-admin/staff' },
   ]},
   { label: 'SYSTEM', items: [
+    { text: 'Support Tickets', icon: <Receipt />, path: '/super-admin/support' },
     { text: 'System Settings', icon: <Settings />, path: '/super-admin/settings' },
     { text: 'Audit Logs', icon: <Security />, path: '/super-admin/audit' },
   ]},
