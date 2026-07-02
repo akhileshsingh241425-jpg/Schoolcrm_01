@@ -37,6 +37,19 @@ def _is_admin():
 
 
 # =====================================================
+# MY STAFF PROFILE (for current user)
+# =====================================================
+
+@attendance_bp.route('/me', methods=['GET'])
+@school_required
+def get_my_staff_profile():
+    staff = _get_teacher_staff()
+    if not staff:
+        return success_response(None)
+    return success_response(staff.to_dict())
+
+
+# =====================================================
 # MY CLASSES (for class teacher / co-class teacher)
 # =====================================================
 
@@ -421,7 +434,7 @@ def mark_period_attendance():
 # =====================================================
 
 @attendance_bp.route('/staff', methods=['GET'])
-@role_required('school_admin', 'principal')
+@role_required('school_admin', 'principal', 'hr')
 def get_staff_attendance():
     att_date = request.args.get('date', date.today().isoformat())
     records = StaffAttendance.query.options(
@@ -431,7 +444,7 @@ def get_staff_attendance():
 
 
 @attendance_bp.route('/staff', methods=['POST'])
-@role_required('school_admin', 'principal')
+@role_required('school_admin', 'principal', 'hr')
 @validate({'attendance': {'required': True}})
 def mark_staff_attendance():
     data = g.get('validated_data') or request.get_json()
@@ -466,7 +479,7 @@ def mark_staff_attendance():
 
 
 @attendance_bp.route('/staff/report', methods=['GET'])
-@role_required('school_admin', 'principal')
+@role_required('school_admin', 'principal', 'hr')
 def staff_attendance_report():
     staff_id = request.args.get('staff_id', type=int)
     from_date = request.args.get('from_date')
@@ -617,7 +630,7 @@ def get_leave_detail(id):
 
 
 @attendance_bp.route('/leaves/<int:id>/approve', methods=['PUT'])
-@role_required('school_admin')
+@role_required('school_admin', 'hr')
 @validate({'action': {'required': True}})
 def approve_reject_leave(id):
     la = LeaveApplication.query.filter_by(id=id, school_id=g.school_id).first_or_404()

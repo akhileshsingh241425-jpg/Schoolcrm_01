@@ -376,6 +376,73 @@ function StaffTab({ snack, setSnack }) {
 }
 
 // =====================================================
+// MY STAFF ATTENDANCE TAB (for subject_teachers)
+// =====================================================
+function MyStaffAttendanceTab({ snack, setSnack }) {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [myRecord, setMyRecord] = useState(null);
+  const [staffId, setStaffId] = useState(null);
+  const [staffName, setStaffName] = useState('');
+  const [status, setStatus] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    attendanceAPI.getMyProfile().then(r => {
+      const s = r.data.data || {};
+      if (!s.id) { setLoading(false); return; }
+      setStaffId(s.id);
+      setStaffName(`${s.first_name || ''} ${s.last_name || ''}`.trim() || s.name || '');
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (staffId && date) {
+      attendanceAPI.getStaff({ date }).then(r => {
+        const records = r.data.data || [];
+        const mine = records.find(a => a.staff_id === staffId);
+        setMyRecord(mine || null);
+        setStatus(mine?.status || '');
+      }).catch(() => {});
+    }
+  }, [staffId, date]);
+
+  const save = () => {
+    if (!staffId || !status) return;
+    attendanceAPI.markStaff({ date, attendance: [{ staff_id: staffId, status }] })
+      .then(() => setSnack({ open: true, message: 'Attendance marked!', severity: 'success' }))
+      .catch(() => setSnack({ open: true, message: 'Failed to save', severity: 'error' }));
+  };
+
+  if (loading) return <LinearProgress />;
+
+  return (
+    <Box>
+      <Paper sx={{ p: 3, mb: 2, maxWidth: 500 }}>
+        <Typography variant="h6" mb={2}>Mark Your Attendance</Typography>
+        <Box display="flex" flexDirection="column" gap={2}>
+          <TextField label="Name" value={staffName} disabled size="small" />
+          <TextField type="date" size="small" label="Date" value={date}
+            onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <FormControl size="small">
+            <InputLabel>Status</InputLabel>
+            <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value)}>
+              <MenuItem value="present">Present</MenuItem>
+              <MenuItem value="absent">Absent</MenuItem>
+              <MenuItem value="late">Late</MenuItem>
+              <MenuItem value="half_day">Half Day</MenuItem>
+            </Select>
+          </FormControl>
+          <Button variant="contained" onClick={save} disabled={!status}>Save</Button>
+          {myRecord && (
+            <Alert severity="info">Today's status: <strong>{myRecord.status}</strong></Alert>
+          )}
+        </Box>
+      </Paper>
+    </Box>
+  );
+}
+
+// =====================================================
 // PERIOD-WISE TAB
 // =====================================================
 function PeriodTab({ snack, setSnack }) {
@@ -530,7 +597,7 @@ function LeaveTab({ snack, setSnack }) {
   const [typeFilter, setTypeFilter] = useState('');
   const [dialog, setDialog] = useState(false);
   const [typeDialog, setTypeDialog] = useState(false);
-  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
+  const isLeaveAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal', 'hr'));
   const [form, setForm] = useState({
     applicant_type: 'student', applicant_id: '', leave_type_id: '',
     from_date: '', to_date: '', reason: ''
@@ -593,7 +660,7 @@ function LeaveTab({ snack, setSnack }) {
           </FormControl>
         </Box>
         <Box display="flex" gap={1}>
-          {isAdmin && <Button variant="outlined" startIcon={<Add />} onClick={() => setTypeDialog(true)}>Add Leave Type</Button>}
+          {isLeaveAdmin && <Button variant="outlined" startIcon={<Add />} onClick={() => setTypeDialog(true)}>Add Leave Type</Button>}
           <Button variant="contained" startIcon={<Add />} onClick={() => setDialog(true)}>Apply Leave</Button>
         </Box>
       </Box>
@@ -602,7 +669,7 @@ function LeaveTab({ snack, setSnack }) {
       <Box display="flex" gap={1} mb={2} flexWrap="wrap">
         {leaveTypes.map(lt => (
           <Chip key={lt.id} label={`${lt.name} (${lt.code})`} variant="outlined"
-            onDelete={isAdmin ? () => attendanceAPI.deleteLeaveType(lt.id).then(load) : undefined} />
+            onDelete={isLeaveAdmin ? () => attendanceAPI.deleteLeaveType(lt.id).then(load) : undefined} />
         ))}
       </Box>
 
@@ -637,7 +704,7 @@ function LeaveTab({ snack, setSnack }) {
                   <Chip label={l.status} size="small" color={statusChipColor[l.status] || 'default'} />
                 </TableCell>
                 <TableCell>
-                  {l.status === 'pending' && isAdmin && (
+                  {l.status === 'pending' && isLeaveAdmin && (
                     <Box display="flex" gap={0.5}>
                       <Tooltip title="Approve">
                         <IconButton size="small" color="success" onClick={() => approveReject(l.id, 'approve')}>
@@ -1456,25 +1523,81 @@ function SubstitutionTab({ snack, setSnack }) {
 export default function Attendance() {
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  const [teacherType, setTeacherType] = useState('loading');
+  const userRole = useAuthStore(s => s.user?.role?.name);
   const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
-  const TABS = isAdmin ? ADMIN_TABS : TEACHER_TABS;
+
+  useEffect(() => {
+    if (isAdmin) {
+      setTeacherType('admin');
+    } else if (userRole === 'hr') {
+      setTeacherType('hr');
+    } else if (userRole === 'teacher') {
+      attendanceAPI.getMyClasses().then(r => {
+        const data = r.data.data || [];
+        setTeacherType(data.length > 0 ? 'class_teacher' : 'subject_teacher');
+      }).catch(() => setTeacherType('subject_teacher'));
+    } else {
+      setTeacherType('subject_teacher');
+    }
+  }, [isAdmin, userRole]);
+
+  const getTabs = () => {
+    switch (teacherType) {
+      case 'admin': return ADMIN_TABS;
+      case 'hr': return ['Staff Attendance', 'Leave Management'];
+      case 'class_teacher': return ['Student Attendance'];
+      case 'subject_teacher': return ['My Attendance'];
+      default: return [];
+    }
+  };
+
+  const TABS = getTabs();
+
+  const renderTabContent = () => {
+    switch (teacherType) {
+      case 'admin':
+        return (
+          <>
+            {tab === 0 && <DashboardTab snack={snack} setSnack={setSnack} />}
+            {tab === 1 && <StudentTab snack={snack} setSnack={setSnack} />}
+            {tab === 2 && <StaffTab snack={snack} setSnack={setSnack} />}
+            {tab === 3 && <PeriodTab snack={snack} setSnack={setSnack} />}
+            {tab === 4 && <LeaveTab snack={snack} setSnack={setSnack} />}
+            {tab === 5 && <LateArrivalsTab snack={snack} setSnack={setSnack} />}
+            {tab === 6 && <SubstitutionTab snack={snack} setSnack={setSnack} />}
+            {tab === 7 && <RulesTab snack={snack} setSnack={setSnack} />}
+            {tab === 8 && <ReportsTab snack={snack} setSnack={setSnack} />}
+          </>
+        );
+      case 'hr':
+        return (
+          <>
+            {tab === 0 && <StaffTab snack={snack} setSnack={setSnack} />}
+            {tab === 1 && <LeaveTab snack={snack} setSnack={setSnack} />}
+          </>
+        );
+      case 'class_teacher':
+        return <StudentTab snack={snack} setSnack={setSnack} />;
+      case 'subject_teacher':
+        return <MyStaffAttendanceTab snack={snack} setSnack={setSnack} />;
+      default:
+        return <LinearProgress />;
+    }
+  };
+
+  if (teacherType === 'loading') return <LinearProgress />;
 
   return (
     <Box>
       <Typography variant="h5" mb={2}>Attendance Management</Typography>
-      <Tabs value={tab} onChange={(e, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        {TABS.map((t, i) => <Tab key={i} label={t} />)}
-      </Tabs>
+      {TABS.length > 1 && (
+        <Tabs value={tab} onChange={(e, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+          {TABS.map((t, i) => <Tab key={i} label={t} />)}
+        </Tabs>
+      )}
 
-      {tab === 0 && <DashboardTab snack={snack} setSnack={setSnack} />}
-      {tab === 1 && <StudentTab snack={snack} setSnack={setSnack} />}
-      {tab === 2 && (isAdmin ? <StaffTab snack={snack} setSnack={setSnack} /> : <PeriodTab snack={snack} setSnack={setSnack} />)}
-      {tab === 3 && (isAdmin ? <PeriodTab snack={snack} setSnack={setSnack} /> : <LateArrivalsTab snack={snack} setSnack={setSnack} />)}
-      {tab === 4 && (isAdmin ? <LeaveTab snack={snack} setSnack={setSnack} /> : <ReportsTab snack={snack} setSnack={setSnack} />)}
-      {isAdmin && tab === 5 && <LateArrivalsTab snack={snack} setSnack={setSnack} />}
-      {isAdmin && tab === 6 && <SubstitutionTab snack={snack} setSnack={setSnack} />}
-      {isAdmin && tab === 7 && <RulesTab snack={snack} setSnack={setSnack} />}
-      {isAdmin && tab === 8 && <ReportsTab snack={snack} setSnack={setSnack} />}
+      {renderTabContent()}
 
       <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack({ ...snack, open: false })}>
         <Alert severity={snack.severity}>{snack.message}</Alert>

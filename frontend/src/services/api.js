@@ -439,6 +439,8 @@ export const academicsAPI = {
 
 // Attendance
 export const attendanceAPI = {
+  // My staff profile
+  getMyProfile: () => api.get('/attendance/me'),
   // My classes (class teacher / co-class teacher)
   getMyClasses: () => api.get('/attendance/my-classes'),
 
