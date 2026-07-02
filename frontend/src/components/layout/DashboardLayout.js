@@ -106,6 +106,7 @@ const menuGroups = [
       { text: 'Attendance', icon: <CalendarMonth />, path: '/attendance', feature: 'attendance', module: 'attendance' },
       { text: 'Library', icon: <LocalLibrary />, path: '/library', feature: 'library', module: 'library' },
       { text: 'Classes & Sections', icon: <Group />, path: '/academics/classes', feature: 'academic', module: 'academics' },
+      { text: 'Academic Years', icon: <CalendarMonth />, path: '/academics/academic-years', feature: 'academic', module: 'academics' },
     ],
   },
   {

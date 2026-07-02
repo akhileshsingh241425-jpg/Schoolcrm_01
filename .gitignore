@@ -46,3 +46,10 @@ backend/app_err.log
 backend/app_out.log
 backend/backend_err.log
 backend/server_err.log
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

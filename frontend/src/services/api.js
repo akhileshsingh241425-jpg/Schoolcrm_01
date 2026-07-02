@@ -98,6 +98,9 @@ export const studentsAPI = {
   deleteSection: (id) => api.delete(`/students/sections/${id}`),
   listAcademicYears: () => api.get('/students/academic-years'),
   createAcademicYear: (data) => api.post('/students/academic-years', data),
+  updateAcademicYear: (id, data) => api.put(`/students/academic-years/${id}`, data),
+  deleteAcademicYear: (id) => api.delete(`/students/academic-years/${id}`),
+  setCurrentAcademicYear: (id) => api.put(`/academic-controller/academic-years/${id}/set-current`),
   // Promotions
   listPromotions: (params) => api.get('/students/promotions', { params }),
   promote: (data) => api.post('/students/promote', data),

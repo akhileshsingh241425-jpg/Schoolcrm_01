@@ -539,6 +539,46 @@ def create_academic_year():
     return success_response(year.to_dict(), 'Academic year created', 201)
 
 
+@students_bp.route('/academic-years/<int:year_id>', methods=['PUT'])
+@school_required
+@role_required('school_admin')
+@validate({
+    'name': {'required': True},
+    'start_date': {'required': True},
+    'end_date': {'required': True},
+})
+def update_academic_year(year_id):
+    year = AcademicYear.query.filter_by(id=year_id, school_id=g.school_id).first()
+    if not year:
+        return error_response('Academic year not found', 404)
+    data = g.get('validated_data') or request.get_json()
+    year.name = data['name']
+    year.start_date = data['start_date']
+    year.end_date = data['end_date']
+    if data.get('is_current'):
+        AcademicYear.query.filter(
+            AcademicYear.school_id == g.school_id,
+            AcademicYear.id != year_id
+        ).update({'is_current': False})
+        year.is_current = True
+    elif 'is_current' in data and not data['is_current']:
+        year.is_current = False
+    db.session.commit()
+    return success_response(year.to_dict(), 'Academic year updated')
+
+
+@students_bp.route('/academic-years/<int:year_id>', methods=['DELETE'])
+@school_required
+@role_required('school_admin')
+def delete_academic_year(year_id):
+    year = AcademicYear.query.filter_by(id=year_id, school_id=g.school_id).first()
+    if not year:
+        return error_response('Academic year not found', 404)
+    db.session.delete(year)
+    db.session.commit()
+    return success_response(None, 'Academic year deleted')
+
+
 # ===================== PROMOTIONS =====================
 
 @students_bp.route('/promotions', methods=['GET'])

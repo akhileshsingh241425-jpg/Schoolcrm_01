@@ -50,6 +50,7 @@ import Attendance from './pages/attendance/Attendance';
 import Fees from './pages/fees/Fees';
 import Academics from './pages/academics/Academics';
 import ClassSectionManagement from './pages/academics/ClassSectionManagement';
+import AcademicYears from './pages/academics/AcademicYears';
 import TimetableManagement from './pages/academics/TimetableManagement';
 import CalendarManagement from './pages/academics/CalendarManagement';
 import Communication from './pages/communication/Communication';
@@ -231,6 +232,7 @@ function App() {
         {/* Academics */}
         <Route path="academics" element={<ModuleRoute module="academics" feature="academic"><Academics /></ModuleRoute>} />
         <Route path="academics/classes" element={<ModuleRoute module="academics" feature="academic"><ClassSectionManagement /></ModuleRoute>} />
+        <Route path="academics/academic-years" element={<ModuleRoute module="academics" feature="academic"><AcademicYears /></ModuleRoute>} />
         <Route path="timetable-management" element={<ModuleRoute module="academics" feature="academic"><TimetableManagement /></ModuleRoute>} />
         <Route path="calendar" element={<ModuleRoute module="academics" feature="academic"><CalendarManagement /></ModuleRoute>} />
         
