@@ -514,6 +514,15 @@ def update_class(class_id):
 @role_required('school_admin')
 def delete_class(class_id):
     cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
+
+    # Nullify student references before deleting
+    Student.query.filter_by(school_id=g.school_id, current_class_id=class_id).update(
+        {'current_class_id': None, 'current_section_id': None}
+    )
+
+    # Delete all sections first to avoid FK issues
+    Section.query.filter_by(school_id=g.school_id, class_id=class_id).delete()
+
     db.session.delete(cls)
     db.session.commit()
     return success_response(message='Class deleted')
@@ -545,6 +554,9 @@ def update_section(section_id):
 @role_required('school_admin')
 def delete_section(section_id):
     section = Section.query.filter_by(id=section_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(school_id=g.school_id, current_section_id=section_id).update(
+        {'current_section_id': None}
+    )
     db.session.delete(section)
     db.session.commit()
     return success_response(message='Section deleted')
