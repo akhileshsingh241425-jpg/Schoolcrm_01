@@ -455,6 +455,9 @@ def list_classes():
 })
 def create_class():
     data = g.get('validated_data') or request.get_json()
+    existing = Class.query.filter_by(school_id=g.school_id, name=data['name']).first()
+    if existing:
+        return error_response('Class with this name already exists. You can only add or remove sections.', 400)
     cls = Class(school_id=g.school_id, name=data['name'],
                 numeric_name=data.get('numeric_name'), description=data.get('description'))
     db.session.add(cls)
@@ -500,7 +503,10 @@ def get_class(class_id):
 def update_class(class_id):
     cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
-    if 'name' in data:
+    if 'name' in data and data['name'] != cls.name:
+        existing = Class.query.filter_by(school_id=g.school_id, name=data['name']).first()
+        if existing:
+            return error_response('Class with this name already exists.', 400)
         cls.name = data['name']
     if 'numeric_name' in data:
         cls.numeric_name = data['numeric_name']
