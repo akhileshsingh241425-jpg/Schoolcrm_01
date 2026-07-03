@@ -3,6 +3,12 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+user_roles = db.Table('user_roles',
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('role_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True)
+)
+
+
 class Role(db.Model):
     __tablename__ = 'roles'
 
@@ -82,11 +88,30 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    roles = db.relationship('Role', secondary=user_roles, lazy='joined')
+
+    @property
+    def all_roles(self):
+        """Return all roles: primary role + additional roles"""
+        roles = [self.role] if self.role else []
+        for r in self.roles:
+            if r.id != self.role_id:
+                roles.append(r)
+        return roles
+
+    @property
+    def role_names(self):
+        return [r.name for r in self.all_roles]
+
+    def has_role(self, *role_names):
+        return any(r.name in role_names for r in self.all_roles)
+
     def to_dict(self):
         return {
             'id': self.id,
             'school_id': self.school_id,
             'role': self.role.to_dict() if self.role else None,
+            'roles': [r.to_dict() for r in self.all_roles],
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
@@ -98,15 +123,18 @@ class User(db.Model):
         }
 
     def get_allowed_modules(self):
-        """Get list of modules this user can access based on role permissions"""
-        if not self.role:
+        """Get list of modules this user can access based on ALL role permissions"""
+        role_ids = [self.role_id]
+        for r in self.roles:
+            if r.id != self.role_id:
+                role_ids.append(r.id)
+        if not role_ids:
             return []
-        # Check school-specific overrides first, then global (school_id=NULL)
         perms = RolePermission.query.filter(
-            RolePermission.role_id == self.role_id,
+            RolePermission.role_id.in_(role_ids),
             db.or_(RolePermission.school_id == self.school_id, RolePermission.school_id.is_(None))
         ).all()
-        perm_ids = [rp.permission_id for rp in perms]
+        perm_ids = list(set(rp.permission_id for rp in perms))
         if not perm_ids:
             return []
         permissions = Permission.query.filter(Permission.id.in_(perm_ids)).all()

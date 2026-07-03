@@ -63,15 +63,19 @@ const useAuthStore = create((set, get) => ({
     return get().features.includes(featureName);
   },
 
-  hasRole: (...roles) => {
+  hasRole: (...roleNames) => {
     const user = get().user;
-    return user && roles.includes(user.role?.name);
+    if (!user) return false;
+    const allRoles = user.roles || (user.role ? [user.role] : []);
+    return allRoles.some(r => roleNames.includes(r.name));
   },
 
   hasModule: (moduleName) => {
     const { allowedModules, user } = get();
-    // Admin and principal always have access
-    if (user?.role?.name === 'super_admin' || user?.role?.name === 'school_admin' || user?.role?.name === 'principal') return true;
+    const allRoles = user?.roles || (user?.role ? [user.role] : []);
+    const roleNames = allRoles.map(r => r.name);
+    // Admin, super_admin, and principal always have access
+    if (roleNames.some(n => ['super_admin', 'school_admin', 'principal'].includes(n))) return true;
     return allowedModules.includes(moduleName);
   },
 }));

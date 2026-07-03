@@ -33,7 +33,7 @@ def school_required(f):
             return jsonify({'error': 'User not found'}), 404
 
         # Super admin bypasses school checks
-        if user.role and user.role.name == 'super_admin':
+        if user.role and user.has_role('super_admin'):
             g.current_user = user
             g.user_id = user.id
             g.school_id = user.school_id
@@ -68,17 +68,17 @@ def role_required(*roles):
                 return jsonify({'error': 'User not found'}), 404
 
             # Super admin and principal bypass all role checks
-            if user.role and user.role.name in ('super_admin', 'principal'):
+            if user.role and user.has_role('super_admin', 'principal'):
                 g.current_user = user
                 g.user_id = user.id
                 g.school_id = user.school_id
-                if user.role.name == 'super_admin':
+                if user.has_role('super_admin'):
                     g.school = None
                 else:
                     g.school = School.query.get(user.school_id)
                 return f(*args, **kwargs)
 
-            if not user.role or user.role.name not in roles:
+            if not user.role or not user.has_role(*roles):
                 return jsonify({'success': False, 'message': 'You do not have permission to perform this action. Contact your administrator.'}), 403
 
             school = School.query.get(user.school_id)
@@ -128,7 +128,7 @@ def super_admin_required(f):
         user_id = get_jwt_identity()
         user = User.query.get(int(user_id))
 
-        if not user or user.role.name != 'super_admin':
+        if not user or not user.has_role('super_admin'):
             return jsonify({'error': 'Super admin access required'}), 403
 
         g.current_user = user

@@ -1007,13 +1007,13 @@ def my_transport():
     parent/admin viewing a specific child."""
     from app.models.student import Student
     user = g.current_user
-    role = user.role.name if user.role else None
+    role_names = user.role_names if user.role else []
 
     student = None
     override_id = request.args.get('student_id', type=int)
-    if override_id and role in ('school_admin', 'super_admin', 'principal', 'teacher', 'parent'):
+    if override_id and user.has_role('school_admin', 'super_admin', 'principal', 'teacher', 'parent'):
         student = Student.query.filter_by(id=override_id, school_id=g.school_id).first()
-    elif role == 'student':
+    elif user.has_role('student'):
         student = Student.query.filter_by(user_id=user.id, school_id=g.school_id).first()
 
     if not student:

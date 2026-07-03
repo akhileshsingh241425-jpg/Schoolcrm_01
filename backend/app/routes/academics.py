@@ -192,7 +192,7 @@ def get_timetable():
     if my:
         from app.models.user import User
         user = User.query.get(g.user_id)
-        if user and user.role and user.role.name == 'teacher':
+        if user and user.role and user.has_role('teacher'):
             staff = Staff.query.filter_by(school_id=g.school_id, user_id=g.user_id).first()
             if staff:
                 teacher_id = staff.id
@@ -1260,7 +1260,7 @@ def bulk_marks_entry():
     schedule = ExamSchedule.query.filter_by(id=exam_schedule_id, school_id=g.school_id).first_or_404()
 
     # Assignment-based access control for teachers
-    if hasattr(g, 'current_user') and g.current_user and g.current_user.role and g.current_user.role.name == 'teacher':
+    if hasattr(g, 'current_user') and g.current_user and g.current_user.role and g.current_user.has_role('teacher'):
         from app.models.academic import MarksEntryAssignment
         staff = Staff.query.filter_by(user_id=g.user_id, school_id=g.school_id).first()
         if not staff:

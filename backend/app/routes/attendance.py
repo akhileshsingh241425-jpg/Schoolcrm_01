@@ -33,7 +33,7 @@ def _get_teacher_section_ids(staff_id):
 
 
 def _is_admin():
-    return g.current_user.role.name in ('school_admin', 'super_admin', 'principal')
+    return g.current_user.has_role('school_admin', 'super_admin', 'principal')
 
 
 # =====================================================

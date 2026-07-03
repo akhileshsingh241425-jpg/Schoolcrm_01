@@ -37,7 +37,7 @@ def _resolve_student():
 
     # Staff / admin override (useful for impersonation / testing)
     override_id = request.args.get('student_id', type=int)
-    if override_id and user.role and user.role.name in (
+    if override_id and user.role and user.has_role(
         'school_admin', 'super_admin', 'principal', 'teacher'
     ):
         return Student.query.filter_by(id=override_id, school_id=school_id).first()

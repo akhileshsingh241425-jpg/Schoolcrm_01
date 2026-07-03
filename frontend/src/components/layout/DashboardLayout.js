@@ -290,10 +290,10 @@ export default function DashboardLayout() {
       setUnreadCount(0);
     } catch {}
   };
-  const isSuperAdmin = user?.role?.name === 'super_admin';
-  const isParent = user?.role?.name === 'parent';
-  const isStudent = user?.role?.name === 'student';
-  const isExamController = user?.role?.name === 'exam_controller';
+  const isSuperAdmin = hasRole('super_admin');
+  const isParent = hasRole('parent');
+  const isStudent = hasRole('student');
+  const isExamController = hasRole('exam_controller');
 
   const isVisible = (item) => {
     if (item.feature && !features.includes(item.feature)) return false;
@@ -489,10 +489,9 @@ export default function DashboardLayout() {
     ] },
   ];
 
-  const isAcademicController = user?.role?.name === 'academic_controller';
-  const isLibrarian = user?.role?.name === 'librarian';
-  const isStoreManager = user?.role?.name === 'store_manager';
-  const roleName = user?.role?.name;
+  const isAcademicController = hasRole('academic_controller');
+  const isLibrarian = hasRole('librarian');
+  const isStoreManager = hasRole('store_manager');
 
   const roleMenuMap = {
     accountant: accountantMenuGroups,
@@ -509,11 +508,13 @@ export default function DashboardLayout() {
     hostel_warden: hostelWardenMenuGroups,
   };
 
-  const activeMenuGroups = isParent
+  const matchedRole = (user?.roles || []).map(r => r.name).find(n => roleMenuMap[n]);
+
+  const activeMenuGroups = hasRole('parent')
     ? parentMenuGroups
-    : isStudent
+    : hasRole('student')
       ? studentMenuGroups
-      : isExamController
+      : hasRole('exam_controller')
         ? examControllerMenuGroups
         : isAcademicController
           ? academicControllerMenuGroups
@@ -521,7 +522,7 @@ export default function DashboardLayout() {
             ? librarianMenuGroups
             : isStoreManager
               ? storeManagerMenuGroups
-              : roleMenuMap[roleName] || menuGroups;
+              : roleMenuMap[matchedRole] || menuGroups;
 
   const matchNavItem = (item) => {
     if (!location.pathname.startsWith(item.path)) return false;

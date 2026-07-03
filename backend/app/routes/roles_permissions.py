@@ -174,27 +174,16 @@ def get_user_permissions(user_id):
     """Get effective permissions for a specific user based on their custom role"""
     from app.models.user import User
     user = User.query.filter_by(id=user_id, school_id=g.school_id).first_or_404()
+    primary_role_name = user.role.name if user.role else ''
     
-    # School admin and super admin have full access
-    if user.role and user.role.name in ('school_admin', 'super_admin'):
+    if user.role and user.has_role('school_admin', 'super_admin'):
         perms = {m['key']: 'full' for m in AVAILABLE_MODULES}
-        return success_response({'permissions': perms, 'role_name': user.role.name})
+        return success_response({'permissions': perms, 'role_name': primary_role_name})
 
-    # Check if user has a custom role assigned
-    custom_role = CustomRole.query.filter_by(
-        school_id=g.school_id, name=user.role.name if user.role else ''
-    ).first()
-
-    if custom_role:
-        perms = {p.module: p.level for p in custom_role.permissions.all()}
-    else:
-        # Default: view-only for unassigned roles
-        perms = {m['key']: 'view' for m in AVAILABLE_MODULES}
-
-    return success_response({
-        'permissions': perms,
-        'role_name': custom_role.display_name if custom_role else (user.role.name if user.role else 'unknown'),
-    })
+    custom_role = CustomRole.query.filter_by(school_id=g.school_id, name=primary_role_name).first()
+    perms = {p.module: p.level for p in custom_role.permissions.all()} if custom_role else {m['key']: 'view' for m in AVAILABLE_MODULES}
+    role_name = custom_role.display_name if custom_role else primary_role_name
+    return success_response({'permissions': perms, 'role_name': role_name})
 
 
 @roles_bp.route('/my-permissions', methods=['GET'])
@@ -207,15 +196,16 @@ def get_my_permissions():
     if not user:
         return error_response('User not found', 404)
 
-    # School admin and super admin have full access
-    if user.role and user.role.name in ('school_admin', 'super_admin', 'principal'):
+    primary_role_name = user.role.name if user.role else ''
+    
+    if user.role and user.has_role('school_admin', 'super_admin', 'principal'):
         perms = {m['key']: 'full' for m in AVAILABLE_MODULES}
-        return success_response({'permissions': perms, 'role_name': user.role.name})
+        return success_response({'permissions': perms, 'role_name': primary_role_name})
 
-    # Check custom role
-    custom_role = CustomRole.query.filter_by(
-        school_id=g.school_id, name=user.role.name if user.role else ''
-    ).first()
+    custom_role = CustomRole.query.filter_by(school_id=g.school_id, name=primary_role_name).first()
+    perms = {p.module: p.level for p in custom_role.permissions.all()} if custom_role else {m['key']: 'view' for m in AVAILABLE_MODULES}
+    role_name = custom_role.display_name if custom_role else primary_role_name
+    return success_response({'permissions': perms, 'role_name': role_name})
 
     if custom_role:
         perms = {p.module: p.level for p in custom_role.permissions.all()}

@@ -379,7 +379,7 @@ def update_admission(admission_id):
         return error_response('Cannot edit enrolled application')
 
     # Cannot edit after approval (only admin can)
-    if admission.status == 'approved' and g.current_user.role.name not in ('school_admin', 'super_admin'):
+    if admission.status == 'approved' and not g.current_user.has_role('school_admin', 'super_admin'):
         return error_response('Only admin can edit approved applications')
 
     # DOB age check if class or DOB is changing

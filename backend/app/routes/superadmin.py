@@ -1320,7 +1320,7 @@ def create_user():
 def toggle_user(user_id):
     user = User.query.get_or_404(user_id)
     # Protect super admins
-    if user.role and user.role.name == 'super_admin':
+    if user.role and user.has_role('super_admin'):
         return error_response('Cannot disable a super admin account', 403)
     user.is_active = not user.is_active
     db.session.commit()

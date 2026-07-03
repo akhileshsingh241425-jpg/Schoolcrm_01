@@ -131,8 +131,8 @@ def create_staff():
         marital_status=clean_val(data.get('marital_status')),
         spouse_name=clean_val(data.get('spouse_name')),
         # Approval workflow: admin auto-approves, others go to pending
-        approval_status='approved' if g.current_user.role.name == 'school_admin' else 'pending',
-        status='active' if g.current_user.role.name == 'school_admin' else 'inactive',
+        approval_status='approved' if g.current_user.has_role('school_admin') else 'pending',
+        status='active' if g.current_user.has_role('school_admin') else 'inactive',
     )
     db.session.add(member)
     db.session.flush()

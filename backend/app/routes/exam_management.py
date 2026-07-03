@@ -156,7 +156,7 @@ def upload_question_paper(exam_id):
 def approve_paper(paper_id):
     """Approve question paper. Allowed: exam_controller, principal, school_admin, teacher (for HOD approval)."""
     allowed = ['exam_controller', 'principal', 'school_admin', 'super_admin', 'teacher', 'academic_controller']
-    if g.current_user.role and g.current_user.role.name not in allowed:
+    if g.current_user.role and not g.current_user.has_role(*allowed):
         return error_response('Insufficient permissions', 403)
     paper = QuestionPaper.query.filter_by(id=paper_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json() or {}

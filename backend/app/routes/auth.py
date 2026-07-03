@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from datetime import datetime
 from app import db
-from app.models.user import User, Role, Permission, RolePermission
+from app.models.user import User, Role, Permission, RolePermission, user_roles
 from app.models.school import School, SchoolFeature
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, validate
@@ -234,7 +234,7 @@ def switch_school():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
 
-    if not user or not user.role or user.role.name != 'super_admin':
+    if not user or not user.role or not user.has_role('super_admin'):
         return error_response('Only super admin can switch schools', 403)
 
     data = g.get('validated_data') or request.get_json()
@@ -413,24 +413,32 @@ def create_user():
     db.session.add(user)
     db.session.flush()
 
-    # Auto-create staff record for non-student/parent roles
-    non_staff_roles = ['parent', 'student']
-    if role.name not in non_staff_roles:
-        from app.models.staff import Staff
-        existing_staff = Staff.query.filter_by(school_id=g.school_id, user_id=user.id).first()
-        if not existing_staff:
-            staff = Staff(
-                school_id=g.school_id,
-                user_id=user.id,
-                first_name=data['first_name'],
-                last_name=data.get('last_name', ''),
-                email=data['email'],
-                phone=data.get('phone'),
-                designation=role.description or role.name.replace('_', ' ').title(),
-                department=role.name,
-                status='active',
-            )
-            db.session.add(staff)
+    # Auto-create staff record for ALL user roles (including parent/student)
+    from app.models.staff import Staff
+    existing_staff = Staff.query.filter_by(school_id=g.school_id, user_id=user.id).first()
+    if not existing_staff:
+        staff = Staff(
+            school_id=g.school_id,
+            user_id=user.id,
+            first_name=data['first_name'],
+            last_name=data.get('last_name', ''),
+            email=data['email'],
+            phone=data.get('phone'),
+            designation=role.description or role.name.replace('_', ' ').title(),
+            department=role.name,
+            staff_type='teaching',
+            status='active',
+            approval_status='approved',
+        )
+        db.session.add(staff)
+
+    # Sync additional roles from request
+    additional_role_ids = data.get('role_ids', [])
+    for rid in additional_role_ids:
+        if rid != role.id:
+            extra_role = Role.query.get(rid)
+            if extra_role and not db.session.query(user_roles).filter_by(user_id=user.id, role_id=rid).first():
+                db.session.execute(user_roles.insert().values(user_id=user.id, role_id=rid))
 
     db.session.commit()
 
@@ -456,6 +464,21 @@ def update_user(user_id):
         if not role:
             return error_response('Invalid role')
         user.role_id = data['role_id']
+
+    if 'role_ids' in data:
+        current_ids = {r.id for r in user.roles}
+        new_ids = set(data['role_ids'])
+        new_ids.discard(user.role_id)
+        to_add = new_ids - current_ids
+        to_remove = current_ids - new_ids
+        for rid in to_add:
+            extra_role = Role.query.get(rid)
+            if extra_role:
+                db.session.execute(user_roles.insert().values(user_id=user.id, role_id=rid))
+        for rid in to_remove:
+            db.session.execute(user_roles.delete().where(
+                db.and_(user_roles.c.user_id == user.id, user_roles.c.role_id == rid)
+            ))
 
     if 'first_name' in data:
         user.first_name = data['first_name']

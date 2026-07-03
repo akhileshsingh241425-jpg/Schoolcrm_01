@@ -462,7 +462,7 @@ def submit_consent_response(form_id):
 def list_messages():
     query = ParentMessage.query.filter_by(school_id=g.school_id)
     # If parent role, only show their messages
-    if g.current_user.role and g.current_user.role.name == 'parent':
+    if g.current_user.role and g.current_user.has_role('parent'):
         query = query.filter(
             ((ParentMessage.sender_type == 'parent') & (ParentMessage.sender_id == g.current_user.id)) |
             ((ParentMessage.receiver_type == 'parent') & (ParentMessage.receiver_id == g.current_user.id))
@@ -714,7 +714,7 @@ def get_child_overview(student_id):
     student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
 
     # If parent role, verify this is their child
-    if g.current_user.role and g.current_user.role.name == 'parent':
+    if g.current_user.role and g.current_user.has_role('parent'):
         linked = ParentDetail.query.filter_by(
             student_id=student_id, school_id=g.school_id, user_id=g.current_user.id
         ).first()
@@ -968,7 +968,7 @@ def list_my_children():
     class_id = request.args.get('class_id')
 
     # If parent role, only show their linked children
-    if g.current_user.role and g.current_user.role.name == 'parent':
+    if g.current_user.role and g.current_user.has_role('parent'):
         linked_details = ParentDetail.query.filter_by(
             school_id=g.school_id, user_id=g.current_user.id
         ).all()

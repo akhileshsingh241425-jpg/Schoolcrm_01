@@ -152,7 +152,7 @@ function UsersTab({ showSnack }) {
   const [dialog, setDialog] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '' });
+  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [] });
 
   const loadUsers = useCallback(() => {
     const params = { per_page: 100 };
@@ -168,7 +168,7 @@ function UsersTab({ showSnack }) {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '' });
+    setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [] });
     setDialog(true);
   };
 
@@ -176,7 +176,9 @@ function UsersTab({ showSnack }) {
     setEditing(user);
     setForm({
       email: user.email, password: '', first_name: user.first_name,
-      last_name: user.last_name || '', phone: user.phone || '', role_id: user.role?.id || ''
+      last_name: user.last_name || '', phone: user.phone || '',
+      role_id: user.role?.id || '',
+      role_ids: (user.roles || []).filter(r => r.id !== user.role?.id).map(r => r.id)
     });
     setDialog(true);
   };
@@ -191,7 +193,7 @@ function UsersTab({ showSnack }) {
       showSnack('Password required hai new user ke liye', 'error'); return;
     }
 
-    const data = { ...form };
+    const data = { ...form, role_ids: form.role_ids || [] };
     if (!data.password) delete data.password;
 
     const fn = editing ? authAPI.updateUser(editing.id, data) : authAPI.createUser(data);
@@ -300,8 +302,12 @@ function UsersTab({ showSnack }) {
                 </TableCell>
                 <TableCell><Typography fontSize={13}>{u.email}</Typography></TableCell>
                 <TableCell>
-                  <Chip label={u.role?.description || u.role?.name} size="small"
-                    color={getRoleColor(u.role?.name)} variant="filled" sx={{ fontWeight: 'bold', fontSize: 11 }} />
+                  <Box display="flex" flexWrap="wrap" gap={0.3}>
+                    {[u.role, ...(u.roles || []).filter(r => r.id !== u.role?.id)].filter(Boolean).map(r => (
+                      <Chip key={r.id} label={r.description || r.name} size="small"
+                        color={getRoleColor(r.name)} variant="filled" sx={{ fontWeight: 'bold', fontSize: 11 }} />
+                    ))}
+                  </Box>
                 </TableCell>
                 <TableCell>
                   <Box display="flex" flexWrap="wrap" gap={0.3}>
@@ -385,6 +391,30 @@ function UsersTab({ showSnack }) {
                 <Select value={form.role_id} label="Role / Department"
                   onChange={e => setForm({ ...form, role_id: e.target.value })}>
                   {roles.map(r => (
+                    <MenuItem key={r.id} value={r.id}>
+                      <Box>
+                        <Typography fontSize={14} fontWeight="bold">{r.description || r.name}</Typography>
+                        <Typography fontSize={11} color="text.secondary">{r.modules?.length || 0} modules</Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Additional Roles (optional)</InputLabel>
+                <Select multiple value={form.role_ids} label="Additional Roles (optional)"
+                  onChange={e => setForm({ ...form, role_ids: e.target.value })}
+                  renderValue={(selected) => (
+                    <Box display="flex" flexWrap="wrap" gap={0.5}>
+                      {selected.map(id => {
+                        const r = roles.find(rr => rr.id === id);
+                        return r ? <Chip key={id} label={r.description || r.name} size="small" /> : null;
+                      })}
+                    </Box>
+                  )}>
+                  {roles.filter(r => r.id !== form.role_id).map(r => (
                     <MenuItem key={r.id} value={r.id}>
                       <Box>
                         <Typography fontSize={14} fontWeight="bold">{r.description || r.name}</Typography>
