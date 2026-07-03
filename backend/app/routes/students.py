@@ -298,13 +298,13 @@ def update_student(student_id):
             setattr(student, field, data[field])
 
     if 'class_id' in data:
-        student.current_class_id = data['class_id']
+        student.current_class_id = clean_val(data['class_id'], int)
     if 'section_id' in data:
-        student.current_section_id = data['section_id']
+        student.current_section_id = clean_val(data['section_id'], int)
     if 'academic_year_id' in data:
-        student.academic_year_id = data['academic_year_id']
+        student.academic_year_id = clean_val(data['academic_year_id'], int)
     if 'house_id' in data:
-        student.house_id = data['house_id']
+        student.house_id = clean_val(data['house_id'], int)
 
     if 'parents' in data:
         for p_data in data['parents']:

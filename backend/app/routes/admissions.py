@@ -6,6 +6,7 @@ from app.models.admission import (
     AdmissionSettings, TransferCertificate
 )
 from app.models.student import Student, Class, Section, AcademicYear, ParentDetail
+from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required, feature_required
 from app.utils.helpers import success_response, error_response, paginate, validate
 from datetime import datetime, date
@@ -586,8 +587,38 @@ def enroll_student(admission_id):
     if admission.lead_id and admission.lead:
         admission.lead.status = 'admitted'
 
+    # Auto-create student login
+    login_id = student.admission_no or f'STU{student.id:06d}'
+    default_password = data.get('password', 'Student@123')
+    student_role = Role.query.filter_by(name='student').first()
+    if not student_role:
+        student_role = Role(name='student', description='Student', is_system_role=True)
+        db.session.add(student_role)
+        db.session.flush()
+
+    student_user = User(
+        school_id=g.school_id,
+        role_id=student_role.id,
+        email=login_id,
+        first_name=student.first_name,
+        last_name=student.last_name or '',
+        phone=admission.phone,
+        is_active=True,
+    )
+    student_user.set_password(default_password)
+    db.session.add(student_user)
+    db.session.flush()
+
+    student.user_id = student_user.id
+
     db.session.commit()
-    return success_response(student.to_dict(), 'Student enrolled successfully', 201)
+
+    result = student.to_dict()
+    result['login'] = {
+        'username': login_id,
+        'password': default_password,
+    }
+    return success_response(result, 'Student enrolled successfully. Login created!', 201)
 
 
 # ======================== DOCUMENTS ========================

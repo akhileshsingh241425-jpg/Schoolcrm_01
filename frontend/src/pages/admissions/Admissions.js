@@ -94,8 +94,9 @@ export default function Admissions() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [openEnroll, setOpenEnroll] = useState(null);
-  const [enrollForm, setEnrollForm] = useState({ admission_no: '', roll_no: '', section_id: '' });
+  const [enrollForm, setEnrollForm] = useState({ admission_no: '', roll_no: '', section_id: '', password: '' });
   const [sections, setSections] = useState([]);
+  const [loginResult, setLoginResult] = useState(null);
 
   const [openStatusDialog, setOpenStatusDialog] = useState(null);
   const [statusForm, setStatusForm] = useState({ status: '', remarks: '', rejection_reason: '' });
@@ -250,7 +251,13 @@ export default function Admissions() {
 
   const handleEnroll = () => {
     admissionsAPI.enroll(openEnroll, enrollForm)
-      .then(res => { showSnack('Student enrolled successfully!'); setOpenEnroll(null); fetchAdmissions(); })
+      .then(res => {
+        setLoginResult(res.data?.data?.login || null);
+        showSnack('Student enrolled successfully!');
+        setOpenEnroll(null);
+        setEnrollForm({ admission_no: '', roll_no: '', section_id: '', password: '' });
+        fetchAdmissions();
+      })
       .catch(e => showSnack(e.response?.data?.message || 'Enrollment failed', 'error'));
   };
 
@@ -942,11 +949,30 @@ export default function Admissions() {
                   {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
                 </Select></FormControl>
             </Grid>
+            <Grid item xs={6}><TextField fullWidth label="Login Password (optional)" type="text" placeholder="Default: Student@123" value={enrollForm.password} onChange={e => setEnrollForm(p => ({ ...p, password: e.target.value }))} /></Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenEnroll(null)}>Cancel</Button>
+          <Button onClick={() => { setOpenEnroll(null); setEnrollForm({ admission_no: '', roll_no: '', section_id: '', password: '' }); }}>Cancel</Button>
           <Button variant="contained" color="success" onClick={handleEnroll} startIcon={<School />}>Enroll</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== LOGIN CREDENTIALS DIALOG ========== */}
+      <Dialog open={!!loginResult} onClose={() => setLoginResult(null)} maxWidth="xs">
+        <DialogTitle sx={{ bgcolor: 'success.main', color: 'white' }}>Login Credentials Created</DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="success" sx={{ mb: 2 }}>Student enrolled & login created successfully!</Alert>
+          <Typography variant="subtitle2">Username / Login ID:</Typography>
+          <Typography variant="h6" gutterBottom><b>{loginResult?.username}</b></Typography>
+          <Typography variant="subtitle2" sx={{ mt: 1 }}>Password:</Typography>
+          <Typography variant="h6" gutterBottom><b>{loginResult?.password}</b></Typography>
+          <Alert severity="info" sx={{ mt: 2, fontSize: '0.85rem' }}>
+            Share these credentials with the student. They can login at the student portal.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setLoginResult(null)}>OK</Button>
         </DialogActions>
       </Dialog>
 
