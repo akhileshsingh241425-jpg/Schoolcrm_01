@@ -687,7 +687,7 @@ function ClassTeachersTab({ classes, staff }) {
                       <Edit sx={{ fontSize: 16 }} />
                     </IconButton>
                   ) : (
-                    <Button size="small" variant="outlined" onClick={() => toast.info('Go to Class & Section Management to create sections')}>
+                    <Button size="small" variant="outlined" onClick={() => toast('Go to Class & Section Management to create sections', { icon: 'ℹ️' })}>
                       Add Section
                     </Button>
                   )}
