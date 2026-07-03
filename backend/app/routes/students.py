@@ -485,6 +485,13 @@ def create_section():
     return success_response(section.to_dict(), 'Section created', 201)
 
 
+@students_bp.route('/classes/<int:class_id>', methods=['GET'])
+@school_required
+def get_class(class_id):
+    cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first_or_404()
+    return success_response(cls.to_dict_with_sections())
+
+
 @students_bp.route('/classes/<int:class_id>', methods=['PUT'])
 @role_required('school_admin')
 @validate({

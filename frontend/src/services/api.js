@@ -89,6 +89,7 @@ export const studentsAPI = {
   delete: (id) => api.delete(`/students/${id}`),
   dashboard: () => api.get('/students/dashboard'),
   listClasses: () => api.get('/students/classes'),
+  getClass: (id) => api.get(`/students/classes/${id}`),
   createClass: (data) => api.post('/students/classes', data),
   listSections: (classId) => api.get(`/students/sections/${classId}`),
   createSection: (data) => api.post('/students/sections', data),
