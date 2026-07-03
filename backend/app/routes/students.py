@@ -443,7 +443,8 @@ def student_dashboard():
 @students_bp.route('/classes', methods=['GET'])
 @school_required
 def list_classes():
-    classes = Class.query.filter_by(school_id=g.school_id).order_by(Class.numeric_name).all()
+    from sqlalchemy import func
+    classes = Class.query.filter_by(school_id=g.school_id).order_by(func.coalesce(Class.numeric_name, 9999), Class.name).all()
     return success_response([c.to_dict_with_sections() for c in classes])
 
 

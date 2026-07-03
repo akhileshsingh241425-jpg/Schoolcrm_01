@@ -3677,7 +3677,8 @@ def get_class_teachers():
     """Get all class-teacher assignments across sections (includes classes with no sections)"""
     class_id = request.args.get('class_id', type=int)
 
-    classes = Class.query.filter_by(school_id=g.school_id).order_by(Class.numeric_name).all()
+    from sqlalchemy import func
+    classes = Class.query.filter_by(school_id=g.school_id).order_by(func.coalesce(Class.numeric_name, 9999), Class.name).all()
     if class_id:
         classes = [c for c in classes if c.id == class_id]
 

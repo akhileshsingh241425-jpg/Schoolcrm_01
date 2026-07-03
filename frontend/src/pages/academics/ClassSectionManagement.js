@@ -75,11 +75,12 @@ export default function ClassSectionManagement() {
     const hasStream = ['Class 11', 'Class 12'].includes(classForm.name);
     if (hasStream && !classForm.stream) { toast.error('Stream is required for Class 11/12'); return; }
     const displayName = hasStream && classForm.stream ? `${classForm.name} ${classForm.stream}` : classForm.name;
-    const numeric = classOptions.find(c => c.label === classForm.name)?.num || 0;
+    const found = classOptions.find(c => c.label === classForm.name);
+    const numeric = found ? found.num : 0;
     try {
       const data = {
         name: displayName,
-        numeric_name: numeric || undefined,
+        numeric_name: numeric != null ? numeric : undefined,
         description: classForm.description || undefined
       };
       if (editingClass) {
