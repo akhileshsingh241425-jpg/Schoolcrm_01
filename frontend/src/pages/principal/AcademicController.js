@@ -671,7 +671,7 @@ function ClassTeachersTab({ classes, staff }) {
             {assignments.length === 0 ? (
               <TableRow><TableCell colSpan={6} align="center" sx={{ color: '#6c757d', py: 3 }}>No class teacher assignments</TableCell></TableRow>
             ) : assignments.map((a, i) => (
-              <TableRow key={a.section_id || i}>
+              <TableRow key={a.section_id || `class-${a.class_id}`}>
                 <TableCell>{a.class_name || '-'}</TableCell>
                 <TableCell>{a.section_name || '-'}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>
@@ -682,9 +682,15 @@ function ClassTeachersTab({ classes, staff }) {
                 </TableCell>
                 <TableCell>{a.student_count || 0}</TableCell>
                 <TableCell>
-                  <IconButton size="small" onClick={() => openEditDialog(a)} sx={{ color: '#1976d2' }}>
-                    <Edit sx={{ fontSize: 16 }} />
-                  </IconButton>
+                  {a.section_id ? (
+                    <IconButton size="small" onClick={() => openEditDialog(a)} sx={{ color: '#1976d2' }}>
+                      <Edit sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  ) : (
+                    <Button size="small" variant="outlined" onClick={() => toast.info('Go to Class & Section Management to create sections')}>
+                      Add Section
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

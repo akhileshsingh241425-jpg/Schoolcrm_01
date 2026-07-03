@@ -1252,11 +1252,11 @@ function ClassTeachersTab({ classes, showSnack }) {
           </TableHead>
           <TableBody>
             {assignments.map(a => (
-              <TableRow key={a.section_id} hover sx={{ '&:hover': { bgcolor: '#f5f5f5' } }}>
+              <TableRow key={a.section_id || `class-${a.class_id}`} hover sx={{ '&:hover': { bgcolor: '#f5f5f5' } }}>
                 <TableCell>
                   <Box display="flex" alignItems="center" gap={1}>
                     <School color="primary" />
-                    <Typography fontWeight="bold">{a.class_name} - {a.section_name}</Typography>
+                    <Typography fontWeight="bold">{a.class_name}{a.section_name ? ` - ${a.section_name}` : ''}</Typography>
                   </Box>
                 </TableCell>
                 <TableCell>
@@ -1287,17 +1287,23 @@ function ClassTeachersTab({ classes, showSnack }) {
                   )}
                 </TableCell>
                 <TableCell align="center">
-                  <Tooltip title="Assign / Change Teachers">
-                    <IconButton color="primary" onClick={() => openAssign(a)}>
-                      <SwapHoriz />
-                    </IconButton>
-                  </Tooltip>
+                  {a.section_id ? (
+                    <Tooltip title="Assign / Change Teachers">
+                      <IconButton color="primary" onClick={() => openAssign(a)}>
+                        <SwapHoriz />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <Button size="small" variant="outlined" onClick={() => showSnack('Go to Class & Section Management to create sections first', 'info')}>
+                      Add Section
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
             {!assignments.length && (
               <TableRow><TableCell colSpan={5} align="center">
-                <Typography color="text.secondary" py={3}>No sections found. Create classes and sections first.</Typography>
+                <Typography color="text.secondary" py={3}>No classes or sections found. Create them in Class & Section Management first.</Typography>
               </TableCell></TableRow>
             )}
           </TableBody>

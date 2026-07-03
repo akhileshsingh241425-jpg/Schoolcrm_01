@@ -3674,22 +3674,30 @@ CO_CLASS_TEACHER_RESPONSIBILITIES = [
 @academics_bp.route('/class-teachers', methods=['GET'])
 @school_required
 def get_class_teachers():
-    """Get all class-teacher assignments across sections"""
+    """Get all class-teacher assignments across sections (includes classes with no sections)"""
     class_id = request.args.get('class_id', type=int)
 
-    query = Section.query.filter_by(school_id=g.school_id)
+    classes = Class.query.filter_by(school_id=g.school_id).order_by(Class.numeric_name).all()
     if class_id:
-        query = query.filter_by(class_id=class_id)
+        classes = [c for c in classes if c.id == class_id]
 
-    sections = query.all()
+    # Get all sections for these classes
+    class_ids = [c.id for c in classes]
+    sections = Section.query.filter(
+        Section.school_id == g.school_id,
+        Section.class_id.in_(class_ids)
+    ).all() if class_ids else []
 
-    # Batch fetch all related classes and staff to avoid N+1
-    class_ids = list(set(sec.class_id for sec in sections))
+    # Group sections by class
+    sections_by_class = {}
+    for sec in sections:
+        sections_by_class.setdefault(sec.class_id, []).append(sec)
+
+    # Batch fetch staff
     staff_ids = list(set(
         [sec.class_teacher_id for sec in sections if sec.class_teacher_id] +
         [sec.co_class_teacher_id for sec in sections if sec.co_class_teacher_id]
     ))
-    classes_map = {c.id: c for c in Class.query.filter(Class.id.in_(class_ids)).all()} if class_ids else {}
     staff_map = {s.id: s for s in Staff.query.filter(Staff.id.in_(staff_ids)).all()} if staff_ids else {}
 
     # Batch fetch student counts per section
@@ -3707,22 +3715,37 @@ def get_class_teachers():
         student_counts = dict(counts)
 
     result = []
-    for sec in sections:
-        cls = classes_map.get(sec.class_id)
-        ct = staff_map.get(sec.class_teacher_id)
-        cct = staff_map.get(sec.co_class_teacher_id)
-        result.append({
-            'section_id': sec.id,
-            'section_name': sec.name,
-            'class_id': sec.class_id,
-            'class_name': cls.name if cls else None,
-            'capacity': sec.capacity,
-            'class_teacher_id': sec.class_teacher_id,
-            'class_teacher': ct.to_dict() if ct else None,
-            'co_class_teacher_id': sec.co_class_teacher_id,
-            'co_class_teacher': cct.to_dict() if cct else None,
-            'student_count': student_counts.get(sec.id, 0),
-        })
+    for cls in classes:
+        class_sections = sections_by_class.get(cls.id, [])
+        if class_sections:
+            for sec in class_sections:
+                ct = staff_map.get(sec.class_teacher_id)
+                cct = staff_map.get(sec.co_class_teacher_id)
+                result.append({
+                    'section_id': sec.id,
+                    'section_name': sec.name,
+                    'class_id': sec.class_id,
+                    'class_name': cls.name,
+                    'capacity': sec.capacity,
+                    'class_teacher_id': sec.class_teacher_id,
+                    'class_teacher': ct.to_dict() if ct else None,
+                    'co_class_teacher_id': sec.co_class_teacher_id,
+                    'co_class_teacher': cct.to_dict() if cct else None,
+                    'student_count': student_counts.get(sec.id, 0),
+                })
+        else:
+            result.append({
+                'section_id': None,
+                'section_name': None,
+                'class_id': cls.id,
+                'class_name': cls.name,
+                'capacity': None,
+                'class_teacher_id': None,
+                'class_teacher': None,
+                'co_class_teacher_id': None,
+                'co_class_teacher': None,
+                'student_count': 0,
+            })
     return success_response(result)
 
 
