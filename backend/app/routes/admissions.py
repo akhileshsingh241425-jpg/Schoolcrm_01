@@ -530,6 +530,10 @@ def enroll_student(admission_id):
         current_section_id=data.get('section_id'),
         academic_year_id=admission.academic_year_id,
         admission_date=data.get('admission_date') or date.today().isoformat(),
+        emergency_contact=admission.emergency_contact,
+        medical_conditions=admission.medical_conditions,
+        allergies=admission.allergies,
+        previous_school=admission.previous_school,
         status='active'
     )
     db.session.add(student)

@@ -15,6 +15,7 @@ import {
   ThumbDown, LocationOn, Phone, Email, CalendarMonth, Upload, Verified,
   Close, ArrowForward, Print, Timeline
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { admissionsAPI, studentsAPI } from '../../services/api';
 import { validateForm } from '../../components/Validation';
 
@@ -68,6 +69,7 @@ const initialForm = {
 };
 
 export default function Admissions() {
+  const navigate = useNavigate();
   // State
   const [tab, setTab] = useState(0);
   const [admissions, setAdmissions] = useState({ items: [], total: 0, pages: 0 });
@@ -756,6 +758,13 @@ export default function Admissions() {
           </Box>
           <Box display="flex" gap={1} alignItems="center">
             {renderStatusChip(d.status)}
+            {d.status === 'enrolled' && d.student_id && (
+              <Button size="small" variant="contained" color="success"
+                startIcon={<School />}
+                onClick={() => { setOpenDetail(null); setDetailData(null); navigate(`/students/${d.student_id}`); }}>
+                View Student Profile
+              </Button>
+            )}
             <IconButton onClick={() => { setOpenDetail(null); setDetailData(null); }}><Close /></IconButton>
           </Box>
         </DialogTitle>

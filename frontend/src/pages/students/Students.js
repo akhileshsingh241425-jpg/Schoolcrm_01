@@ -154,13 +154,13 @@ function StudentList({ navigate }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              {['', 'Adm No', 'Name', 'Class', 'Section', 'Roll', 'Gender', 'Status', 'Actions'].map(h =>
+              {['', 'Adm No', 'Name', 'Father', 'Phone', 'Class', 'Section', 'Roll', 'Gender', 'DOB', 'House', 'Status', 'Actions'].map(h =>
                 <TableCell key={h}>{h}</TableCell>)}
             </TableRow>
           </TableHead>
           <TableBody>
             {students.length === 0 ? (
-              <TableRow><TableCell colSpan={9} align="center">No students found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} align="center">No students found</TableCell></TableRow>
             ) : students.map(s => (
               <TableRow key={s.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/students/${s.id}`)}>
                 <TableCell>
@@ -170,10 +170,14 @@ function StudentList({ navigate }) {
                 </TableCell>
                 <TableCell>{s.admission_no || '-'}</TableCell>
                 <TableCell sx={{ fontWeight: 500 }}>{s.full_name || `${s.first_name} ${s.last_name || ''}`}</TableCell>
+                <TableCell>{s.father_name || '-'}</TableCell>
+                <TableCell>{s.father_phone || s.emergency_contact || '-'}</TableCell>
                 <TableCell>{s.current_class?.name || '-'}</TableCell>
                 <TableCell>{s.current_section?.name || '-'}</TableCell>
                 <TableCell>{s.roll_no || '-'}</TableCell>
                 <TableCell>{s.gender || '-'}</TableCell>
+                <TableCell>{s.date_of_birth ? new Date(s.date_of_birth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</TableCell>
+                <TableCell>{s.house?.name || '-'}</TableCell>
                 <TableCell><Chip label={s.status || 'active'} color={statusColors[s.status] || 'default'} size="small" /></TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
                   <Tooltip title="View"><IconButton size="small" onClick={() => navigate(`/students/${s.id}`)}><Visibility /></IconButton></Tooltip>

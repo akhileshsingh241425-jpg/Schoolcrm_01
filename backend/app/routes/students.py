@@ -59,7 +59,6 @@ def list_students():
     if section_id:
         query = query.filter_by(current_section_id=section_id)
 
-    # Exact roll number filter (roll numbers are unique within a class)
     roll_no = request.args.get('roll_no')
     if roll_no:
         query = query.filter(Student.roll_no == roll_no.strip())
@@ -95,7 +94,39 @@ def list_students():
         query = query.filter(Student.current_class_id.in_(scope['class_ids']))
 
     query = query.order_by(Student.created_at.desc())
-    return success_response(paginate(query))
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    per_page = min(per_page, 100)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    student_ids = [s.id for s in pagination.items]
+    parent_map = {}
+    if student_ids:
+        parents = ParentDetail.query.filter(
+            ParentDetail.student_id.in_(student_ids),
+            ParentDetail.relation == 'father'
+        ).all()
+        for p in parents:
+            parent_map[p.student_id] = p
+
+    items = []
+    for s in pagination.items:
+        d = s.to_dict()
+        father = parent_map.get(s.id)
+        d['father_name'] = father.name if father else None
+        d['father_phone'] = father.phone if father else None
+        items.append(d)
+
+    return success_response({
+        'items': items,
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': pagination.per_page,
+        'pages': pagination.pages,
+        'has_next': pagination.has_next,
+        'has_prev': pagination.has_prev
+    })
 
 
 @students_bp.route('/search-comprehensive', methods=['GET'])
