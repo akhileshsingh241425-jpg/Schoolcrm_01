@@ -36,11 +36,11 @@ def _resolve_student():
     school_id = g.school_id
 
     # Staff / admin override (useful for impersonation / testing)
-    override_id = request.args.get('student_id', type=int)
+    override_id = request.args.get('student_id', type=str)
     if override_id and user.role and user.has_role(
         'school_admin', 'super_admin', 'principal', 'teacher'
     ):
-        return Student.query.filter_by(id=override_id, school_id=school_id).first()
+        return Student.query.filter_by(admission_no=override_id, school_id=school_id).first()
 
     return Student.query.filter_by(user_id=user.id, school_id=school_id).first()
 
@@ -83,7 +83,7 @@ def me():
         'phone': p.phone, 'email': p.email,
         'occupation': p.occupation,
     } for p in ParentDetail.query.filter_by(
-        student_id=student.id, school_id=g.school_id
+        student_id=student.admission_no, school_id=g.school_id
     ).all()]
 
     return success_response(data)
@@ -104,7 +104,7 @@ def dashboard():
     # Attendance summary (current academic year heuristic: last 12 months)
     year_ago = today - timedelta(days=365)
     att_records = StudentAttendance.query.filter(
-        StudentAttendance.student_id == student.id,
+        StudentAttendance.student_id == student.admission_no,
         StudentAttendance.school_id == school_id,
         StudentAttendance.date >= year_ago,
         StudentAttendance.period.is_(None),
@@ -116,7 +116,7 @@ def dashboard():
 
     # Fees
     installments = FeeInstallment.query.filter_by(
-        student_id=student.id, school_id=school_id
+        student_id=student.admission_no, school_id=school_id
     ).all()
     total_fee = sum(float(i.amount) for i in installments)
     total_paid = sum(float(i.paid_amount or 0) for i in installments)
@@ -172,12 +172,12 @@ def dashboard():
 
     # Recent results (last 5 entries)
     recent_results = ExamResult.query.filter_by(
-        student_id=student.id, school_id=school_id
+        student_id=student.admission_no, school_id=school_id
     ).order_by(ExamResult.id.desc()).limit(5).all()
 
     return success_response({
         'student': {
-            'id': student.id,
+            'id': student.admission_no,
             'name': f"{student.first_name} {student.last_name or ''}".strip(),
             'admission_no': student.admission_no,
             'roll_no': student.roll_no,
@@ -219,7 +219,7 @@ def attendance():
         return error_response('No student profile linked to this account', 404)
 
     records = StudentAttendance.query.filter(
-        StudentAttendance.student_id == student.id,
+        StudentAttendance.student_id == student.admission_no,
         StudentAttendance.school_id == g.school_id,
         StudentAttendance.period.is_(None),
     ).order_by(StudentAttendance.date.desc()).all()
@@ -345,7 +345,7 @@ def exams():
 
     # Past results grouped by exam — only show locked (published) marks
     results = ExamResult.query.filter_by(
-        student_id=student.id, school_id=g.school_id
+        student_id=student.admission_no, school_id=g.school_id
     ).join(ExamSchedule).filter(
         ExamSchedule.is_marks_locked == True
     ).order_by(ExamSchedule.exam_date.desc()).all()
@@ -382,7 +382,7 @@ def exams():
         b['percentage'] = round(b['obtained'] / b['total_marks'] * 100, 1) if b['total_marks'] else 0
 
     report_cards = ReportCard.query.filter_by(
-        student_id=student.id, school_id=g.school_id
+        student_id=student.admission_no, school_id=g.school_id
     ).order_by(ReportCard.generated_at.desc()).all()
 
     return success_response({
@@ -406,10 +406,10 @@ def fees():
         return error_response('No student profile linked to this account', 404)
 
     installments = FeeInstallment.query.filter_by(
-        student_id=student.id, school_id=g.school_id
+        student_id=student.admission_no, school_id=g.school_id
     ).order_by(FeeInstallment.due_date).all()
     payments = FeePayment.query.filter_by(
-        student_id=student.id, school_id=g.school_id
+        student_id=student.admission_no, school_id=g.school_id
     ).order_by(FeePayment.payment_date.desc()).limit(20).all()
 
     total = sum(float(i.amount) for i in installments)
@@ -470,7 +470,7 @@ def activities():
         or_(
             DailyActivity.class_id == student.current_class_id,
             DailyActivity.class_id.is_(None),
-            DailyActivity.student_id == student.id,
+            DailyActivity.student_id == student.admission_no,
         ),
     ).order_by(DailyActivity.activity_date.desc()).limit(30)
     return success_response([a.to_dict() for a in q.all()])

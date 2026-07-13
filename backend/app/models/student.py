@@ -30,8 +30,12 @@ class Class(db.Model):
     name = db.Column(db.String(50), nullable=False)
     numeric_name = db.Column(db.Integer)
     description = db.Column(db.String(255))
+    class_teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='SET NULL'), nullable=True)
+    co_class_teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='SET NULL'), nullable=True)
 
     sections = db.relationship('Section', backref='class_ref', lazy='dynamic')
+    class_teacher = db.relationship('Staff', foreign_keys=[class_teacher_id], backref='class_teacher_of_class')
+    co_class_teacher = db.relationship('Staff', foreign_keys=[co_class_teacher_id], backref='co_class_teacher_of_class')
 
     def to_dict(self):
         return {
@@ -39,6 +43,8 @@ class Class(db.Model):
             'name': self.name,
             'numeric_name': self.numeric_name,
             'description': self.description,
+            'class_teacher_id': self.class_teacher_id,
+            'co_class_teacher_id': self.co_class_teacher_id,
         }
 
     def to_dict_with_sections(self):
@@ -47,6 +53,8 @@ class Class(db.Model):
             'name': self.name,
             'numeric_name': self.numeric_name,
             'description': self.description,
+            'class_teacher_id': self.class_teacher_id,
+            'co_class_teacher_id': self.co_class_teacher_id,
             'sections': [s.to_dict() for s in self.sections.all()]
         }
 
@@ -91,12 +99,11 @@ class Section(db.Model):
 class Student(db.Model):
     __tablename__ = 'students'
 
-    id = db.Column(db.Integer, primary_key=True)
+    admission_no = db.Column(db.String(50), primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    admission_no = db.Column(db.String(50))
-    roll_no = db.Column(db.String(20))
-    first_name = db.Column(db.String(100), nullable=False)
+    roll_no = db.Column(db.String(20), nullable=False)
+    first_name = db.Column(db.String(100))
     last_name = db.Column(db.String(100))
     gender = db.Column(db.Enum('male', 'female', 'other'))
     date_of_birth = db.Column(db.Date)
@@ -128,6 +135,10 @@ class Student(db.Model):
     id_card_issued = db.Column(db.Boolean, default=False)
     id_card_no = db.Column(db.String(50))
     behavior_points = db.Column(db.Integer, default=100)
+    admission_number = db.Column(db.BigInteger)
+    enrollment_no = db.Column(db.BigInteger)
+    linked_student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
+    leave_date = db.Column(db.Date)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -143,27 +154,36 @@ class Student(db.Model):
     counseling = db.relationship('StudentCounseling', backref='student', lazy='dynamic')
     promotions = db.relationship('StudentPromotion', backref='student', lazy='dynamic')
     house = db.relationship('StudentHouse', foreign_keys=[house_id])
+    linked_student = db.relationship('Student', remote_side='Student.admission_no', backref='linked_students')
 
     __table_args__ = (
-        db.UniqueConstraint('school_id', 'admission_no', name='unique_admission'),
+        db.UniqueConstraint('school_id', 'admission_number', name='uq_school_admission_number'),
+        db.UniqueConstraint('school_id', 'enrollment_no', name='uq_school_enrollment_no'),
+        db.UniqueConstraint('school_id', 'current_class_id', 'current_section_id', 'roll_no', name='uq_class_section_roll_no'),
     )
+
+    @staticmethod
+    def _mask(val, show=4):
+        if not val:
+            return None
+        s = str(val)
+        return '*' * (len(s) - show) + s[-show:] if len(s) > show else s
 
     def to_dict(self):
         return {
-            'id': self.id,
-            'school_id': self.school_id,
+            'id': self.admission_no,
             'admission_no': self.admission_no,
             'roll_no': self.roll_no,
-            'first_name': self.first_name,
-            'last_name': self.last_name,
-            'full_name': f"{self.first_name} {self.last_name or ''}".strip(),
+            'first_name': self.first_name or '',
+            'last_name': self.last_name or '',
+            'full_name': f"{self.first_name or ''} {self.last_name or ''}".strip(),
             'gender': self.gender,
             'date_of_birth': self.date_of_birth.isoformat() if self.date_of_birth else None,
             'blood_group': self.blood_group,
             'religion': self.religion,
             'category': self.category,
             'nationality': self.nationality,
-            'aadhar_no': self.aadhar_no,
+            'aadhar_no': self._mask(self.aadhar_no),
             'address': self.address,
             'city': self.city,
             'state': self.state,
@@ -188,7 +208,13 @@ class Student(db.Model):
             'sibling_group_id': self.sibling_group_id,
             'id_card_issued': self.id_card_issued,
             'id_card_no': self.id_card_no,
+            'user_id': self.user_id,
+            'has_login': self.user_id is not None,
             'behavior_points': self.behavior_points,
+            'admission_number': self.admission_number,
+            'enrollment_no': self.enrollment_no,
+            'linked_student_id': self.linked_student_id,
+            'leave_date': self.leave_date.isoformat() if self.leave_date else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -197,7 +223,7 @@ class ParentDetail(db.Model):
     __tablename__ = 'parent_details'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     relation = db.Column(db.Enum('father', 'mother', 'guardian'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
@@ -212,6 +238,13 @@ class ParentDetail(db.Model):
     office_address = db.Column(db.Text)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
+    @staticmethod
+    def _mask(val, show=4):
+        if not val:
+            return None
+        s = str(val)
+        return '*' * (len(s) - show) + s[-show:] if len(s) > show else s
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -223,7 +256,7 @@ class ParentDetail(db.Model):
             'occupation': self.occupation,
             'income': self.income,
             'qualification': self.qualification,
-            'aadhar_no': self.aadhar_no
+            'aadhar_no': self._mask(self.aadhar_no)
         }
 
 
@@ -231,7 +264,7 @@ class StudentDocument(db.Model):
     __tablename__ = 'student_documents'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     document_type = db.Column(db.String(100), nullable=False)
     document_name = db.Column(db.String(255))
@@ -241,11 +274,12 @@ class StudentDocument(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
+        api_url = f'/api/students/{self.student_id}/documents/{self.id}/file'
         return {
             'id': self.id,
             'document_type': self.document_type,
             'document_name': self.document_name,
-            'file_url': self.file_url,
+            'file_url': api_url,
             'verified': self.verified,
             'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None
         }
@@ -272,7 +306,7 @@ class ParentDocument(db.Model):
             'parent_id': self.parent_id,
             'document_type': self.document_type,
             'document_name': self.document_name,
-            'file_url': self.file_url,
+            'file_url': f'/api/students/{self.parent.student_id}/parents/{self.parent_id}/documents/{self.id}/file',
             'verified': self.verified,
             'uploaded_at': self.uploaded_at.isoformat() if self.uploaded_at else None
         }
@@ -285,7 +319,7 @@ class StudentPromotion(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     from_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     from_section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))
     to_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
@@ -321,7 +355,7 @@ class StudentAchievement(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     category = db.Column(db.Enum('academic', 'sports', 'cultural', 'science', 'leadership', 'community', 'other'), default='academic')
     level = db.Column(db.Enum('school', 'district', 'state', 'national', 'international'), default='school')
@@ -356,7 +390,7 @@ class StudentBehavior(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     behavior_type = db.Column(db.Enum('positive', 'negative'), nullable=False)
     category = db.Column(db.String(100))
     title = db.Column(db.String(255), nullable=False)
@@ -389,7 +423,7 @@ class StudentTimeline(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     event_type = db.Column(db.Enum('admission', 'promotion', 'achievement', 'behavior', 'medical', 'counseling', 'transfer', 'document', 'fee', 'general'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
@@ -416,7 +450,7 @@ class StudentCounseling(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     counselor_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     session_date = db.Column(db.Date, nullable=False)
     session_type = db.Column(db.Enum('academic', 'behavioral', 'career', 'personal', 'parent_meeting'), default='academic')
@@ -480,7 +514,7 @@ class Alumni(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     name = db.Column(db.String(255), nullable=False)
     batch_year = db.Column(db.String(20))
     passing_class = db.Column(db.String(50))
@@ -520,7 +554,7 @@ class StudentMedical(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     record_type = db.Column(db.Enum('checkup', 'vaccination', 'illness', 'injury', 'allergy', 'other'), default='checkup')
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)

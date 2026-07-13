@@ -6,6 +6,7 @@ from app.models.user import User, Role, Permission, RolePermission, user_roles
 from app.models.school import School, SchoolFeature
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, validate
+import re
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -16,91 +17,107 @@ auth_bp = Blueprint('auth', __name__)
     'password': {'required': True},
 })
 def login():
+    data = g.get('validated_data') or request.get_json()
+
+    # ---- validation ----
+    import re
+    phone_val = data.get('phone')
+    if phone_val and not re.match(r'^\d+$', phone_val):
+        return error_response('Phone must contain only digits')
+    email_val = data.get('email')
+    if email_val and '@' not in email_val:
+        return error_response('Email must contain @')
+    aadhar_val = data.get('aadhar_no')
+    if aadhar_val and not re.match(r'^\d{12}$', aadhar_val):
+        return error_response('Aadhaar number must be exactly 12 digits')
+    for p in data.get('parents', []):
+        pp = p.get('phone')
+        if pp and not re.match(r'^\d+$', pp):
+            return error_response('Parent phone must contain only digits')
+        pe = p.get('email')
+        if pe and '@' not in pe:
+            return error_response('Parent email must contain @')
+
+    if not data:
+        return error_response('No data provided')
+
+    email = (data.get('email') or '').strip()
+    password = data.get('password') or ''
+    school_code = (data.get('school_code') or '').strip()
+
+    if not email or not password:
+        return error_response('Email and password are required')
+
+    # Check for super_admin login (may not need school code)
+    user = None
+    school = None
+
+    # Try to find super_admin by email first
     try:
-        data = g.get('validated_data') or request.get_json()
-        if not data:
-            return error_response('No data provided')
-        
-        email = (data.get('email') or '').strip()
-        password = data.get('password') or ''
-        school_code = (data.get('school_code') or '').strip()
-        
-        if not email or not password:
-            return error_response('Email and password are required')
-        
-        # Check for super_admin login (may not need school code)
-        user = None
-        school = None
-        
-        # Try to find super_admin by email first
-        try:
-            super_admin_role = Role.query.filter_by(name='super_admin').first()
-            if super_admin_role:
-                user = User.query.filter_by(email=email, role_id=super_admin_role.id, is_active=True).first()
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            super_admin_role = None
-            user = None
-        
-        if user and user.check_password(password):
-            # Super admin found - get their school for context (may not exist if schools cleared)
-            try:
-                school = School.query.get(user.school_id) if user.school_id else None
-            except Exception:
-                school = None
-        else:
-            # Normal login - requires school code
-            user = None
-            if not school_code:
-                return error_response('Email, password and school code are required')
-            
-            school = School.query.filter_by(code=school_code, is_active=True).first()
-            if not school:
-                return error_response('Invalid school code', 401)
-            
-            if not school.has_active_subscription():
-                return error_response('School subscription is inactive or expired. Contact super admin.', 403)
-            
-            user = User.query.filter_by(school_id=school.id, email=email, is_active=True).first()
-            if not user or not user.check_password(password):
-                return error_response('Invalid credentials', 401)
-        
-        # Update last login
-        try:
-            user.last_login = datetime.utcnow()
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        
-        # Create tokens
-        access_token = create_access_token(identity=str(user.id))
-        refresh_token = create_refresh_token(identity=str(user.id))
-        
-        # Get enabled features (school may be None for super_admin with no school)
-        try:
-            features = school.get_enabled_features() if school else []
-        except Exception:
-            features = []
-        
-        # Get user's allowed modules based on role
-        try:
-            allowed_modules = user.get_allowed_modules()
-        except Exception:
-            allowed_modules = []
-        
-        return success_response({
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'user': user.to_dict(),
-            'school': school.to_dict() if school else None,
-            'features': features,
-            'allowed_modules': allowed_modules
-        }, 'Login successful')
+        super_admin_role = Role.query.filter_by(name='super_admin').first()
+        if super_admin_role:
+            user = User.query.filter_by(email=email, role_id=super_admin_role.id, is_active=True).first()
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return error_response(f'Login error: {str(e)}', 500)
+        super_admin_role = None
+        user = None
+
+    if user and user.check_password(password):
+        # Super admin found - get their school for context (may not exist if schools cleared)
+        try:
+            school = School.query.get(user.school_id) if user.school_id else None
+        except Exception:
+            school = None
+    elif not school_code:
+        # No school code provided - super admin login was attempted but failed
+        return error_response('Invalid super admin credentials')
+    else:
+        # Normal login - requires school code
+        user = None
+
+        school = School.query.filter_by(code=school_code, is_active=True).first()
+        if not school:
+            return error_response('Invalid school code')
+
+        if not school.has_active_subscription():
+            return error_response('School subscription is inactive or expired. Contact super admin.')
+
+        user = User.query.filter_by(school_id=school.id, email=email, is_active=True).first()
+        if not user or not user.check_password(password):
+            return error_response('Invalid credentials')
+
+    # Update last login
+    try:
+        user.last_login = datetime.utcnow()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    # Create tokens
+    access_token = create_access_token(identity=str(user.id))
+    refresh_token = create_refresh_token(identity=str(user.id))
+
+    # Get enabled features (school may be None for super_admin with no school)
+    try:
+        features = school.get_enabled_features() if school else []
+    except Exception:
+        features = []
+
+    # Get user's allowed modules based on role
+    try:
+        allowed_modules = user.get_allowed_modules()
+    except Exception:
+        allowed_modules = []
+
+    return success_response({
+        'access_token': access_token,
+        'refresh_token': refresh_token,
+        'user': user.to_dict(),
+        'school': school.to_dict() if school else None,
+        'features': features,
+        'allowed_modules': allowed_modules
+    }, 'Login successful')
 
 
 @auth_bp.route('/register-school', methods=['POST'])
@@ -285,25 +302,35 @@ def change_password():
 @auth_bp.route('/roles', methods=['GET'])
 @school_required
 def list_roles():
-    """Get all available roles with their default module access"""
+    """Get all available roles with their module access (globals + school-specific overrides)"""
     roles = Role.query.order_by(Role.id).all()
     result = []
     for role in roles:
-        # Get modules assigned to this role
-        perms = RolePermission.query.filter(
-            RolePermission.role_id == role.id,
-            db.or_(RolePermission.school_id == g.school_id, RolePermission.school_id.is_(None))
-        ).all()
-        perm_ids = [rp.permission_id for rp in perms]
-        modules = []
-        if perm_ids:
-            permissions = Permission.query.filter(Permission.id.in_(perm_ids)).all()
-            modules = sorted(list(set(p.module for p in permissions)))
+        # Global permissions (system defaults)
+        global_perms = RolePermission.query.filter_by(role_id=role.id, school_id=None).all()
+        global_pids = [rp.permission_id for rp in global_perms]
+        global_modules = []
+        if global_pids:
+            perms = Permission.query.filter(Permission.id.in_(global_pids)).all()
+            global_modules = sorted(list(set(p.module for p in perms)))
+
+        # School-specific permissions (overrides)
+        school_perms = RolePermission.query.filter_by(role_id=role.id, school_id=g.school_id).all()
+        school_pids = [rp.permission_id for rp in school_perms]
+        school_modules = []
+        if school_pids:
+            perms = Permission.query.filter(Permission.id.in_(school_pids)).all()
+            school_modules = sorted(list(set(p.module for p in perms)))
+
+        # Effective modules = global defaults + school overrides
+        modules = sorted(list(set(global_modules + school_modules)))
 
         result.append({
             **role.to_dict(),
             'is_system_role': role.is_system_role,
             'modules': modules,
+            'global_modules': global_modules,
+            'school_modules': school_modules,
             'user_count': User.query.filter_by(school_id=g.school_id, role_id=role.id, is_active=True).count()
         })
     return success_response(result)
@@ -321,13 +348,10 @@ def update_role_permissions(role_id):
     data = g.get('validated_data') or request.get_json()
     modules = data.get('modules', [])
 
-    # Remove existing school-specific permissions for this role
+    # Remove only school-specific permissions for this role
     RolePermission.query.filter_by(role_id=role_id, school_id=g.school_id).delete()
 
-    # Also remove global ones for this role (we'll replace with school-specific)
-    RolePermission.query.filter_by(role_id=role_id, school_id=None).delete()
-
-    # Add new permissions
+    # Add new permissions (school-specific override; globals remain as defaults)
     all_perms = {p.name: p.id for p in Permission.query.all()}
     for module in modules:
         for action in ['view', 'manage']:
@@ -382,21 +406,37 @@ def list_users():
 @role_required('school_admin')
 @validate({
     'email': {'required': True},
-    'password': {'required': True, 'min_len': 6},
+    'password': {'required': True, 'min_len': 8},
     'first_name': {'required': True},
     'role_id': {'required': True, 'type': int},
 })
 def create_user():
-    """Create a new user (staff login account)"""
+    """Create a new user with optional staff/student profile fields"""
     data = g.get('validated_data') or request.get_json()
     if not data:
         return error_response('No data provided')
 
-    # Check email unique within school
+    # ---- validation ----
+    phone_val = data.get('phone')
+    if phone_val and not re.match(r'^\d+$', phone_val):
+        return error_response('Phone must contain only digits')
+    email_val = data.get('email')
+    if email_val and '@' not in email_val:
+        return error_response('Email must contain @')
+    aadhar_val = data.get('aadhar_no')
+    if aadhar_val and not re.match(r'^\d{12}$', aadhar_val):
+        return error_response('Aadhaar number must be exactly 12 digits')
+    for p in data.get('parents', []):
+        pp = p.get('phone')
+        if pp and not re.match(r'^\d+$', pp):
+            return error_response('Parent phone must contain only digits')
+        pe = p.get('email')
+        if pe and '@' not in pe:
+            return error_response('Parent email must contain @')
+
     if User.query.filter_by(school_id=g.school_id, email=data['email']).first():
         return error_response('Email already exists in this school')
 
-    # Validate role exists
     role = Role.query.get(data['role_id'])
     if not role:
         return error_response('Invalid role')
@@ -413,26 +453,61 @@ def create_user():
     db.session.add(user)
     db.session.flush()
 
-    # Auto-create staff record for ALL user roles (including parent/student)
-    from app.models.staff import Staff
-    existing_staff = Staff.query.filter_by(school_id=g.school_id, user_id=user.id).first()
-    if not existing_staff:
-        staff = Staff(
-            school_id=g.school_id,
-            user_id=user.id,
-            first_name=data['first_name'],
-            last_name=data.get('last_name', ''),
-            email=data['email'],
-            phone=data.get('phone'),
-            designation=role.description or role.name.replace('_', ' ').title(),
-            department=role.name,
-            staff_type='teaching',
-            status='active',
-            approval_status='approved',
-        )
-        db.session.add(staff)
+    if role.name == 'student':
+        from app.models.student import Student, ParentDetail
+        existing = Student.query.filter_by(school_id=g.school_id, user_id=user.id).first()
+        if not existing:
+            student = Student(
+                school_id=g.school_id,
+                user_id=user.id,
+                first_name=data['first_name'],
+                last_name=data.get('last_name', ''),
+                admission_no=data.get('admission_no', ''),
+                gender=data.get('gender'),
+                date_of_birth=data.get('date_of_birth'),
+                address=data.get('address', ''),
+                city=data.get('city', ''),
+                state=data.get('state', ''),
+                phone=data.get('phone', ''),
+            )
+            db.session.add(student)
+            db.session.flush()
 
-    # Sync additional roles from request
+            for parent_data in data.get('parents', []):
+                if parent_data.get('name'):
+                    pd = ParentDetail(
+                        school_id=g.school_id,
+                        student_id=student.admission_no,
+                        relation=parent_data.get('relation', 'father'),
+                        name=parent_data['name'],
+                        phone=parent_data.get('phone', ''),
+                        email=parent_data.get('email', ''),
+                        occupation=parent_data.get('occupation', ''),
+                    )
+                    db.session.add(pd)
+    else:
+        from app.models.staff import Staff
+        existing = Staff.query.filter_by(school_id=g.school_id, user_id=user.id).first()
+        if not existing:
+            staff = Staff(
+                school_id=g.school_id,
+                user_id=user.id,
+                first_name=data['first_name'],
+                last_name=data.get('last_name', ''),
+                email=data['email'],
+                phone=data.get('phone'),
+                employee_id=data.get('employee_id', ''),
+                designation=data.get('designation', '') or (role.description or role.name.replace('_', ' ').title()),
+                department=data.get('department', '') or role.name,
+                date_of_joining=data.get('date_of_joining'),
+                qualification=data.get('qualification', ''),
+                staff_type=data.get('staff_type', 'teaching'),
+                contract_type=data.get('contract_type', 'permanent'),
+                status='active',
+                approval_status='approved',
+            )
+            db.session.add(staff)
+
     additional_role_ids = data.get('role_ids', [])
     for rid in additional_role_ids:
         if rid != role.id:
@@ -494,8 +569,8 @@ def update_user(user_id):
     if 'is_active' in data:
         user.is_active = data['is_active']
     if 'password' in data and data['password']:
-        if len(data['password']) < 6:
-            return error_response('Password must be at least 6 characters')
+        if len(data['password']) < 8:
+            return error_response('Password must be at least 8 characters')
         user.set_password(data['password'])
 
     db.session.commit()

@@ -23,7 +23,8 @@ const INITIAL_FORM = {
   parents: [
     { relation: 'father', name: '', phone: '', email: '', occupation: '', income: '', qualification: '', aadhar_no: '' },
     { relation: 'mother', name: '', phone: '', email: '', occupation: '', income: '', qualification: '', aadhar_no: '' }
-  ]
+  ],
+  create_login: false, login_id: '', password: ''
 };
 
 export default function StudentForm() {
@@ -93,16 +94,33 @@ export default function StudentForm() {
     });
     if (Object.keys(errs).length) { setError(Object.values(errs)[0]); return; }
     if (!form.first_name) { toast.error('First name is required'); setActiveStep(0); return; }
+    if (!form.admission_no) { toast.error('Enrollment / Admission No. is required'); setActiveStep(1); return; }
+    if (!form.address) { toast.error('Address is required'); setActiveStep(1); return; }
+    if (!form.class_id) { toast.error('Class is required'); setActiveStep(1); return; }
+    const hasParentName = form.parents?.some(p => p.name?.trim());
+    if (!hasParentName) { toast.error('At least one parent/guardian name is required'); setActiveStep(2); return; }
+    const hasParentPhone = form.parents?.some(p => p.phone?.trim());
+    if (!hasParentPhone) { toast.error('At least one parent/guardian phone is required'); setActiveStep(2); return; }
+    if (form.create_login && !form.password) { toast.error('Password is required when creating login'); return; }
     setSaving(true);
     try {
       if (isEdit) {
         await studentsAPI.update(id, form);
         toast.success('Student updated successfully');
+        navigate('/students');
       } else {
-        await studentsAPI.create(form);
-        toast.success('Student created successfully');
+        const res = await studentsAPI.create(form);
+        const creds = res.data.data?.login;
+        if (creds) {
+          toast.success(
+            `Student created!\nLogin: ${creds.username}\nPassword: ${creds.password}`,
+            { duration: 10000 }
+          );
+        } else {
+          toast.success('Student created successfully');
+        }
+        navigate('/students');
       }
-      navigate('/students');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error saving student');
     }
@@ -141,7 +159,7 @@ export default function StudentForm() {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
-              <TextField fullWidth label="Aadhar No" value={form.aadhar_no} onChange={handleChange('aadhar_no')} />
+              <TextField fullWidth label="Aadhar No" value={form.aadhar_no} onChange={e => setForm({...form, aadhar_no: e.target.value.replace(/\D/g, '')})} inputProps={{ maxLength: 12 }} />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <TextField fullWidth label="Religion" value={form.religion} onChange={handleChange('religion')} />
@@ -172,7 +190,7 @@ export default function StudentForm() {
           )}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={4}>
-              <TextField fullWidth label="Admission No" value={form.admission_no}
+              <TextField fullWidth required label="Admission No" value={form.admission_no}
                 onChange={handleChange('admission_no')}
                 InputProps={{ readOnly: isEdit }}
                 helperText={isEdit ? 'Unique ID — cannot be changed' : 'Unique per school'} />
@@ -184,7 +202,7 @@ export default function StudentForm() {
               <TextField fullWidth label="Admission Date" type="date" InputLabelProps={{ shrink: true }} value={form.admission_date} onChange={handleChange('admission_date')} />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
-              <TextField fullWidth select label="Class" value={form.class_id} onChange={e => setForm({ ...form, class_id: e.target.value, section_id: '' })}>
+              <TextField fullWidth required select label="Class" value={form.class_id} onChange={e => setForm({ ...form, class_id: e.target.value, section_id: '' })}>
                 <MenuItem value="">Select</MenuItem>
                 {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </TextField>
@@ -212,7 +230,7 @@ export default function StudentForm() {
           <Typography variant="h6" gutterBottom>Address</Typography>
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <TextField fullWidth label="Full Address" multiline rows={2} value={form.address} onChange={handleChange('address')} />
+              <TextField fullWidth required label="Full Address" multiline rows={2} value={form.address} onChange={handleChange('address')} />
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField fullWidth label="City" value={form.city} onChange={handleChange('city')} />
@@ -250,13 +268,13 @@ export default function StudentForm() {
                   </TextField>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <TextField fullWidth label="Full Name" value={parent.name} onChange={handleParentChange(idx, 'name')} />
+                  <TextField fullWidth required={idx === 0} label="Full Name" value={parent.name} onChange={handleParentChange(idx, 'name')} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <TextField fullWidth label="Phone" value={parent.phone} onChange={handleParentChange(idx, 'phone')} />
+                  <TextField fullWidth required={idx === 0} label="Phone" value={parent.phone} onChange={e => { const parents = [...form.parents]; parents[idx] = {...parents[idx], phone: e.target.value.replace(/\D/g, '')}; setForm({...form, parents}); }} inputProps={{ maxLength: 10 }} error={parent.phone.length > 0 && parent.phone.length < 10} helperText={parent.phone.length > 0 && parent.phone.length < 10 ? 'Phone must be at least 10 digits' : ''} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <TextField fullWidth label="Email" value={parent.email} onChange={handleParentChange(idx, 'email')} />
+                  <TextField fullWidth label="Email" value={parent.email} onChange={handleParentChange(idx, 'email')} error={parent.email.length > 0 && !parent.email.includes('@')} helperText={parent.email.length > 0 && !parent.email.includes('@') ? 'Invalid email' : ''} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField fullWidth label="Occupation" value={parent.occupation} onChange={handleParentChange(idx, 'occupation')} />
@@ -268,7 +286,7 @@ export default function StudentForm() {
                   <TextField fullWidth label="Qualification" value={parent.qualification} onChange={handleParentChange(idx, 'qualification')} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <TextField fullWidth label="Aadhar No" value={parent.aadhar_no} onChange={handleParentChange(idx, 'aadhar_no')} />
+                  <TextField fullWidth label="Aadhar No" value={parent.aadhar_no} onChange={e => { const parents = [...form.parents]; parents[idx] = {...parents[idx], aadhar_no: e.target.value.replace(/\D/g, '')}; setForm({...form, parents}); }} inputProps={{ maxLength: 12 }} />
                 </Grid>
               </Grid>
             </Box>
@@ -297,7 +315,7 @@ export default function StudentForm() {
               <TextField fullWidth label="Emergency Contact Person" value={form.emergency_person} onChange={handleChange('emergency_person')} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Emergency Contact Number" value={form.emergency_contact} onChange={handleChange('emergency_contact')} />
+              <TextField fullWidth label="Emergency Contact Number" value={form.emergency_contact} onChange={e => setForm({...form, emergency_contact: e.target.value.replace(/\D/g, '')})} inputProps={{ maxLength: 15 }} />
             </Grid>
           </Grid>
 
@@ -325,6 +343,34 @@ export default function StudentForm() {
                 <MenuItem value="">None</MenuItem>
                 {houses.map(h => <MenuItem key={h.id} value={h.id}>{h.name}</MenuItem>)}
               </TextField>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }} />
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: '#f8fafc' }}>
+                <Typography variant="subtitle2" gutterBottom fontWeight={600}>Student Login</Typography>
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} sm={4}>
+                    <TextField fullWidth select label="Create Login?" value={form.create_login ? 'yes' : 'no'}
+                      onChange={e => setForm({ ...form, create_login: e.target.value === 'yes' })}>
+                      <MenuItem value="yes">Yes — Create Login</MenuItem>
+                      <MenuItem value="no">No — Skip Login</MenuItem>
+                    </TextField>
+                  </Grid>
+                  {form.create_login && (
+                    <>
+                      <Grid item xs={12} sm={4}>
+                        <TextField fullWidth label="Login ID" value={form.login_id}
+                          placeholder="Leave blank for auto (admission no)" onChange={handleChange('login_id')} />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField fullWidth required label="Password" type="password" value={form.password}
+                          onChange={handleChange('password')} />
+                      </Grid>
+                    </>
+                  )}
+                </Grid>
+              </Paper>
             </Grid>
           </Grid>
 

@@ -1,3 +1,4 @@
+import os
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -6,6 +7,7 @@ from flask_cors import CORS
 from flask_mail import Mail
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import config
 
@@ -17,18 +19,35 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["5000 per day", "
 
 
 def create_app(config_name='default'):
+    cfg = config[config_name]
+    if hasattr(cfg, 'validate'):
+        cfg.validate()
     app = Flask(__name__)
-    app.config.from_object(config[config_name])
+    app.config.from_object(cfg)
 
-    # Initialize extensions
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    allowed_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
     mail.init_app(app)
     limiter.init_app(app)
 
-    # ── Global JSON sanitization: empty strings -> None for ALL routes ──
+    with app.app_context():
+        from app.models import user, school, subscription
+        try:
+            _deduplicate_roles()
+            _seed_roles_if_empty()
+            _seed_permissions_if_empty()
+            _seed_super_admin_if_empty()
+        except Exception:
+            pass
+
+    # Silence Flask-Migrate warning about alembic_version
+    import logging
+    logging.getLogger('alembic.runtime.migration').setLevel(logging.WARNING)
+
     import json as _json
 
     def _sanitize(obj):
@@ -52,7 +71,6 @@ def create_app(config_name='default'):
             except Exception:
                 pass
 
-    # Handle expired/invalid JWT errors gracefully
     @jwt.invalid_token_loader
     def invalid_token_callback(error_string):
         return jsonify({'success': False, 'message': 'Invalid token', 'error': error_string}), 401
@@ -65,7 +83,6 @@ def create_app(config_name='default'):
     def expired_token_callback(jwt_header, jwt_payload):
         return jsonify({'success': False, 'message': 'Token has expired'}), 401
 
-    # Register blueprints
     from app.routes.auth import auth_bp
     from app.routes.schools import schools_bp
     from app.routes.students import students_bp
@@ -136,8 +153,6 @@ def create_app(config_name='default'):
     app.register_blueprint(roles_bp, url_prefix='/api/roles')
     app.register_blueprint(support_bp, url_prefix='/api/support')
 
-    # Serve uploaded files (question papers, etc.)
-    import os
     from flask import send_from_directory
 
     @app.route('/uploads/<path:filename>')
@@ -145,4 +160,161 @@ def create_app(config_name='default'):
         upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
         return send_from_directory(upload_dir, filename)
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return response
+
     return app
+
+
+def _deduplicate_roles():
+    """Remove duplicate Role rows and enforce unique name constraint."""
+    from app.models.user import Role, User, user_roles
+    from sqlalchemy import text
+
+    # Find names that appear more than once
+    dupes = db.session.query(
+        Role.name, db.func.count(Role.id).label('cnt')
+    ).group_by(Role.name).having(db.func.count(Role.id) > 1).all()
+
+    if not dupes:
+        # Try to add unique index if missing (MySQL)
+        try:
+            db.session.execute(text(
+                "ALTER TABLE roles ADD UNIQUE INDEX uq_role_name (name)"
+            ))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return
+
+    for (name, _) in dupes:
+        records = Role.query.filter_by(name=name).order_by(Role.id).all()
+        keep = records[0]
+        delete_ids = [r.id for r in records[1:]]
+
+        # Reassign user primary role
+        User.query.filter(User.role_id.in_(delete_ids)).update(
+            {User.role_id: keep.id}, synchronize_session=False
+        )
+
+        # Reassign user_rows entries
+        for did in delete_ids:
+            rows = db.session.execute(
+                text("SELECT user_id FROM user_roles WHERE role_id = :rid"),
+                {'rid': did}
+            ).fetchall()
+            for (uid,) in rows:
+                already = db.session.execute(
+                    text("SELECT 1 FROM user_roles WHERE user_id = :uid AND role_id = :rid"),
+                    {'uid': uid, 'rid': keep.id}
+                ).first()
+                if not already:
+                    db.session.execute(
+                        text("INSERT INTO user_roles (user_id, role_id) VALUES (:uid, :rid)"),
+                        {'uid': uid, 'rid': keep.id}
+                    )
+
+        # Delete duplicate roles
+        for did in delete_ids:
+            db.session.execute(text("DELETE FROM roles WHERE id = :id"), {'id': did})
+
+    db.session.commit()
+
+    # Add unique index
+    try:
+        db.session.execute(text("ALTER TABLE roles ADD UNIQUE INDEX uq_role_name (name)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _seed_roles_if_empty():
+    from app.models.user import Role
+    roles = [
+        ('super_admin', 'Platform Super Admin', True),
+        ('school_admin', 'School Administrator', True),
+        ('principal', 'Principal', True),
+        ('teacher', 'Teacher', True),
+        ('exam_controller', 'Exam Controller', True),
+        ('academic_controller', 'Academic Controller', True),
+        ('it_department', 'IT Department', True),
+        ('accountant', 'Accountant', True),
+        ('counselor', 'Counselor / Marketing', True),
+        ('parent', 'Parent', True),
+        ('student', 'Student', True),
+        ('librarian', 'Librarian', True),
+        ('transport_manager', 'Transport Manager', True),
+    ]
+    for name, desc, system in roles:
+        if not Role.query.filter_by(name=name).first():
+            db.session.add(Role(name=name, description=desc, is_system_role=system))
+    db.session.commit()
+
+
+def _seed_permissions_if_empty():
+    """Seed Permission records so role-permission toggles can save correctly."""
+    from app.models.user import Permission, Role, RolePermission
+    if Permission.query.first():
+        return
+    module_keys = [
+        'dashboard', 'students', 'staff', 'leads', 'admissions', 'academics',
+        'attendance', 'fees', 'communication', 'reports', 'inventory', 'transport',
+        'library', 'parents', 'health', 'hostel', 'canteen', 'sports', 'settings',
+        'data_import',
+    ]
+    for mod in module_keys:
+        for action in ['view', 'manage']:
+            db.session.add(Permission(name=f'{mod}.{action}', module=mod))
+    db.session.commit()
+
+    # Grant all modules to super_admin and school_admin by default
+    admin_roles = Role.query.filter(Role.name.in_(['super_admin', 'school_admin'])).all()
+    all_perm_ids = [p.id for p in Permission.query.all()]
+    for role in admin_roles:
+        for pid in all_perm_ids:
+            if not RolePermission.query.filter_by(role_id=role.id, permission_id=pid, school_id=None).first():
+                db.session.add(RolePermission(role_id=role.id, permission_id=pid, school_id=None))
+
+    # Dashboard is default for ALL roles
+    dashboard_perms = Permission.query.filter(Permission.module == 'dashboard').all()
+    all_roles = Role.query.all()
+    for role in all_roles:
+        for dp in dashboard_perms:
+            if not RolePermission.query.filter_by(role_id=role.id, permission_id=dp.id, school_id=None).first():
+                db.session.add(RolePermission(role_id=role.id, permission_id=dp.id, school_id=None))
+
+    db.session.commit()
+
+
+def _seed_super_admin_if_empty():
+    from app.models.user import User, Role
+    from app.models.school import School
+    role = Role.query.filter_by(name='super_admin').first()
+    if not role:
+        return
+    if User.query.filter_by(role_id=role.id).first():
+        return
+    email = os.getenv('SUPER_ADMIN_EMAIL')
+    password = os.getenv('SUPER_ADMIN_PASSWORD')
+    if not email or not password:
+        import logging
+        logging.warning('SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set in .env to create super admin')
+        return
+    user = User(
+        school_id=None,
+        role_id=role.id,
+        email=email,
+        first_name='Super',
+        last_name='Admin',
+        is_active=True,
+    )
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()

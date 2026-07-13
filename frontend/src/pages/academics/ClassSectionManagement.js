@@ -21,19 +21,8 @@ export default function ClassSectionManagement() {
   const [editingClass, setEditingClass] = useState(null);
   const [editingSection, setEditingSection] = useState(null);
   const [selectedClassId, setSelectedClassId] = useState(null);
-  const [classForm, setClassForm] = useState({ name: '', numeric_name: '', description: '', stream: '', sections: [] });
+  const [classForm, setClassForm] = useState({ name: '', description: '', stream: '' });
   const [sectionForm, setSectionForm] = useState({ name: '', capacity: 40 });
-  const [sectionNameOptions] = useState(['A', 'B', 'C', 'D', 'E', 'F']);
-
-  const classOptions = [
-    { label: 'Nursery', num: 0 }, { label: 'KG', num: 0 },
-    { label: 'Class 1', num: 1 }, { label: 'Class 2', num: 2 },
-    { label: 'Class 3', num: 3 }, { label: 'Class 4', num: 4 },
-    { label: 'Class 5', num: 5 }, { label: 'Class 6', num: 6 },
-    { label: 'Class 7', num: 7 }, { label: 'Class 8', num: 8 },
-    { label: 'Class 9', num: 9 }, { label: 'Class 10', num: 10 },
-    { label: 'Class 11', num: 11 }, { label: 'Class 12', num: 12 },
-  ];
   const streamOptions = ['Science', 'Commerce', 'Arts'];
 
   const fetchClasses = () => {
@@ -47,56 +36,41 @@ export default function ClassSectionManagement() {
   useEffect(() => { fetchClasses(); }, []);
 
   // Class handlers
-  const parseClassForEdit = (name) => {
-    const parts = (name || '').split(' ');
-    if (parts[0] === 'Class') {
-      const num = parts[1];
-      const stream = parts.slice(2).join(' ');
-      return { label: `Class ${num}`, num: parseInt(num), stream: stream || '' };
-    }
-    const found = classOptions.find(c => c.label === name);
-    return found ? { label: name, num: found.num, stream: '' } : { label: '', num: 0, stream: '' };
-  };
-
   const openClassDialog = (cls = null) => {
     if (cls) {
       setEditingClass(cls);
-      const parsed = parseClassForEdit(cls.name);
-      setClassForm({ name: parsed.label, numeric_name: parsed.num?.toString() || '', description: cls.description || '', stream: parsed.stream, sections: [] });
+      const parts = (cls.name || '').split(' ');
+      const isStreamClass = ['Class 11', 'Class 12'].includes(parts.slice(0, 2).join(' '));
+      const baseName = isStreamClass ? parts.slice(0, 2).join(' ') : cls.name;
+      const stream = isStreamClass ? parts.slice(2).join(' ') : '';
+      setClassForm({ name: baseName, description: cls.description || '', stream });
     } else {
       setEditingClass(null);
-      setClassForm({ name: '', numeric_name: '', description: '', stream: '', sections: [] });
+      setClassForm({ name: '', description: '', stream: '' });
     }
     setClassDialog(true);
   };
 
   const handleClassSave = async () => {
     if (!classForm.name) { toast.error('Class name is required'); return; }
-    const hasStream = ['Class 11', 'Class 12'].includes(classForm.name);
-    if (hasStream && !classForm.stream) { toast.error('Stream is required for Class 11/12'); return; }
-    const displayName = hasStream && classForm.stream ? `${classForm.name} ${classForm.stream}` : classForm.name;
-    const found = classOptions.find(c => c.label === classForm.name);
-    const numeric = found ? found.num : 0;
+    const isStreamClass = ['Class 11', 'Class 12'].includes(classForm.name);
+    if (isStreamClass && !classForm.stream) { toast.error('Stream is required for Class 11/12'); return; }
+    const displayName = isStreamClass && classForm.stream ? `${classForm.name} ${classForm.stream}` : classForm.name;
+    // Prevent duplicate names on frontend
+    if (!editingClass && classes.some(c => c.name.toLowerCase() === displayName.toLowerCase())) {
+      toast.error('Class with this name already exists'); return;
+    }
     try {
       const data = {
         name: displayName,
-        numeric_name: numeric != null ? numeric : undefined,
         description: classForm.description || undefined
       };
       if (editingClass) {
         await studentsAPI.updateClass(editingClass.id, data);
         toast.success('Class updated');
       } else {
-        const res = await studentsAPI.createClass(data);
-        const newClassId = res.data.data?.id;
-        if (newClassId && classForm.sections.length > 0) {
-          await Promise.all(classForm.sections.map(sec =>
-            studentsAPI.createSection({ class_id: newClassId, name: sec, capacity: 40 })
-          ));
-          toast.success(`Class created with ${classForm.sections.length} sections`);
-        } else {
-          toast.success('Class created');
-        }
+        await studentsAPI.createClass(data);
+        toast.success('Class created');
       }
       setClassDialog(false);
       fetchClasses();
@@ -248,11 +222,9 @@ export default function ClassSectionManagement() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth select label="Class Name" value={classForm.name}
-                onChange={e => setClassForm({ ...classForm, name: e.target.value, stream: '' })}
-                required>
-                {classOptions.map(c => <MenuItem key={c.label} value={c.label}>{c.label}</MenuItem>)}
-              </TextField>
+              <TextField fullWidth label="Class Name" value={classForm.name} required
+                onChange={e => setClassForm({ ...classForm, name: e.target.value })}
+                placeholder="e.g. Nursery, Class 1, Class 11" />
             </Grid>
             {['Class 11', 'Class 12'].includes(classForm.name) && (
               <Grid item xs={12} sm={6}>
@@ -263,26 +235,9 @@ export default function ClassSectionManagement() {
               </Grid>
             )}
             <Grid item xs={12}>
-              <TextField fullWidth label="Description" multiline rows={2} value={classForm.description}
+              <TextField fullWidth label="Description (optional)" multiline rows={2} value={classForm.description}
                 onChange={e => setClassForm({ ...classForm, description: e.target.value })} />
             </Grid>
-            {!editingClass && (
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>Create Sections</Typography>
-                <Box display="flex" gap={1} flexWrap="wrap">
-                  {sectionNameOptions.map(s => (
-                    <Chip key={s} label={`Section ${s}`} clickable color={classForm.sections.includes(s) ? 'primary' : 'default'}
-                      variant={classForm.sections.includes(s) ? 'filled' : 'outlined'}
-                      onClick={() => setClassForm({
-                        ...classForm,
-                        sections: classForm.sections.includes(s)
-                          ? classForm.sections.filter(x => x !== s)
-                          : [...classForm.sections, s]
-                      })} />
-                  ))}
-                </Box>
-              </Grid>
-            )}
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -300,10 +255,9 @@ export default function ClassSectionManagement() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <TextField fullWidth select label="Section Name" value={sectionForm.name}
-                onChange={e => setSectionForm({ ...sectionForm, name: e.target.value })} required>
-                {sectionNameOptions.map(s => <MenuItem key={s} value={s}>Section {s}</MenuItem>)}
-              </TextField>
+              <TextField fullWidth label="Section Name" value={sectionForm.name} required
+                onChange={e => setSectionForm({ ...sectionForm, name: e.target.value })}
+                placeholder="e.g. A, B, C or Morning, Evening" />
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Capacity" type="number" value={sectionForm.capacity}

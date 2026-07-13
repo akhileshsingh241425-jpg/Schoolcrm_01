@@ -190,10 +190,10 @@ export default function ExamController() {
     if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
     // Validate date is within exam range
     if (selectedExam?.start_date && schedForm.exam_date < selectedExam.start_date) {
-      toast.error(`Date cannot be before exam start date (${selectedExam.start_date})`); return;
+      toast.error(`Date cannot be before exam start date (${selectedExam?.start_date})`); return;
     }
     if (selectedExam?.end_date && schedForm.exam_date > selectedExam.end_date) {
-      toast.error(`Date cannot be after exam end date (${selectedExam.end_date})`); return;
+      toast.error(`Date cannot be after exam end date (${selectedExam?.end_date})`); return;
     }
     setAddingSched(true);
     try {
@@ -572,9 +572,9 @@ export default function ExamController() {
           <Button size="small" onClick={() => { setView('list'); setSelectedClass(''); }} sx={{ textTransform: 'none', mb: 0.5 }}>
             ← Back to Exams
           </Button>
-          <Typography variant="h5" fontWeight={800}>{selectedExam.name} — Date Sheet</Typography>
+          <Typography variant="h5" fontWeight={800}>{selectedExam?.name} — Date Sheet</Typography>
           <Typography variant="body2" color="text.secondary" component="span">
-            {selectedExam.start_date} → {selectedExam.end_date} • 
+            {selectedExam?.start_date} → {selectedExam?.end_date} • 
             Status: <Chip label={dateSheetStatus.replace('_',' ')} size="small" sx={{ ml: 0.5, fontWeight: 600, textTransform: 'capitalize',
               bgcolor: alpha(dateSheetStatus === 'approved' ? '#10b981' : dateSheetStatus === 'pending_approval' ? '#f59e0b' : dateSheetStatus === 'rejected' ? '#ef4444' : '#94a3b8', 0.12),
               color: dateSheetStatus === 'approved' ? '#10b981' : dateSheetStatus === 'pending_approval' ? '#f59e0b' : dateSheetStatus === 'rejected' ? '#ef4444' : '#94a3b8'
@@ -615,7 +615,7 @@ export default function ExamController() {
           )}
           {schedules.length > 0 && (
             <Button variant="outlined" startIcon={<Print />}
-              onClick={() => handlePrint('Date Sheet - ' + selectedExam.name, 'printable-datesheet')}
+              onClick={() => handlePrint('Date Sheet - ' + selectedExam?.name, 'printable-datesheet')}
               sx={{ borderRadius: 2, textTransform: 'none' }}>
               Print
             </Button>
@@ -766,7 +766,7 @@ export default function ExamController() {
                   }).catch(() => setSections([]));
                 }}>
                 {(selectedExam?.class_ids?.length > 0
-                  ? classes.filter(c => selectedExam.class_ids.includes(c.id))
+                  ? classes.filter(c => selectedExam?.class_ids?.includes(c.id))
                   : classes
                 ).map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </TextField>
@@ -857,10 +857,10 @@ export default function ExamController() {
               ← Back to Date Sheet
             </Button>
             <Typography variant="h4" fontWeight={800}>Question Papers</Typography>
-            <Typography variant="body1" color="text.secondary">{selectedExam.name}</Typography>
+            <Typography variant="body1" color="text.secondary">{selectedExam?.name}</Typography>
           </Box>
           <IconButton onClick={() => {
-            examMgmtAPI.listQuestionPapers(selectedExam.id).then(res => setPapers(res.data?.data || []));
+            examMgmtAPI.listQuestionPapers(selectedExam?.id).then(res => setPapers(res.data?.data || []));
           }}><Refresh /></IconButton>
         </Box>
 
@@ -1129,14 +1129,14 @@ export default function ExamController() {
             </Button>
             <Typography variant="h5" fontWeight={800}>🏫 Invigilator Duty Dashboard</Typography>
             <Typography variant="body2" color="text.secondary">
-              {selectedExam.name} — Assign multiple teachers per room
+              {selectedExam?.name} — Assign multiple teachers per room
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <Chip label={`${assignedSlots}/${totalSlots} assigned`} color={assignedSlots === totalSlots ? 'success' : 'warning'} sx={{ fontWeight: 700 }} />
             {assignedSlots > 0 && (
               <Button variant="outlined" startIcon={<Print />} size="small"
-                onClick={() => handlePrint('Invigilator Duty - ' + selectedExam.name, 'printable-duty')}
+                onClick={() => handlePrint('Invigilator Duty - ' + selectedExam?.name, 'printable-duty')}
                 sx={{ borderRadius: 2, textTransform: 'none' }}>
                 Print Duty Chart
               </Button>

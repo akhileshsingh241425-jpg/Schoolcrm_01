@@ -75,6 +75,9 @@ function StaffListTab() {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: '', department: '', staff_type: '' });
+  const [toggleDlg, setToggleDlg] = useState({ open: false, staff: null });
+  const [toggleReason, setToggleReason] = useState('');
+  const [historyDlg, setHistoryDlg] = useState({ open: false, staff: null, logs: [] });
   const navigate = useNavigate();
 
   const load = useCallback(() => {
@@ -82,6 +85,23 @@ function StaffListTab() {
       .then(r => setData(r.data.data)).catch(() => {});
   }, [page, search, filters]);
   useEffect(() => { load(); }, [load]);
+
+  const openToggle = (staff) => { setToggleDlg({ open: true, staff }); setToggleReason(''); };
+  const handleToggle = async () => {
+    if (!toggleReason.trim()) { toast.error('Reason is required'); return; }
+    try {
+      await staffAPI.toggleStatus(toggleDlg.staff.id, { reason: toggleReason });
+      toast.success(`Staff ${toggleDlg.staff.status === 'active' ? 'deactivated' : 'activated'}`);
+      setToggleDlg({ open: false, staff: null });
+      load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+  const openHistory = async (staff) => {
+    try {
+      const r = await staffAPI.getStatusHistory(staff.id);
+      setHistoryDlg({ open: true, staff, logs: r.data.data || [] });
+    } catch { toast.error('Failed to load history'); }
+  };
 
   return (
     <Box>
@@ -104,9 +124,10 @@ function StaffListTab() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Emp ID</TableCell><TableCell>Name</TableCell><TableCell>Type</TableCell>
+              <TableCell>Emp ID</TableCell><TableCell>Name</TableCell><TableCell>Roles</TableCell>
+              <TableCell>Type</TableCell>
               <TableCell>Designation</TableCell><TableCell>Department</TableCell>
-              <TableCell>Phone</TableCell><TableCell>Contract</TableCell><TableCell>Status</TableCell>
+              <TableCell>Phone</TableCell><TableCell>Status</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -115,23 +136,88 @@ function StaffListTab() {
               <TableRow key={s.id} hover>
                 <TableCell>{s.employee_id || '-'}</TableCell>
                 <TableCell><strong>{s.full_name}</strong></TableCell>
+                <TableCell>
+                  {s.role && <Chip label={s.role} size="small" color="primary" variant="filled" sx={{ mr: 0.5, mb: 0.3 }} />}
+                  {(s.roles || []).filter(r => r !== s.role).map(r => (
+                    <Chip key={r} label={r} size="small" variant="outlined" sx={{ mr: 0.3, mb: 0.3 }} />
+                  ))}
+                </TableCell>
                 <TableCell><Chip label={s.staff_type || 'teaching'} size="small" variant="outlined" /></TableCell>
                 <TableCell>{s.designation || '-'}</TableCell>
                 <TableCell>{s.department || '-'}</TableCell>
                 <TableCell>{s.phone || '-'}</TableCell>
-                <TableCell><Chip label={s.contract_type || 'permanent'} size="small" /></TableCell>
                 <TableCell><Chip label={s.status} size="small" color={s.status === 'active' ? 'success' : s.status === 'on_notice' ? 'warning' : 'default'} /></TableCell>
                 <TableCell>
                   <IconButton size="small" onClick={() => navigate(`/staff/${s.id}`)}><Visibility fontSize="small" /></IconButton>
+                  <Tooltip title="Edit">
+                    <IconButton size="small" color="primary" onClick={() => navigate(`/staff/${s.id}/edit`)}><Edit fontSize="small" /></IconButton>
+                  </Tooltip>
+                  <Tooltip title={s.status === 'active' ? 'Deactivate' : 'Activate'}>
+                    <IconButton size="small" color={s.status === 'active' ? 'error' : 'success'} onClick={() => openToggle(s)}>
+                      {s.status === 'active' ? <Block fontSize="small" /> : <Check fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Status History">
+                    <IconButton size="small" onClick={() => openHistory(s)}><AccessTime fontSize="small" /></IconButton>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}
-            {data.items?.length === 0 && <TableRow><TableCell colSpan={9} align="center">No staff found</TableCell></TableRow>}
+            {data.items?.length === 0 && <TableRow><TableCell colSpan={10} align="center">No staff found</TableCell></TableRow>}
           </TableBody>
         </Table>
         <TablePagination component="div" count={data.total || 0} page={page}
           onPageChange={(e, p) => setPage(p)} rowsPerPage={20} rowsPerPageOptions={[20]} />
       </TableContainer>
+
+      {/* Toggle Status Dialog */}
+      <Dialog open={toggleDlg.open} onClose={() => setToggleDlg({ open: false, staff: null })} maxWidth="xs" fullWidth>
+        <DialogTitle>{toggleDlg.staff?.status === 'active' ? 'Deactivate' : 'Activate'} Staff</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {toggleDlg.staff?.full_name} ({toggleDlg.staff?.employee_id}) will be {toggleDlg.staff?.status === 'active' ? 'deactivated' : 'activated'}.
+          </Typography>
+          <TextField fullWidth multiline rows={2} label="Reason *" value={toggleReason}
+            onChange={e => setToggleReason(e.target.value)} required />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setToggleDlg({ open: false, staff: null })}>Cancel</Button>
+          <Button variant="contained" color={toggleDlg.staff?.status === 'active' ? 'error' : 'success'} onClick={handleToggle} disabled={!toggleReason.trim()}>
+            {toggleDlg.staff?.status === 'active' ? 'Deactivate' : 'Activate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status History Dialog */}
+      <Dialog open={historyDlg.open} onClose={() => setHistoryDlg({ open: false, staff: null, logs: [] })} maxWidth="sm" fullWidth>
+        <DialogTitle>Status History — {historyDlg.staff?.full_name}</DialogTitle>
+        <DialogContent>
+          {historyDlg.logs.length === 0 ? <Alert severity="info">No status changes recorded</Alert> : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Date</TableCell><TableCell>From</TableCell><TableCell>To</TableCell>
+                  <TableCell>Changed By</TableCell><TableCell>Reason</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {historyDlg.logs.map(l => (
+                  <TableRow key={l.id}>
+                    <TableCell>{l.created_at?.split('T')[0]}</TableCell>
+                    <TableCell><Chip label={l.old_status} size="small" /></TableCell>
+                    <TableCell><Chip label={l.new_status} size="small" color={l.new_status === 'active' ? 'success' : 'default'} /></TableCell>
+                    <TableCell>{l.changed_by_name}</TableCell>
+                    <TableCell>{l.reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryDlg({ open: false, staff: null, logs: [] })}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -547,8 +633,8 @@ function RecruitmentTab() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}><TextField fullWidth label="Name" required value={appForm.applicant_name} onChange={e => setAppForm({...appForm, applicant_name: e.target.value})} /></Grid>
-            <Grid item xs={6}><TextField fullWidth label="Email" value={appForm.email} onChange={e => setAppForm({...appForm, email: e.target.value})} /></Grid>
-            <Grid item xs={6}><TextField fullWidth label="Phone" value={appForm.phone} onChange={e => setAppForm({...appForm, phone: e.target.value})} /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Email" value={appForm.email} onChange={e => setAppForm({...appForm, email: e.target.value})} error={appForm.email.length > 0 && !appForm.email.includes('@')} helperText={appForm.email.length > 0 && !appForm.email.includes('@') ? 'Invalid email' : ''} /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Phone" value={appForm.phone} onChange={e => setAppForm({...appForm, phone: e.target.value.replace(/\D/g, '')})} inputProps={{ maxLength: 10 }} /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Qualification" value={appForm.qualification} onChange={e => setAppForm({...appForm, qualification: e.target.value})} /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Experience (years)" type="number" value={appForm.experience_years} onChange={e => setAppForm({...appForm, experience_years: parseInt(e.target.value)})} /></Grid>
           </Grid>
@@ -829,7 +915,7 @@ function ApprovalsTab() {
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loginDialog, setLoginDialog] = useState(null);
-  const [loginData, setLoginData] = useState({ password: 'Welcome@123', role: 'teacher' });
+  const [loginData, setLoginData] = useState({ password: '', role: 'teacher' });
   const [creating, setCreating] = useState(false);
 
   const fetchPending = useCallback(() => {
@@ -858,11 +944,13 @@ function ApprovalsTab() {
   };
 
   const handleCreateLogin = () => {
+    if (!loginData.password) { toast.error('Password is required'); return; }
     setCreating(true);
     staffAPI.createLogin(loginDialog.id, loginData)
       .then(r => {
         toast.success(r.data.message);
         setLoginDialog(null);
+        setLoginData({ password: '', role: 'teacher' });
         fetchPending();
       })
       .catch(e => toast.error(e.response?.data?.message || 'Failed'))
@@ -909,7 +997,7 @@ function ApprovalsTab() {
                       <Chip label="Created" size="small" color="success" />
                     ) : s.approval_status === 'approved' ? (
                       <Button size="small" variant="outlined" startIcon={<VpnKey />}
-                        onClick={() => { setLoginDialog(s); setLoginData({ password: 'Welcome@123', role: s.department || 'teacher' }); }}>
+                        onClick={() => { setLoginDialog(s); setLoginData({ password: '', role: s.department || 'teacher' }); }}>
                         Create Login
                       </Button>
                     ) : '-'}
@@ -952,12 +1040,12 @@ function ApprovalsTab() {
           </Alert>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
-              <TextField fullWidth label="Email (Login ID)" value={loginDialog?.email || ''} disabled />
+              <TextField fullWidth label="Email (Login ID)" value={loginDialog?.email || ''} disabled error={(loginDialog?.email || '').length > 0 && !(loginDialog?.email || '').includes('@')} helperText={(loginDialog?.email || '').length > 0 && !(loginDialog?.email || '').includes('@') ? 'Invalid email' : ''} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Password" value={loginData.password}
+              <TextField fullWidth required label="Password" type="password" value={loginData.password}
                 onChange={e => setLoginData({ ...loginData, password: e.target.value })}
-                helperText="Default: Welcome@123. Staff can change after first login." />
+                error={!loginData.password} helperText={!loginData.password ? 'Password is required' : 'Min 8 characters'} />
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth>

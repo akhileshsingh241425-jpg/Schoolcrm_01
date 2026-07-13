@@ -9,7 +9,7 @@ env/
 # Environment
 .env
 *.env
-!deploy/.env.production
+# deploy/.env.production
 
 # Node
 node_modules/
@@ -53,3 +53,7 @@ backend/server_err.log
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Test files
+e2e-tests/
+frontend/src/pages/auth/Login.js.bak

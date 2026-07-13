@@ -203,7 +203,10 @@ export default function StaffManagement() {
       setSuccess('Staff deactivated');
       fetchStaff();
       fetchDashboard();
-    } catch { setError('Failed to deactivate'); }
+    } catch (err) {
+      console.error('DELETE STAFF ERROR:', err.response?.data || err.message || err);
+      setError(err.response?.data?.message || 'Failed to deactivate');
+    }
   };
 
   // ── Mark Attendance ──

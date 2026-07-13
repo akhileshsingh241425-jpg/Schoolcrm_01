@@ -28,7 +28,7 @@ class SportsTeam(db.Model):
     sport_id = db.Column(db.Integer, db.ForeignKey('sports.id'))
     name = db.Column(db.String(100), nullable=False)
     academic_year = db.Column(db.String(20))
-    captain_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    captain_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     coach_id = db.Column(db.Integer, db.ForeignKey('staff.id'))
     members = db.Column(db.Text)  # JSON list of student IDs
     age_group = db.Column(db.String(50))  # U-14, U-17, Senior
@@ -92,7 +92,7 @@ class Club(db.Model):
     category = db.Column(db.String(50))  # literary, science, arts, cultural, social
     description = db.Column(db.Text)
     advisor_id = db.Column(db.Integer, db.ForeignKey('staff.id'))
-    president_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    president_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     meeting_schedule = db.Column(db.String(200))
     max_members = db.Column(db.Integer, default=50)
     achievements = db.Column(db.Text)
@@ -109,7 +109,7 @@ class ClubMember(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
     club_id = db.Column(db.Integer, db.ForeignKey('clubs.id'))
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     role = db.Column(db.String(50), default='member')  # member, secretary, treasurer, president
     joined_date = db.Column(db.Date)
     status = db.Column(db.String(30), default='active')  # active, inactive, alumni
@@ -168,7 +168,7 @@ class FitnessRecord(db.Model):
     __tablename__ = 'fitness_records'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     academic_year = db.Column(db.String(20))
     test_date = db.Column(db.Date)
     height = db.Column(db.Numeric(5, 2))
@@ -192,7 +192,7 @@ class Certificate(db.Model):
     __tablename__ = 'certificates'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     certificate_type = db.Column(db.String(50))  # participation, winner, merit, appreciation
     event_name = db.Column(db.String(200))
     issued_date = db.Column(db.Date)

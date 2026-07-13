@@ -27,12 +27,12 @@ const CERTIFICATE_TYPES = [
 ];
 
 const SCHOOL_INFO = {
-  name: 'Delhi Public School',
-  address: '123 Education Lane, New Delhi - 110001',
-  phone: '+91-11-2345-6789',
-  email: 'info@dps.edu.in',
-  affiliation: 'CBSE Affiliation No: 2730001',
-  logo: '/logo.png',
+  name: 'Your School Name',
+  address: 'School Address',
+  phone: '',
+  email: '',
+  affiliation: '',
+  logo: '',
 };
 
 export default function CertificateGeneration() {

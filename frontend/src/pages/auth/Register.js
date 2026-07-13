@@ -74,11 +74,13 @@ export default function Register() {
               <TextField fullWidth label="School Code" required value={form.school_code} onChange={handleChange('school_code')} helperText="Unique code for login" />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="School Email" type="email" value={form.school_email} onChange={handleChange('school_email')}
+              <TextField fullWidth label="School Email" type="email" value={form.school_email} onChange={e => setForm({ ...form, school_email: e.target.value })}
+                error={form.school_email.length > 0 && !form.school_email.includes('@')} helperText={form.school_email.length > 0 && !form.school_email.includes('@') ? 'Invalid email' : ''}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ fontSize: 20, color: 'text.secondary' }} /></InputAdornment> }} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="School Phone" value={form.school_phone} onChange={handleChange('school_phone')}
+              <TextField fullWidth label="School Phone" value={form.school_phone} onChange={e => setForm({ ...form, school_phone: e.target.value.replace(/\D/g, '') })}
+                inputProps={{ maxLength: 10 }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Phone sx={{ fontSize: 20, color: 'text.secondary' }} /></InputAdornment> }} />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -100,11 +102,13 @@ export default function Register() {
               <TextField fullWidth label="Last Name" value={form.admin_last_name} onChange={handleChange('admin_last_name')} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Admin Email" type="email" required value={form.admin_email} onChange={handleChange('admin_email')}
+              <TextField fullWidth label="Admin Email" type="email" required value={form.admin_email} onChange={e => setForm({ ...form, admin_email: e.target.value })}
+                error={form.admin_email.length > 0 && !form.admin_email.includes('@')} helperText={form.admin_email.length > 0 && !form.admin_email.includes('@') ? 'Invalid email' : ''}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Email sx={{ fontSize: 20, color: 'text.secondary' }} /></InputAdornment> }} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Phone" value={form.admin_phone} onChange={handleChange('admin_phone')}
+              <TextField fullWidth label="Phone" value={form.admin_phone} onChange={e => setForm({ ...form, admin_phone: e.target.value.replace(/\D/g, '') })}
+                inputProps={{ maxLength: 10 }}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Phone sx={{ fontSize: 20, color: 'text.secondary' }} /></InputAdornment> }} />
             </Grid>
             <Grid item xs={12}>

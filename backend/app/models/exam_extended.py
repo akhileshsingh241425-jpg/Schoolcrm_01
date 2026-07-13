@@ -116,7 +116,7 @@ class GraceMarks(db.Model):
     exam_id = db.Column(db.Integer, db.ForeignKey('exams.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'))
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     marks_value = db.Column(db.Numeric(5, 2), nullable=False)
     reason = db.Column(db.Text, nullable=False)
     level = db.Column(db.Enum('class', 'subject', 'individual'), nullable=False)
@@ -179,7 +179,7 @@ class ReExamStudent(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     re_exam_id = db.Column(db.Integer, db.ForeignKey('re_exams.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     original_marks = db.Column(db.Numeric(5, 2))
     re_exam_marks = db.Column(db.Numeric(5, 2))
     final_marks = db.Column(db.Numeric(5, 2))
@@ -235,7 +235,7 @@ class ExamGrievance(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
     raised_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     reason = db.Column(db.Text, nullable=False)
@@ -272,7 +272,7 @@ class ExamAttendanceRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id'))
     status = db.Column(db.Enum('present', 'absent'), nullable=False)
     marked_by = db.Column(db.Integer, db.ForeignKey('staff.id'))
@@ -305,7 +305,7 @@ class SpecialArrangement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     arrangement_type = db.Column(db.Enum('extra_time', 'separate_room', 'scribe', 'other'), nullable=False)
     extra_time_minutes = db.Column(db.Integer)
     separate_hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id'))
@@ -337,7 +337,7 @@ class MarksVerification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     entered_marks = db.Column(db.Numeric(5, 2))
     verified_marks = db.Column(db.Numeric(5, 2))
     discrepancy_status = db.Column(db.Enum('match', 'mismatch', 'pending'), default='pending')
@@ -357,6 +357,57 @@ class MarksVerification(db.Model):
             'verified_marks': float(self.verified_marks) if self.verified_marks else None,
             'discrepancy_status': self.discrepancy_status,
             'verified_at': self.verified_at.isoformat() if self.verified_at else None,
+        }
+
+
+class ExamSeatingArrangement(db.Model):
+    """Seating arrangement with approval workflow. Grid stores 2D array where each cell = {class_section, roll_no}."""
+    __tablename__ = 'exam_seating_arrangements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    exam_id = db.Column(db.Integer, db.ForeignKey('exams.id', ondelete='CASCADE'), nullable=False)
+    hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id', ondelete='CASCADE'), nullable=False)
+    title = db.Column(db.String(200))
+
+    num_columns = db.Column(db.Integer, default=3)
+    num_rows = db.Column(db.Integer, default=5)
+    grid = db.Column(db.JSON, default=list)
+
+    status = db.Column(db.Enum('draft', 'pending_approval', 'approved', 'rejected'), default='draft')
+    rejection_reason = db.Column(db.Text)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    approved_at = db.Column(db.DateTime)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    hall = db.relationship('ExamHall')
+    exam = db.relationship('Exam')
+    creator = db.relationship('User', foreign_keys=[created_by])
+    approver = db.relationship('User', foreign_keys=[approved_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'exam_id': self.exam_id,
+            'exam_name': self.exam.name if self.exam else None,
+            'hall_id': self.hall_id,
+            'hall_name': self.hall.name if self.hall else None,
+            'title': self.title,
+            'columns': self.num_columns,
+            'rows': self.num_rows,
+            'grid': self.grid or [],
+            'status': self.status,
+            'rejection_reason': self.rejection_reason,
+            'created_by': self.created_by,
+            'created_by_name': f"{self.creator.first_name} {self.creator.last_name}" if self.creator else None,
+            'approved_by': self.approved_by,
+            'approved_by_name': f"{self.approver.first_name} {self.approver.last_name}" if self.approver else None,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

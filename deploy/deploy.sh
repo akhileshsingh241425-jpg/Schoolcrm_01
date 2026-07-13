@@ -6,8 +6,8 @@
 
 set -e
 
-DOMAIN="your-domain.com"  # <-- CHANGE THIS
-PORT=4000  # Backend port (5000 is occupied)
+DOMAIN="93.127.194.235"
+PORT=4000
 APP_DIR="/var/www/school-crm"
 REPO_URL="https://github.com/akhileshsingh241425-jpg/Schoolcrm_01.git"
 
@@ -21,7 +21,7 @@ apt update && apt upgrade -y
 apt install -y python3 python3-pip python3-venv nginx mysql-server git curl
 
 # 2. Setup MySQL Database
-echo "[2/8] MySQL database 'rohit0101' already exists, using it..."
+echo "[2/8] MySQL database ready (create it manually if needed)..."
 echo "  -> Database ready"
 
 # 3. Clone Repository
@@ -45,7 +45,19 @@ pip install gunicorn pymysql
 # Copy production .env
 if [ ! -f .env ]; then
     cp $APP_DIR/deploy/.env.production .env
-    echo "  -> IMPORTANT: Edit $APP_DIR/backend/.env with your actual credentials!"
+    # Auto-generate SECRET_KEY and JWT_SECRET_KEY if blank
+    if grep -q '^SECRET_KEY=$' .env; then
+        NEW_KEY=$(openssl rand -hex 64)
+        sed -i "s/^SECRET_KEY=$/SECRET_KEY=$NEW_KEY/" .env
+        echo "  -> SECRET_KEY auto-generated"
+    fi
+    if grep -q '^JWT_SECRET_KEY=$' .env; then
+        NEW_JWT=$(openssl rand -hex 32)
+        sed -i "s/^JWT_SECRET_KEY=$/JWT_SECRET_KEY=$NEW_JWT/" .env
+        echo "  -> JWT_SECRET_KEY auto-generated"
+    fi
+    chmod 640 .env
+    echo "  -> .env created with auto-generated keys"
 fi
 
 # Create uploads directory

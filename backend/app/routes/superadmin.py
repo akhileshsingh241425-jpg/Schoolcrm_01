@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, current_app, g
 from datetime import datetime, date
 from werkzeug.security import generate_password_hash
@@ -18,7 +19,7 @@ from flask import send_file
 from app.models.user import User, Role
 from app.models.audit import AuditLog
 from app.utils.decorators import super_admin_required
-from app.utils.helpers import success_response, error_response, paginate, validate, clean_val
+from app.utils.helpers import success_response, error_response, paginate, validate, clean_val, get_client_ip
 
 superadmin_bp = Blueprint('superadmin', __name__)
 
@@ -33,7 +34,7 @@ def _audit(action, module=None, record_id=None, details=None):
             module=module,
             record_id=record_id,
             new_values=details,
-            ip_address=request.remote_addr,
+            ip_address=get_client_ip(),
         )
         db.session.add(log)
     except Exception:
@@ -232,6 +233,16 @@ def update_school(school_id):
     school = School.query.get_or_404(school_id)
     data = request.get_json()
 
+    phone = data.get('phone')
+    if phone is not None and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    secondary_phone = data.get('secondary_phone')
+    if secondary_phone is not None and not re.match(r'^\d+$', str(secondary_phone)):
+        return error_response('Secondary phone must contain only digits', 400)
+    email = data.get('email')
+    if email is not None and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+
     updatable = ['name', 'short_name', 'email', 'phone', 'secondary_phone',
                  'alternate_contacts', 'address', 'city', 'state', 'pincode',
                  'logo_url', 'website', 'domain_name', 'theme_color', 'plan',
@@ -268,49 +279,58 @@ def delete_school(school_id):
     school = School.query.get_or_404(school_id)
     name = school.name
     try:
-        # Disable FK checks to avoid ordering issues
-        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 0"))
-        
-        # Get all tables that have school_id column
-        result = db.session.execute(db.text("""
-            SELECT TABLE_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE COLUMN_NAME = 'school_id' 
-            AND TABLE_SCHEMA = DATABASE()
-            AND TABLE_NAME != 'schools'
-        """))
-        tables = [row[0] for row in result]
-        
+        is_sqlite = 'sqlite' in db.engine.dialect.driver
+
+        if not is_sqlite:
+            db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 0"))
+
+        # Get all SQLAlchemy mapped tables that have school_id column
+        tables = []
+        for table_name, table in db.metadata.tables.items():
+            if table_name != 'schools':
+                for col in table.columns:
+                    if col.name == 'school_id':
+                        tables.append(table_name)
+                        break
+
         for table in tables:
             try:
+                t_name = f'"{table}"' if is_sqlite else f'`{table}`'
                 if table == 'users':
-                    # Protect super_admin users - don't delete them, just unlink
-                    db.session.execute(db.text("""
-                        UPDATE `users` SET school_id = NULL 
-                        WHERE school_id = :sid AND role_id = (SELECT id FROM roles WHERE name = 'super_admin')
-                    """), {'sid': school_id})
-                    # Delete non-super_admin users
-                    db.session.execute(db.text("""
-                        DELETE FROM `users` WHERE school_id = :sid
-                    """), {'sid': school_id})
+                    super_admin_role = db.session.execute(
+                        db.text("SELECT id FROM roles WHERE name = 'super_admin'")
+                    ).scalar()
+                    if super_admin_role:
+                        db.session.execute(db.text(
+                            f"UPDATE {t_name} SET school_id = NULL "
+                            f"WHERE school_id = :sid AND role_id = :rid"
+                        ), {'sid': school_id, 'rid': super_admin_role})
+                    db.session.execute(db.text(
+                        f"DELETE FROM {t_name} WHERE school_id = :sid"
+                    ), {'sid': school_id})
                 else:
-                    db.session.execute(db.text(f"DELETE FROM `{table}` WHERE school_id = :sid"), {'sid': school_id})
+                    db.session.execute(db.text(
+                        f"DELETE FROM {t_name} WHERE school_id = :sid"
+                    ), {'sid': school_id})
             except Exception:
                 pass
-        
-        # Delete the school itself
-        db.session.execute(db.text("DELETE FROM `schools` WHERE id = :sid"), {'sid': school_id})
-        
-        # Re-enable FK checks
-        db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
+
+        db.session.execute(db.text(
+            "DELETE FROM schools WHERE id = :sid"
+        ), {'sid': school_id})
+
+        if not is_sqlite:
+            db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
         db.session.commit()
         _audit('school_deleted', 'schools', school_id, {'name': name})
         db.session.commit()
         return success_response(message=f'School "{name}" and all associated data deleted')
     except Exception as e:
-        try:
-            db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
-        except Exception:
-            pass
+        if not is_sqlite:
+            try:
+                db.session.execute(db.text("SET FOREIGN_KEY_CHECKS = 1"))
+            except Exception:
+                pass
         db.session.rollback()
         return error_response(f'Failed to delete school: {str(e)}', 500)
 
@@ -1036,6 +1056,19 @@ def create_school():
     try:
         data = g.get('validated_data') or request.get_json()
 
+        sp = data.get('phone')
+        if sp and not re.match(r'^\d+$', str(sp)):
+            return error_response('School phone must contain only digits', 400)
+        se = data.get('email')
+        if se and '@' not in str(se):
+            return error_response('Invalid school email format', 400)
+        pp = data.get('principal_phone')
+        if pp and not re.match(r'^\d+$', str(pp)):
+            return error_response('Principal phone must contain only digits', 400)
+        pe = data.get('principal_email')
+        if pe and '@' not in str(pe):
+            return error_response('Invalid principal email format', 400)
+
         if School.query.filter_by(email=data['email']).first():
             return error_response('A school with this email already exists', 409)
 
@@ -1176,7 +1209,11 @@ def create_school():
                         first_name=director_data['name'],
                         is_active=True,
                     )
-                    default_pass = director_data.get('phone', 'password') or 'password'
+                    default_pass = director_data.get('phone') or os.environ.get('DEFAULT_DIRECTOR_PASSWORD')
+                    if not default_pass:
+                        default_pass = os.environ.get('DEFAULT_STAFF_PASSWORD')
+                    if not default_pass:
+                        return error_response('Default director/staff password not configured. Set DEFAULT_DIRECTOR_PASSWORD or DEFAULT_STAFF_PASSWORD env var.', 400)
                     dir_user.set_password(default_pass)
                     db.session.add(dir_user)
 

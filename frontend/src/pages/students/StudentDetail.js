@@ -26,6 +26,8 @@ export default function StudentDetail() {
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dialogType, setDialogType] = useState(null);
+  const [loginForm, setLoginForm] = useState({ login_id: '', password: '' });
+  const [loginSaving, setLoginSaving] = useState(false);
 
   const fetchStudent = useCallback(() => {
     setLoading(true);
@@ -56,7 +58,12 @@ export default function StudentDetail() {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" mb={2}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/students')}>Back</Button>
-        <Button variant="contained" startIcon={<Edit />} onClick={() => navigate(`/students/${id}/edit`)}>Edit Student</Button>
+        <Box display="flex" gap={1}>
+          {student.has_login
+            ? <Button variant="outlined" color="warning" startIcon={<Edit />} onClick={() => setDialogType('login')}>Login</Button>
+            : <Button variant="outlined" startIcon={<Add />} onClick={() => setDialogType('login')}>Create Login</Button>}
+          <Button variant="contained" startIcon={<Edit />} onClick={() => navigate(`/students/${id}/edit`)}>Edit Student</Button>
+        </Box>
       </Box>
 
       {/* Student Header Card */}
@@ -77,7 +84,7 @@ export default function StudentDetail() {
               {student.house && <Chip label={`House: ${student.house.name}`} size="small" sx={{ bgcolor: student.house.color, color: 'white' }} />}
               {student.roll_no && <Chip label={`Roll: ${student.roll_no}`} variant="outlined" size="small" />}
             </Box>
-            <Typography color="text.secondary" sx={{ mt: 0.5 }}>Adm No: {student.admission_no || 'N/A'} | ID: {student.id_card_no || 'N/A'}</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5 }}>Admission ID: {student.admission_no || 'N/A'} | Admission No: {student.admission_number || 'N/A'} | Enrollment No: {student.enrollment_no || 'N/A'} | ID Card: {student.id_card_no || 'N/A'}</Typography>
           </Grid>
           <Grid item>
             <Grid container spacing={1}>
@@ -117,7 +124,9 @@ export default function StudentDetail() {
               ['Date of Birth', student.date_of_birth], ['Blood Group', student.blood_group],
               ['Religion', student.religion], ['Category', student.category],
               ['Nationality', student.nationality], ['Mother Tongue', student.mother_tongue],
-              ['Aadhar No', student.aadhar_no], ['Admission Date', student.admission_date],
+              ['Aadhar No', student.aadhar_no], ['Admission ID', student.admission_no],
+              ['Admission No', student.admission_number], ['Enrollment No', student.enrollment_no],
+              ['Admission Date', student.admission_date],
               ['Transport Mode', student.transport_mode], ['Previous School', student.previous_school],
             ].map(([label, value]) => (
               <Grid item xs={12} sm={6} md={4} key={label}>
@@ -271,6 +280,73 @@ export default function StudentDetail() {
 
       {/* Tab 7: Documents */}
       {tab === 7 && <DocumentsTab studentId={id} documents={student.documents} parents={student.parents} onRefresh={fetchStudent} />}
+
+      {/* Login Dialog */}
+      <Dialog open={dialogType === 'login'} onClose={() => { setDialogType(null); setLoginForm({ login_id: student.admission_no || '', password: '' }); setLoginSaving(false); }}
+        TransitionProps={{ onEnter: () => setLoginForm({ login_id: student.admission_no || '', password: '' }) }}
+        maxWidth="sm" fullWidth>
+        <DialogTitle>{student.has_login ? 'Manage Student Login' : 'Create Student Login'}</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Login ID" value={loginForm.login_id}
+                onChange={e => setLoginForm({ ...loginForm, login_id: e.target.value })} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth
+                label={student.has_login ? 'New Password' : 'Password'}
+                type="password" value={loginForm.password}
+                placeholder={student.has_login ? 'Leave blank to keep current' : 'Required'}
+                required={!student.has_login}
+                onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} />
+            </Grid>
+            <Grid item xs={12}>
+              <Box display="flex" gap={2}>
+                <Button variant="contained" disabled={loginSaving}
+                  onClick={async () => {
+                    const payload = {};
+                    if (loginForm.login_id) payload.login_id = loginForm.login_id;
+                    if (loginForm.password) payload.password = loginForm.password;
+                    if (!payload.login_id && !payload.password && student.has_login) {
+                      toast.error('Nothing to update'); return;
+                    }
+                    if (!student.has_login && !payload.login_id) { toast.error('Login ID is required'); return; }
+                    if (!student.has_login && !payload.password) { toast.error('Password is required'); return; }
+                    setLoginSaving(true);
+                    try {
+                      await studentsAPI.updateLogin(id, payload);
+                      toast.success('Login updated');
+                      setDialogType(null);
+                      fetchStudent();
+                    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+                    setLoginSaving(false);
+                  }}>
+                  {student.has_login ? 'Update Login' : 'Create Login'}
+                </Button>
+                {student.has_login && (
+                  <Button variant="outlined" color="error" disabled={loginSaving}
+                    onClick={async () => {
+                      if (!window.confirm('Delete this student\'s login account? This cannot be undone.')) return;
+                      setLoginSaving(true);
+                      try {
+                        await studentsAPI.deleteLogin(id);
+                        toast.success('Login deleted');
+                        setDialogType(null);
+                        fetchStudent();
+                      } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+                      setLoginSaving(false);
+                    }}>
+                    Delete Login
+                  </Button>
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setDialogType(null); setLoginForm({ login_id: student.admission_no || '', password: '' }); }}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Tab 8: Promotions */}
       {tab === 8 && (
@@ -623,6 +699,26 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
   const [form, setForm] = useState({ document_type: '', document_name: '', file: null });
   const [parentForm, setParentForm] = useState({ document_type: '', document_name: '', file: null });
 
+  const handleView = async (doc) => {
+    try {
+      const res = await studentsAPI.getDocumentFile(studentId, doc.id);
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { toast.error('Failed to open document'); }
+  };
+
+  const handleParentView = async (parentId, doc) => {
+    try {
+      const res = await studentsAPI.getParentDocumentFile(studentId, parentId, doc.id);
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { toast.error('Failed to open document'); }
+  };
+
   const handleAdd = async () => {
     const errs = validateForm(form, { document_type: ['required'] });
     if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
@@ -694,7 +790,7 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
                       <Chip label="Pending" size="small" variant="outlined" />}
                   </TableCell>
                   <TableCell>
-                    <Button size="small" href={d.file_url} target="_blank">View</Button>
+                    <Button size="small" onClick={() => handleView(d)}>View</Button>
                     {!d.verified && <Tooltip title="Verify"><IconButton size="small" color="success" onClick={() => handleVerify(d.id)}><CheckCircle /></IconButton></Tooltip>}
                     <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(d.id)}><Delete /></IconButton></Tooltip>
                   </TableCell>
@@ -722,7 +818,7 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'grey.50' }}>
-                        {['Type', 'Name', 'Uploaded', 'Status'].map(h =>
+                        {['Type', 'Name', 'Uploaded', 'Status', 'Actions'].map(h =>
                           <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>)}
                       </TableRow>
                     </TableHead>
@@ -736,6 +832,9 @@ function DocumentsTab({ studentId, documents, onRefresh, parents }) {
                             {d.verified ?
                               <Chip label="Verified" size="small" color="success" /> :
                               <Chip label="Pending" size="small" variant="outlined" />}
+                          </TableCell>
+                          <TableCell>
+                            <Button size="small" onClick={() => handleParentView(p.id, d)}>View</Button>
                           </TableCell>
                         </TableRow>
                       ))}

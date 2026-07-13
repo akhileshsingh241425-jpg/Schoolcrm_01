@@ -87,7 +87,11 @@ export default function TimetableManagement() {
     if (!selectedClass) { setSections([]); setSelectedSection(''); return; }
     studentsAPI.listSections(selectedClass).then(res => {
       const data = res.data.data || res.data || [];
-      setSections(Array.isArray(data) ? data : []);
+      const secs = Array.isArray(data) ? data : [];
+      setSections(secs);
+      if (secs.length > 0) {
+        setSelectedSection(String(secs[0].id));
+      }
     }).catch(() => setSections([]));
   }, [selectedClass]);
 

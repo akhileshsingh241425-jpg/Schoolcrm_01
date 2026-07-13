@@ -125,7 +125,7 @@ function StructuresTab({ onSnack }) {
   const [classes, setClasses] = useState([]);
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ category_id: '', class_id: '', amount: '', frequency: 'monthly', academic_year: '', late_fee_amount: '', late_fee_type: 'fixed', grace_period_days: '0' });
+  const [form, setForm] = useState({ fee_category_id: '', class_id: '', amount: '', frequency: 'monthly', academic_year_id: '', late_fee_amount: '', late_fee_type: 'fixed', grace_period_days: '0' });
   const load = useCallback(() => feesAPI.listStructures({ page: page + 1, per_page: 20 }).then(r => setData(r.data.data || { items: [], total: 0 })).catch(() => {}), [page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -157,13 +157,13 @@ function StructuresTab({ onSnack }) {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Add Fee Structure</DialogTitle>
         <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Category</InputLabel><Select value={form.category_id} label="Category" onChange={e => setForm({ ...form, category_id: e.target.value })}>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
+          <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Category</InputLabel><Select value={form.fee_category_id} label="Category" onChange={e => setForm({ ...form, fee_category_id: e.target.value })}>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
           <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Class</InputLabel><Select value={form.class_id} label="Class" onChange={e => setForm({ ...form, class_id: e.target.value })}>{classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="Amount" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></Grid>
           <Grid item xs={6} sm={4}><FormControl fullWidth><InputLabel>Frequency</InputLabel><Select value={form.frequency} label="Frequency" onChange={e => setForm({ ...form, frequency: e.target.value })}>
             <MenuItem value="monthly">Monthly</MenuItem><MenuItem value="quarterly">Quarterly</MenuItem><MenuItem value="yearly">Yearly</MenuItem><MenuItem value="one_time">One Time</MenuItem>
           </Select></FormControl></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Academic Year" placeholder="2025-2026" value={form.academic_year} onChange={e => setForm({ ...form, academic_year: e.target.value })} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Academic Year" placeholder="2025-2026" value={form.academic_year_id} onChange={e => setForm({ ...form, academic_year_id: e.target.value })} /></Grid>
           <Grid item xs={12}><Divider><Typography variant="body2" color="text.secondary">Late Fee Settings</Typography></Divider></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="Late Fee Amount" type="number" value={form.late_fee_amount} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} /></Grid>
           <Grid item xs={6} sm={4}><FormControl fullWidth><InputLabel>Late Fee Type</InputLabel><Select value={form.late_fee_type} label="Late Fee Type" onChange={e => setForm({ ...form, late_fee_type: e.target.value })}>
@@ -687,8 +687,8 @@ function VendorsTab({ onSnack }) {
         <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
           <Grid item xs={12} sm={6}><TextField fullWidth label="Name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Grid>
           <Grid item xs={12} sm={6}><TextField fullWidth label="Contact Person" value={form.contact_person} onChange={e => setForm({ ...form, contact_person: e.target.value })} /></Grid>
-          <Grid item xs={6} sm={4}><TextField fullWidth label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></Grid>
-          <Grid item xs={6} sm={4}><TextField fullWidth label="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></Grid>
+          <Grid item xs={6} sm={4}><TextField fullWidth label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 10 }} /></Grid>
+          <Grid item xs={6} sm={4}><TextField fullWidth label="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} error={form.email.length > 0 && !form.email.includes('@')} helperText={form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''} /></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Stationery, IT, Food..." /></Grid>
           <Grid item xs={12}><TextField fullWidth label="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="GST No" value={form.gst_no} onChange={e => setForm({ ...form, gst_no: e.target.value })} /></Grid>

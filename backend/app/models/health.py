@@ -366,7 +366,7 @@ class WellbeingRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     record_date = db.Column(db.Date, nullable=False)
     mood = db.Column(db.String(30))  # happy, neutral, sad, anxious, angry
     mood_score = db.Column(db.Integer)  # 1-10

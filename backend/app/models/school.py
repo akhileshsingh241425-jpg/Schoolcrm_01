@@ -96,9 +96,12 @@ class School(db.Model):
         }
 
     def has_active_subscription(self):
-        if not self.subscription_end:
+        try:
+            if not self.subscription_end:
+                return True
+            return self.subscription_end >= date.today()
+        except Exception:
             return True
-        return self.subscription_end >= date.today()
 
     def get_enabled_features(self):
         return [f.feature_name for f in self.features.filter_by(is_enabled=True).all()]
@@ -170,6 +173,13 @@ class Director(db.Model):
 
     school = db.relationship('School', backref=db.backref('directors', lazy='dynamic'))
 
+    @staticmethod
+    def _mask(val, show=4):
+        if not val:
+            return None
+        s = str(val)
+        return '*' * (len(s) - show) + s[-show:] if len(s) > show else s
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -184,9 +194,9 @@ class Director(db.Model):
             'pincode': self.pincode,
             'qualification': self.qualification,
             'experience_years': self.experience_years,
-            'aadhar_no': self.aadhar_no,
+            'aadhar_no': self._mask(self.aadhar_no),
             'aadhar_doc_url': self.aadhar_doc_url,
-            'pan_no': self.pan_no,
+            'pan_no': self._mask(self.pan_no),
             'pan_doc_url': self.pan_doc_url,
             'photo_url': self.photo_url,
             'other_doc_name': self.other_doc_name,

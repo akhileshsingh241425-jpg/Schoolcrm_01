@@ -89,6 +89,7 @@ import Support from './pages/support/Support';
 import VisitorManagement from './pages/visitors/VisitorManagement';
 import CertificateGeneration from './pages/certificates/CertificateGeneration';
 import MarksEntryDashboard from './pages/exam-controller/MarksEntryDashboard';
+import SeatingArrangement from './pages/exam-controller/SeatingArrangement';
 import StoreDashboard from './pages/store/StoreDashboard';
 import StoreItems from './pages/store/StoreItems';
 import StoreAllocation from './pages/store/StoreAllocation';
@@ -214,6 +215,7 @@ function App() {
         {/* Staff Management */}
         <Route path="staff" element={<ModuleRoute module="staff" feature="staff_management"><Staff /></ModuleRoute>} />
         <Route path="staff/new" element={<ModuleRoute module="staff" feature="staff_management"><StaffForm /></ModuleRoute>} />
+        <Route path="staff/:id/edit" element={<ModuleRoute module="staff" feature="staff_management"><StaffForm /></ModuleRoute>} />
         
         {/* CRM */}
         <Route path="leads" element={<ModuleRoute module="leads" feature="marketing_crm"><Leads /></ModuleRoute>} />
@@ -282,6 +284,7 @@ function App() {
         <Route path="exam-controller" element={<ExamController />} />
         <Route path="exam-controller/invigilator-duty" element={<InvigilatorDuty />} />
         <Route path="exam-controller/marks-entry-dashboard" element={<MarksEntryDashboard />} />
+        <Route path="exam-controller/seating-arrangement" element={<SeatingArrangement />} />
         <Route path="date-sheet-approval" element={<DateSheetApproval />} />
         <Route path="grace-marks" element={<GraceMarksForm />} />
         <Route path="student-exams" element={<StudentExamView />} />

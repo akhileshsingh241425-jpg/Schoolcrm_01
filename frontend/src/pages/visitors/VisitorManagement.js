@@ -434,7 +434,8 @@ export default function VisitorManagement() {
               <TextField
                 fullWidth size="small" label="Phone *"
                 value={form.visitor_phone}
-                onChange={(e) => setForm({ ...form, visitor_phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, visitor_phone: e.target.value.replace(/\D/g, '') })}
+                inputProps={{ maxLength: 10 }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -442,6 +443,8 @@ export default function VisitorManagement() {
                 fullWidth size="small" label="Email"
                 value={form.visitor_email}
                 onChange={(e) => setForm({ ...form, visitor_email: e.target.value })}
+                error={form.visitor_email.length > 0 && !form.visitor_email.includes('@')}
+                helperText={form.visitor_email.length > 0 && !form.visitor_email.includes('@') ? 'Invalid email' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>

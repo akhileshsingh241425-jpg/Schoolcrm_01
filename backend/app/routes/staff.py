@@ -1,19 +1,51 @@
+import os
+import re
 from flask import Blueprint, request, g, send_file
 from app import db
 from app.models.staff import (
     Staff, StaffPayroll, StaffDocument, SalaryStructure,
     StaffLeave, StaffLeaveBalance, PerformanceReview,
-    Recruitment, JobApplication, TrainingRecord, DutyRoster
+    Recruitment, JobApplication, TrainingRecord, DutyRoster,
+    StaffStatusLog
 )
 from app.models.school import School
-from app.models.user import User, Role
+from app.models.user import User, Role, Permission, RolePermission, user_roles
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate, clean_val, validate
+from app.models.audit import AuditLog
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, date
 import io
 
 staff_bp = Blueprint('staff', __name__)
+
+
+def _audit_log(action, module, record_id=None, old_values=None, new_values=None):
+    def _sanitize(v):
+        from decimal import Decimal
+        import datetime as dt
+        if isinstance(v, dict):
+            return {k: _sanitize(val) for k, val in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [_sanitize(x) for x in v]
+        if isinstance(v, (Decimal, dt.date, dt.datetime)):
+            return str(v)
+        return v
+    try:
+        log = AuditLog(
+            school_id=g.get('school_id'),
+            user_id=g.get('user_id'),
+            action=action,
+            module=module,
+            record_id=record_id,
+            old_values=_sanitize(old_values) if old_values else None,
+            new_values=_sanitize(new_values) if new_values else None,
+            ip_address=request.remote_addr,
+        )
+        db.session.add(log)
+    except Exception:
+        pass
 
 
 # ─── Staff CRUD ────────────────────────────────────────────
@@ -58,7 +90,34 @@ def list_staff():
 @school_required
 def get_staff(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    return success_response(member.to_dict())
+    data = member.to_dict()
+    if request.args.get('edit') and g.current_user.has_role('school_admin', 'principal'):
+        for f in ('aadhar_no', 'pan_no', 'bank_account_no', 'ifsc_code', 'pf_number', 'esi_number'):
+            data[f] = getattr(member, f, None)
+    return success_response(data)
+
+
+@staff_bp.route('/<int:staff_id>/roles-debug', methods=['GET'])
+@school_required
+def debug_staff_roles(staff_id):
+    """Debug endpoint — returns raw user_roles table data for a staff member"""
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    if not member.user_id:
+        return success_response({'user_id': None, 'message': 'No user linked'})
+    rows = db.session.execute(
+        db.text("SELECT role_id FROM user_roles WHERE user_id = :uid"),
+        {'uid': member.user_id}
+    ).fetchall()
+    extra_ids = [r[0] for r in rows]
+    user = User.query.get(member.user_id)
+    return success_response({
+        'staff_id': staff_id,
+        'user_id': member.user_id,
+        'primary_role_id': user.role_id if user else None,
+        'primary_role_name': user.role.name if user and user.role else None,
+        'user_roles_table_rows': extra_ids,
+        'additional_role_names': [Role.query.get(rid).name for rid in extra_ids if Role.query.get(rid)]
+    })
 
 
 @staff_bp.route('/<int:staff_id>/profile', methods=['GET'])
@@ -84,7 +143,7 @@ def get_staff_profile(staff_id):
 
 
 @staff_bp.route('/', methods=['POST'])
-@role_required('school_admin', 'principal', 'hr_manager')
+@role_required('school_admin', 'principal')
 @validate({
     'first_name': {'required': True, 'message': 'First name is required'},
     'email': {'type': str},
@@ -95,108 +154,261 @@ def get_staff_profile(staff_id):
 def create_staff():
     data = g.get('validated_data') or request.get_json()
 
-    member = Staff(
-        school_id=g.school_id,
-        employee_id=clean_val(data.get('employee_id')),
-        first_name=data['first_name'],
-        last_name=clean_val(data.get('last_name')),
-        gender=clean_val(data.get('gender')),
-        date_of_birth=clean_val(data.get('date_of_birth')),
-        phone=clean_val(data.get('phone')),
-        email=clean_val(data.get('email')),
-        qualification=clean_val(data.get('qualification')),
-        experience_years=clean_val(data.get('experience_years'), int),
-        designation=clean_val(data.get('designation')),
-        department=clean_val(data.get('department')),
-        date_of_joining=clean_val(data.get('date_of_joining')),
-        salary=clean_val(data.get('salary'), float),
-        address=clean_val(data.get('address')),
-        city=clean_val(data.get('city')),
-        state=clean_val(data.get('state')),
-        aadhar_no=clean_val(data.get('aadhar_no')),
-        pan_no=clean_val(data.get('pan_no')),
-        bank_name=clean_val(data.get('bank_name')),
-        bank_account_no=clean_val(data.get('bank_account_no')),
-        ifsc_code=clean_val(data.get('ifsc_code')),
-        staff_type=data.get('staff_type', 'teaching'),
-        contract_type=data.get('contract_type', 'permanent'),
-        probation_end_date=clean_val(data.get('probation_end_date')),
-        contract_end_date=clean_val(data.get('contract_end_date')),
-        pf_number=clean_val(data.get('pf_number')),
-        esi_number=clean_val(data.get('esi_number')),
-        uan_number=clean_val(data.get('uan_number')),
-        emergency_contact=clean_val(data.get('emergency_contact')),
-        emergency_person=clean_val(data.get('emergency_person')),
-        blood_group=clean_val(data.get('blood_group')),
-        marital_status=clean_val(data.get('marital_status')),
-        spouse_name=clean_val(data.get('spouse_name')),
-        # Approval workflow: admin auto-approves, others go to pending
-        approval_status='approved' if g.current_user.has_role('school_admin') else 'pending',
-        status='active' if g.current_user.has_role('school_admin') else 'inactive',
-    )
-    db.session.add(member)
-    db.session.flush()
+    # ---- validation ----
+    phone_val = data.get('phone')
+    if phone_val and not re.match(r'^\d+$', phone_val):
+        return error_response('Phone must contain only digits')
+    email_val = data.get('email')
+    if email_val and '@' not in email_val:
+        return error_response('Email must contain @')
+    aadhar_val = data.get('aadhar_no')
+    if aadhar_val and not re.match(r'^\d{12}$', aadhar_val):
+        return error_response('Aadhaar number must be exactly 12 digits')
+    emerg_val = data.get('emergency_contact')
+    if emerg_val and not re.match(r'^\d+$', emerg_val):
+        return error_response('Emergency contact must contain only digits')
 
-    # Create user account if email provided
-    if data.get('email') and data.get('create_login', False):
-        role_name = data.get('role', 'teacher')
-        role = Role.query.filter_by(name=role_name).first()
-        if role:
-            user = User(
-                school_id=g.school_id,
-                role_id=role.id,
-                email=data['email'],
-                first_name=data['first_name'],
-                last_name=data.get('last_name', ''),
-                phone=data.get('phone')
-            )
-            user.set_password(data.get('password', 'Welcome@123'))
-            db.session.add(user)
-            db.session.flush()
-            member.user_id = user.id
+    try:
+        member = Staff(
+            school_id=g.school_id,
+            employee_id=clean_val(data.get('employee_id')),
+            first_name=data['first_name'],
+            last_name=clean_val(data.get('last_name')),
+            gender=clean_val(data.get('gender')),
+            date_of_birth=clean_val(data.get('date_of_birth')),
+            phone=clean_val(data.get('phone')),
+            email=clean_val(data.get('email')),
+            qualification=clean_val(data.get('qualification')),
+            experience_years=clean_val(data.get('experience_years'), int),
+            designation=clean_val(data.get('designation')),
+            department=clean_val(data.get('department')),
+            date_of_joining=clean_val(data.get('date_of_joining')),
+            salary=clean_val(data.get('salary'), float),
+            address=clean_val(data.get('address')),
+            city=clean_val(data.get('city')),
+            state=clean_val(data.get('state')),
+            aadhar_no=clean_val(data.get('aadhar_no')),
+            pan_no=clean_val(data.get('pan_no')),
+            bank_name=clean_val(data.get('bank_name')),
+            bank_account_no=clean_val(data.get('bank_account_no')),
+            ifsc_code=clean_val(data.get('ifsc_code')),
+            staff_type=data.get('staff_type', 'teaching'),
+            contract_type=data.get('contract_type', 'permanent'),
+            probation_end_date=clean_val(data.get('probation_end_date')),
+            contract_end_date=clean_val(data.get('contract_end_date')),
+            pf_number=clean_val(data.get('pf_number')),
+            esi_number=clean_val(data.get('esi_number')),
+            uan_number=clean_val(data.get('uan_number')),
+            emergency_contact=clean_val(data.get('emergency_contact')),
+            emergency_person=clean_val(data.get('emergency_person')),
+            blood_group=clean_val(data.get('blood_group')),
+            marital_status=clean_val(data.get('marital_status')),
+            spouse_name=clean_val(data.get('spouse_name')),
+        )
+        can_approve = g.current_user.has_role('school_admin') or g.current_user.has_role('principal')
+        member.approval_status = 'approved' if can_approve else 'pending'
+        member.status = 'active' if can_approve else 'inactive'
+        db.session.add(member)
+        db.session.flush()
 
-    # Initialize leave balance
-    yr = date.today().year
-    lb = StaffLeaveBalance(
-        staff_id=member.id, school_id=g.school_id, year=yr,
-        cl_total=12, el_total=15, sl_total=10
-    )
-    db.session.add(lb)
+        # Create user account if email provided
+        if data.get('email') and data.get('create_login', False):
+            role_name = data.get('role', 'teacher')
+            if role_name == 'principal' and not g.current_user.has_role('school_admin'):
+                return error_response('You do not have permission to create login for this role.', 403)
+            role = Role.query.filter_by(name=role_name).first()
+            if role:
+                user = User(
+                    school_id=g.school_id,
+                    role_id=role.id,
+                    email=data['email'],
+                    first_name=data['first_name'],
+                    last_name=data.get('last_name', ''),
+                    phone=data.get('phone')
+                )
+                pwd = data.get('password')
+                if not pwd:
+                    return error_response('Password is required when creating staff login.', 400)
+                user.set_password(pwd)
+                db.session.add(user)
+                db.session.flush()
+                member.user_id = user.id
+                member.login_created = True
 
-    db.session.commit()
-    return success_response(member.to_dict(), 'Staff member created', 201)
+                # Assign additional roles
+                from app.models.user import user_roles
+                extra_ids = data.get('role_ids', [])
+                for rid in extra_ids:
+                    if rid and rid != role.id:
+                        exists = db.session.query(user_roles).filter_by(user_id=user.id, role_id=rid).first()
+                        if not exists:
+                            db.session.execute(user_roles.insert().values(user_id=user.id, role_id=rid))
+
+        # Initialize leave balance
+        yr = date.today().year
+        lb = StaffLeaveBalance(
+            staff_id=member.id, school_id=g.school_id, year=yr,
+            cl_total=12, el_total=15, sl_total=10
+        )
+        db.session.add(lb)
+
+        db.session.commit()
+        _audit_log('create', 'staff', record_id=member.id, new_values=member.to_dict())
+        return success_response(member.to_dict(), 'Staff member created', 201)
+    except IntegrityError as e:
+        db.session.rollback()
+        err_msg = str(e.orig or str(e))
+        return error_response(err_msg, 409)
 
 
 @staff_bp.route('/<int:staff_id>', methods=['PUT'])
-@role_required('school_admin')
-@validate({
-    'experience_years': {'type': int, 'min': 0, 'max': 70},
-    'salary': {'type': float, 'min': 0},
-})
+@school_required
 def update_staff(staff_id):
+    if not g.current_user.has_role('super_admin', 'school_admin', 'principal'):
+        staff_perm = Permission.query.filter_by(name='staff.manage').first()
+        if not staff_perm:
+            return error_response('No permission', 403)
+        role_ids = [r.id for r in g.current_user.all_roles]
+        has_perm = RolePermission.query.filter(
+            RolePermission.permission_id == staff_perm.id,
+            RolePermission.role_id.in_(role_ids),
+            db.or_(RolePermission.school_id == g.school_id, RolePermission.school_id.is_(None))
+        ).first()
+        if not has_perm:
+            return error_response('You do not have permission to update staff', 403)
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    data = g.get('validated_data') or request.get_json()
+    if g.current_user.has_role('principal') and member.user_id == g.current_user.id:
+        return error_response('Principal cannot edit their own details', 403)
+    data = request.get_json(silent=True) or {}
 
-    updatable = ['first_name', 'last_name', 'gender', 'phone', 'email',
-                 'qualification', 'experience_years', 'designation', 'department',
-                 'salary', 'address', 'city', 'state', 'photo_url', 'status',
-                 'bank_name', 'bank_account_no', 'ifsc_code', 'aadhar_no', 'pan_no',
-                 'staff_type', 'contract_type', 'probation_end_date', 'contract_end_date',
-                 'pf_number', 'esi_number', 'uan_number', 'emergency_contact',
-                 'emergency_person', 'blood_group', 'marital_status', 'spouse_name']
+    # ---- capture old values for audit ----
+    def _safe_val(v):
+        from decimal import Decimal
+        return float(v) if isinstance(v, Decimal) else v
+    old_staff_vals = {f: _safe_val(getattr(member, f)) for f in ['first_name', 'last_name', 'designation', 'department', 'salary', 'status', 'phone', 'email', 'staff_type'] if hasattr(member, f)}
+    old_role_name = None
+    old_role_ids = []
+    if member.user and member.user.role_id:
+        old_role = Role.query.get(member.user.role_id)
+        old_role_name = old_role.name if old_role else None
+        rows = db.session.execute(
+            db.text("SELECT role_id FROM user_roles WHERE user_id = :uid"),
+            {'uid': member.user.id}
+        ).fetchall()
+        old_role_ids = [r[0] for r in rows if r[0] != member.user.role_id]
 
-    for field in updatable:
-        if field in data:
-            setattr(member, field, data[field])
+    # ---- validation ----
+    if 'phone' in data:
+        pv = data['phone']
+        if pv and not re.match(r'^\d+$', pv):
+            return error_response('Phone must contain only digits')
+    if 'email' in data:
+        ev = data['email']
+        if ev and '@' not in ev:
+            return error_response('Email must contain @')
+    if 'aadhar_no' in data:
+        av = data['aadhar_no']
+        if av and not re.match(r'^\d{12}$', av):
+            return error_response('Aadhaar number must be exactly 12 digits')
+    if 'emergency_contact' in data:
+        ec = data['emergency_contact']
+        if ec and not re.match(r'^\d+$', ec):
+            return error_response('Emergency contact must contain only digits')
 
-    db.session.commit()
-    return success_response(member.to_dict(), 'Staff updated')
+    general_fields = ['employee_id', 'first_name', 'last_name', 'gender', 'phone', 'email',
+                      'qualification', 'experience_years', 'designation', 'department',
+                      'address', 'city', 'state', 'photo_url', 'status',
+                      'staff_type', 'contract_type', 'probation_end_date', 'contract_end_date',
+                      'emergency_contact', 'emergency_person', 'blood_group', 'marital_status', 'spouse_name']
+    sensitive_fields = ['salary', 'bank_name', 'bank_account_no', 'ifsc_code',
+                        'aadhar_no', 'pan_no', 'pf_number', 'esi_number', 'uan_number']
+
+    has_priv = g.current_user.has_role('school_admin', 'principal')
+    for field in general_fields:
+        if field not in data:
+            continue
+        val = data[field]
+        if isinstance(val, str) and val.strip() == '':
+            val = None
+        setattr(member, field, val)
+    if has_priv:
+        for field in sensitive_fields:
+            if field not in data:
+                continue
+            val = data[field]
+            if isinstance(val, str) and val.strip() == '':
+                val = None
+            setattr(member, field, val)
+    elif any(f in data for f in sensitive_fields):
+        return error_response('Only school admin and principal can update sensitive fields', 403)
+
+    if 'role' in data and member.user_id:
+        new_role = Role.query.filter_by(name=data['role']).first()
+        if new_role:
+            user = User.query.get(member.user_id)
+            if user:
+                user.role_id = new_role.id
+
+    if 'role_ids' in data and member.user_id:
+        import logging
+        from sqlalchemy import text as _txt
+        logging.warning(f"=== ROLE_IDS FIX === data.role_ids = {data.get('role_ids')}")
+        uid = member.user_id
+        user_obj = User.query.get(uid)
+        logging.warning(f"=== ROLE_IDS FIX === uid={uid}, user_obj exists={user_obj is not None}")
+        if user_obj:
+            try:
+                new_ids = [int(rid) for rid in data['role_ids']]
+            except (ValueError, TypeError):
+                new_ids = []
+            primary = user_obj.role_id
+            new_ids = [rid for rid in new_ids if rid != primary]
+            logging.warning(f"=== ROLE_IDS FIX === final new_ids (primary={primary}) = {new_ids}")
+            before = db.session.execute(_txt("SELECT role_id FROM user_roles WHERE user_id = :u"), {'u': uid}).fetchall()
+            logging.warning(f"=== ROLE_IDS FIX === BEFORE: {[r[0] for r in before]}")
+            db.session.execute(_txt("DELETE FROM user_roles WHERE user_id = :u"), {'u': uid})
+            logging.warning(f"=== ROLE_IDS FIX === DELETE done")
+            for rid in new_ids:
+                r2 = db.session.execute(_txt("SELECT id FROM roles WHERE id = :r"), {'r': rid}).fetchone()
+                if r2:
+                    db.session.execute(_txt("INSERT INTO user_roles (user_id, role_id) VALUES (:u, :r)"), {'u': uid, 'r': rid})
+                    logging.warning(f"=== ROLE_IDS FIX === INSERTED role {rid}")
+                else:
+                    logging.warning(f"=== ROLE_IDS FIX === ROLE {rid} NOT FOUND!")
+            db.session.flush()
+            after = db.session.execute(_txt("SELECT role_id FROM user_roles WHERE user_id = :u"), {'u': uid}).fetchall()
+            logging.warning(f"=== ROLE_IDS FIX === AFTER flush: {[r[0] for r in after]}")
+        else:
+            logging.warning(f"=== ROLE_IDS FIX === user_obj is None! uid={uid}")
+
+    # ---- build audit data ----
+    new_staff_vals = {f: _safe_val(getattr(member, f, None)) for f in old_staff_vals}
+    new_role_name = data.get('role', old_role_name)
+    new_role_ids_raw = data.get('role_ids', old_role_ids) if 'role_ids' in data else old_role_ids
+    try:
+        new_role_ids_audit = [int(rid) for rid in new_role_ids_raw]
+    except (ValueError, TypeError):
+        new_role_ids_audit = list(new_role_ids_raw)
+    audit_old = {**old_staff_vals, 'role': old_role_name, 'role_ids': old_role_ids}
+    audit_new = {**new_staff_vals, 'role': new_role_name, 'role_ids': new_role_ids_audit}
+    _audit_log('update', 'staff', record_id=member.id, old_values=audit_old, new_values=audit_new)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 500)
+    try:
+        result = member.to_dict()
+    except Exception as e:
+        return error_response(f'Error serializing staff: {str(e)}', 500)
+    return success_response(result, 'Staff updated')
 
 
 # ─── Staff Approval Workflow ───────────────────────────────
 
 @staff_bp.route('/pending-approvals', methods=['GET'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def list_pending_approvals():
     """Get all staff pending admin approval"""
     pending = Staff.query.filter_by(school_id=g.school_id, approval_status='pending').order_by(Staff.created_at.desc()).all()
@@ -204,23 +416,26 @@ def list_pending_approvals():
 
 
 @staff_bp.route('/<int:staff_id>/approve', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def approve_staff(staff_id):
-    """Admin approves a staff member"""
+    """Admin/Principal approves a staff member"""
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
     if member.approval_status == 'approved':
         return error_response('Staff already approved')
+    if g.current_user.has_role('principal') and member.user_id == g.current_user.id:
+        return error_response('Principal cannot approve themselves', 403)
     
     member.approval_status = 'approved'
     member.approved_by = g.user_id
     member.approved_at = datetime.utcnow()
     member.status = 'active'
     db.session.commit()
+    _audit_log('approve', 'staff', record_id=member.id, new_values={'approval_status': 'approved', 'status': 'active'})
     return success_response(member.to_dict(), f'{member.first_name} approved successfully')
 
 
 @staff_bp.route('/<int:staff_id>/reject', methods=['POST'])
-@role_required('school_admin')
+@role_required('school_admin', 'principal')
 def reject_staff(staff_id):
     """Admin rejects a staff member"""
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
@@ -230,15 +445,21 @@ def reject_staff(staff_id):
     member.rejection_reason = data.get('reason', '')
     member.status = 'inactive'
     db.session.commit()
+    _audit_log('reject', 'staff', record_id=member.id, new_values={'approval_status': 'rejected', 'rejection_reason': data.get('reason', ''), 'status': 'inactive'})
     return success_response(member.to_dict(), f'{member.first_name} rejected')
 
 
 @staff_bp.route('/<int:staff_id>/create-login', methods=['POST'])
-@role_required('school_admin', 'hr_manager')
+@role_required('school_admin', 'principal', 'hr_manager')
 def create_staff_login(staff_id):
-    """HR creates login credentials for approved staff"""
+    """Create login credentials for approved staff"""
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
-    
+
+    role_name = request.get_json(silent=True) or {}
+    role_name = role_name.get('role', member.department or 'teacher')
+    if role_name == 'principal' and not g.current_user.has_role('school_admin'):
+        return error_response('You do not have permission to create login for this role.', 403)
+
     if member.approval_status != 'approved':
         return error_response('Staff must be approved before creating login', 400)
     
@@ -249,8 +470,9 @@ def create_staff_login(staff_id):
         return error_response('Staff must have an email to create login', 400)
 
     data = request.get_json() or {}
-    password = data.get('password', 'Welcome@123')
-    role_name = data.get('role', member.department or 'teacher')
+    password = data.get('password')
+    if not password:
+        return error_response('Password is required when creating staff login.', 400)
     
     # Find role
     role = Role.query.filter_by(name=role_name).first()
@@ -280,14 +502,113 @@ def create_staff_login(staff_id):
     member.login_created = True
     db.session.commit()
     
+    _audit_log('create_login', 'staff', record_id=staff_id, new_values={'email': member.email, 'role': role.name})
     return success_response({
         'staff': member.to_dict(),
         'login': {
             'email': member.email,
-            'password': password,
             'role': role.name,
         }
-    }, f'Login created for {member.first_name}. Email: {member.email}, Password: {password}')
+    }, f'Login created for {member.first_name}. Email: {member.email}')
+
+
+@staff_bp.route('/<int:staff_id>/login', methods=['PUT'])
+@role_required('school_admin', 'principal')
+def update_staff_login(staff_id):
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    data = request.get_json()
+
+    from app.models.user import User
+    password = data.get('password')
+
+    if member.user_id:
+        user = User.query.get(member.user_id)
+        if not user:
+            return error_response('Linked user account not found', 404)
+        if user.role and user.role.name == 'principal' and not g.current_user.has_role('school_admin'):
+            return error_response('You do not have permission to update login for this role.', 403)
+    else:
+        if not member.email:
+            return error_response('Staff must have an email to create login', 400)
+        role = Role.query.filter_by(name='teacher').first()
+        if not role:
+            return error_response('Default role not found', 400)
+        if role.name == 'principal' and not g.current_user.has_role('school_admin'):
+            return error_response('You do not have permission to create login for this role.', 403)
+        user = User(
+            school_id=g.school_id, role_id=role.id, email=member.email,
+            first_name=member.first_name, last_name=member.last_name or '',
+            phone=member.phone, is_active=True,
+        )
+        db.session.add(user)
+        db.session.flush()
+        member.user_id = user.id
+        member.login_created = True
+
+    if password:
+        user.set_password(password)
+    if data.get('is_active') is not None:
+        user.is_active = data['is_active']
+
+    db.session.commit()
+    _audit_log('update_login', 'staff', record_id=staff_id, new_values={'email': user.email, 'is_active': user.is_active})
+    return success_response({'user_id': user.id, 'email': user.email, 'is_active': user.is_active}, 'Staff login updated')
+
+
+@staff_bp.route('/<int:staff_id>/login', methods=['DELETE'])
+@role_required('school_admin', 'principal')
+def delete_staff_login(staff_id):
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    if not member.user_id:
+        return error_response('No login account exists for this staff member.', 404)
+
+    from app.models.user import User
+    user = User.query.get(member.user_id)
+    if user and user.role and user.role.name == 'principal' and not g.current_user.has_role('school_admin'):
+        return error_response('You do not have permission to delete login for this role.', 403)
+    if user:
+        db.session.delete(user)
+    member.user_id = None
+    member.login_created = False
+    db.session.commit()
+    _audit_log('delete_login', 'staff', record_id=staff_id)
+    return success_response(None, 'Staff login deleted')
+
+
+# ─── Staff Status Toggle ────────────────────────────────────
+
+@staff_bp.route('/<int:staff_id>/toggle-status', methods=['POST'])
+@role_required('school_admin', 'principal')
+@validate({
+    'reason': {'required': True, 'message': 'Reason is required'},
+})
+def toggle_staff_status(staff_id):
+    member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    if g.current_user.has_role('principal') and member.user_id == g.current_user.id:
+        return error_response('Principal cannot change their own status', 403)
+    data = g.get('validated_data') or request.get_json()
+    reason = data['reason']
+    old_status = member.status
+    new_status = 'inactive' if old_status == 'active' else 'active'
+    member.status = new_status
+    log = StaffStatusLog(
+        staff_id=staff_id, school_id=g.school_id,
+        old_status=old_status, new_status=new_status,
+        changed_by=g.current_user.id, reason=reason
+    )
+    db.session.add(log)
+    db.session.commit()
+    _audit_log('toggle_status', 'staff', record_id=staff_id,
+               old_values={'status': old_status}, new_values={'status': new_status, 'reason': reason})
+    return success_response({'status': new_status, 'log': log.to_dict()}, f'Staff {new_status}')
+
+
+@staff_bp.route('/<int:staff_id>/status-history', methods=['GET'])
+@role_required('school_admin', 'principal')
+def get_staff_status_history(staff_id):
+    Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
+    logs = StaffStatusLog.query.filter_by(staff_id=staff_id, school_id=g.school_id).order_by(StaffStatusLog.created_at.desc()).all()
+    return success_response([l.to_dict() for l in logs])
 
 
 # ─── HR Dashboard ──────────────────────────────────────────
@@ -482,6 +803,8 @@ def update_salary_structure(ss_id):
 @staff_bp.route('/payroll', methods=['GET'])
 @role_required('school_admin')
 def list_payroll():
+    if g.current_user.has_role('principal'):
+        return error_response('Principal cannot access payroll', 403)
     query = StaffPayroll.query.options(
         joinedload(StaffPayroll.staff)
     ).filter_by(school_id=g.school_id)
@@ -508,6 +831,8 @@ def list_payroll():
     'year': {'required': True, 'type': int},
 })
 def generate_payroll():
+    if g.current_user.has_role('principal'):
+        return error_response('Principal cannot generate payroll', 403)
     data = g.get('validated_data') or request.get_json()
     month = data['month']
     year = data['year']
@@ -568,6 +893,7 @@ def generate_payroll():
         generated += 1
 
     db.session.commit()
+    _audit_log('generate_payroll', 'payroll', new_values={'month': month, 'year': year, 'generated': generated})
     return success_response({'generated': generated}, f'Payroll generated for {generated} staff')
 
 
@@ -579,7 +905,13 @@ def generate_payroll():
     'leave_deduction': {'type': float, 'min': 0},
 })
 def update_payroll(payroll_id):
+    if g.current_user.has_role('principal'):
+        return error_response('Principal cannot update payroll', 403)
     pr = StaffPayroll.query.filter_by(id=payroll_id, school_id=g.school_id).first_or_404()
+    def _pv(v):
+        from decimal import Decimal
+        return float(v) if isinstance(v, Decimal) else v
+    old_vals = {f: _pv(getattr(pr, f)) for f in ['payment_status', 'transaction_ref', 'net_salary'] if hasattr(pr, f)}
     data = g.get('validated_data') or request.get_json()
     for f in ['payment_status', 'payment_date', 'payment_mode', 'transaction_ref',
               'remarks', 'overtime_hours', 'overtime_amount', 'leave_deduction']:
@@ -589,6 +921,7 @@ def update_payroll(payroll_id):
         pr.net_salary = float(pr.gross_salary or 0) - float(pr.total_deductions or 0) - \
                         float(pr.leave_deduction or 0) + float(pr.overtime_amount or 0)
     db.session.commit()
+    _audit_log('update_payroll', 'payroll', record_id=payroll_id, old_values=old_vals, new_values={f: getattr(pr, f, None) for f in old_vals})
     return success_response(pr.to_dict(), 'Payroll updated')
 
 
@@ -603,6 +936,8 @@ def update_payroll(payroll_id):
     'gross_salary': {'type': float, 'min': 0},
 })
 def create_payroll():
+    if g.current_user.has_role('principal'):
+        return error_response('Principal cannot create payroll', 403)
     data = g.get('validated_data') or request.get_json()
     payroll = StaffPayroll(
         staff_id=data['staff_id'], school_id=g.school_id,
@@ -617,6 +952,7 @@ def create_payroll():
     )
     db.session.add(payroll)
     db.session.commit()
+    _audit_log('create_payroll', 'payroll', record_id=payroll.id, new_values={'staff_id': data['staff_id'], 'month': data['month'], 'year': data['year'], 'net_salary': data.get('net_salary')})
     return success_response(payroll.to_dict(), 'Payroll entry created', 201)
 
 
@@ -912,6 +1248,7 @@ def approve_leave(leave_id):
                 lb.ml_used = (lb.ml_used or 0) + days
 
     db.session.commit()
+    _audit_log('approve_leave', 'staff_leave', record_id=leave_id, new_values={'action': action, 'staff_id': leave.staff_id})
     return success_response(leave.to_dict(), f'Leave {action}')
 
 
@@ -1289,6 +1626,13 @@ def delete_duty(duty_id):
 def initiate_exit(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
+    if member.user_id:
+        from app.models.user import User
+        user = User.query.get(member.user_id)
+        if user:
+            db.session.delete(user)
+        member.user_id = None
+        member.login_created = False
     member.status = 'on_notice'
     member.exit_date = data.get('exit_date')
     member.exit_reason = data.get('exit_reason')
@@ -1302,6 +1646,13 @@ def initiate_exit(staff_id):
 def complete_exit(staff_id):
     member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
+    if member.user_id:
+        from app.models.user import User
+        user = User.query.get(member.user_id)
+        if user:
+            db.session.delete(user)
+        member.user_id = None
+        member.login_created = False
     member.status = data.get('final_status', 'resigned')
     if data.get('exit_date'):
         member.exit_date = data['exit_date']

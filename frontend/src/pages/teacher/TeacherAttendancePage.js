@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Paper, Grid, Button, TextField, MenuItem, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Chip, Avatar, IconButton,
-  alpha, useTheme, LinearProgress, Alert, ToggleButton, ToggleButtonGroup
+  alpha, useTheme, LinearProgress, Alert, ToggleButton, ToggleButtonGroup, FormControl,
+  InputLabel, Select, Divider
 } from '@mui/material';
-import { Save, Refresh, CheckCircle, Cancel, AccessTime, CalendarMonth } from '@mui/icons-material';
+import { Save, Refresh, CheckCircle, Cancel, AccessTime, CalendarMonth, Person, People } from '@mui/icons-material';
 import { attendanceAPI, dashboardAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -12,6 +13,16 @@ export default function TeacherAttendancePage() {
   const [myClasses, setMyClasses] = useState([]);
   const [mySubjects, setMySubjects] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Self attendance state
+  const [myStaffId, setMyStaffId] = useState(null);
+  const [myStaffName, setMyStaffName] = useState('');
+  const [selfStatus, setSelfStatus] = useState('');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [selfSaving, setSelfSaving] = useState(false);
+
+  // Student attendance state
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState([]);
@@ -32,6 +43,47 @@ export default function TeacherAttendancePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    attendanceAPI.getMyProfile().then(r => {
+      const s = r.data?.data;
+      if (s?.id) {
+        setMyStaffId(s.id);
+        setMyStaffName(`${s.first_name || ''} ${s.last_name || ''}`.trim() || s.name || '');
+        const today = new Date().toISOString().split('T')[0];
+        attendanceAPI.getStaff({ date: today }).then(r2 => {
+          const records = r2.data?.data || [];
+          const mine = records.find(a => a.staff_id === s.id);
+          if (mine) {
+            setSelfStatus(mine.status || '');
+            setCheckIn(mine.check_in ? mine.check_in.substring(0, 5) : '');
+            setCheckOut(mine.check_out ? mine.check_out.substring(0, 5) : '');
+          } else {
+            const now = new Date();
+            setCheckIn(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+          }
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSelfSave = async () => {
+    if (!myStaffId || !selfStatus) { toast.error('Select status'); return; }
+    setSelfSaving(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await attendanceAPI.markStaff({
+        date: today,
+        attendance: [{ staff_id: myStaffId, status: selfStatus, check_in: checkIn ? `${checkIn}:00` : null, check_out: checkOut ? `${checkOut}:00` : null }],
+        capture_mode: 'manual'
+      });
+      toast.success('Your attendance marked!');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save');
+    } finally {
+      setSelfSaving(false);
+    }
+  };
 
   const loadAttendance = async () => {
     if (!selectedSection) { toast.error('Select a class'); return; }
@@ -87,7 +139,7 @@ export default function TeacherAttendancePage() {
         class_id: cls?.class_id,
         section_id: parseInt(selectedSection),
         date: selectedDate,
-        entries,
+        attendance: entries,
       });
       toast.success('Attendance saved!');
       setAlreadyMarked(true);
@@ -119,6 +171,51 @@ export default function TeacherAttendancePage() {
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>Mark Attendance</Typography>
+
+      {/* My Self Attendance */}
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Person sx={{ color: 'primary.main' }} />
+          <Typography variant="h6" fontWeight={600}>My Attendance</Typography>
+        </Box>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={3}>
+            <TextField fullWidth size="small" label="Name" value={myStaffName} disabled />
+          </Grid>
+          <Grid item xs={6} sm={2}>
+            <TextField fullWidth size="small" type="time" label="Check In" InputLabelProps={{ shrink: true }}
+              value={checkIn} onChange={e => setCheckIn(e.target.value)} />
+          </Grid>
+          <Grid item xs={6} sm={2}>
+            <TextField fullWidth size="small" type="time" label="Check Out" InputLabelProps={{ shrink: true }}
+              value={checkOut} onChange={e => setCheckOut(e.target.value)} />
+          </Grid>
+          <Grid item xs={12} sm={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select value={selfStatus} label="Status" onChange={e => setSelfStatus(e.target.value)}>
+                <MenuItem value="present">Present</MenuItem>
+                <MenuItem value="absent">Absent</MenuItem>
+                <MenuItem value="late">Late</MenuItem>
+                <MenuItem value="half_day">Half Day</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Button fullWidth variant="contained" onClick={handleSelfSave} disabled={selfSaving || !selfStatus || !myStaffId}
+              startIcon={<Save />} sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+              {selfSaving ? 'Saving...' : 'Mark My Attendance'}
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      <Divider sx={{ mb: 3 }} />
+
+      {/* Student Attendance Section Header */}
+      <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+        <People /> Student Attendance
+      </Typography>
 
       {/* Filters */}
       <Paper sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>

@@ -71,7 +71,7 @@ class DisciplineCase(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     reported_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     case_date = db.Column(db.Date, nullable=False)
     category = db.Column(db.String(50), nullable=False)  # attendance, behavior, academic, bullying, property_damage, other

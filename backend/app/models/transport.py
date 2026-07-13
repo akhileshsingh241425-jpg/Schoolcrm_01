@@ -170,7 +170,7 @@ class StudentTransport(db.Model):
     __tablename__ = 'student_transport'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     route_id = db.Column(db.Integer, db.ForeignKey('transport_routes.id', ondelete='CASCADE'), nullable=False)
     stop_id = db.Column(db.Integer, db.ForeignKey('transport_stops.id', ondelete='CASCADE'), nullable=False)
@@ -310,7 +310,7 @@ class TransportFee(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=True)
     route_id = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
     stop_id = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
     academic_year = db.Column(db.String(20))
@@ -436,7 +436,7 @@ class RouteChangeRequest(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=True)
     current_route_id = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
     requested_route_id = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
     current_stop_id = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)

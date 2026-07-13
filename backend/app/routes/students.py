@@ -15,6 +15,7 @@ from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 import uuid
 import os
+import re
 import io
 
 students_bp = Blueprint('students', __name__)
@@ -26,7 +27,7 @@ def _verify_student_access(student_id):
         return True
     if scope.get('no_access'):
         return False
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first()
     if not student:
         return False
     if student.current_class_id in scope['class_ids']:
@@ -47,7 +48,7 @@ def list_students():
         joinedload(Student.house)
     ).filter_by(school_id=g.school_id)
 
-    status = request.args.get('status')
+    status = request.args.get('status', 'active')
     if status:
         query = query.filter_by(status=status)
 
@@ -82,9 +83,28 @@ def list_students():
                 Student.first_name.ilike(f'%{search}%'),
                 Student.last_name.ilike(f'%{search}%'),
                 Student.admission_no.ilike(f'%{search}%'),
+                Student.aadhar_no.ilike(f'%{search}%'),
+                db.cast(Student.admission_number, db.String).ilike(f'%{search}%'),
+                db.cast(Student.enrollment_no, db.String).ilike(f'%{search}%'),
                 Student.roll_no.ilike(f'%{search}%')
             )
         )
+
+    admission_no = request.args.get('admission_no')
+    if admission_no:
+        query = query.filter(Student.admission_no.ilike(f'%{admission_no}%'))
+
+    aadhar_no = request.args.get('aadhar_no')
+    if aadhar_no:
+        query = query.filter(Student.aadhar_no.ilike(f'%{aadhar_no}%'))
+
+    admission_number = request.args.get('admission_number', type=int)
+    if admission_number:
+        query = query.filter(Student.admission_number == admission_number)
+
+    enrollment_no = request.args.get('enrollment_no', type=int)
+    if enrollment_no:
+        query = query.filter(Student.enrollment_no == enrollment_no)
 
     # Teacher scoping
     scope = get_teacher_scope()
@@ -100,7 +120,7 @@ def list_students():
     per_page = min(per_page, 100)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    student_ids = [s.id for s in pagination.items]
+    student_ids = [s.admission_no for s in pagination.items]
     parent_map = {}
     if student_ids:
         parents = ParentDetail.query.filter(
@@ -113,7 +133,7 @@ def list_students():
     items = []
     for s in pagination.items:
         d = s.to_dict()
-        father = parent_map.get(s.id)
+        father = parent_map.get(s.admission_no)
         d['father_name'] = father.name if father else None
         d['father_phone'] = father.phone if father else None
         items.append(d)
@@ -166,7 +186,7 @@ def search_students_comprehensive():
         else:
             d['class_teacher'] = None
         attendance = StudentAttendance.query.filter(
-            StudentAttendance.student_id == s.id,
+            StudentAttendance.student_id == s.admission_no,
             StudentAttendance.date >= date.today().replace(day=1)
         ).order_by(StudentAttendance.date.desc()).all()
         d['attendance'] = [a.to_dict() for a in attendance]
@@ -174,7 +194,7 @@ def search_students_comprehensive():
     return success_response(result)
 
 
-@students_bp.route('/<int:student_id>', methods=['GET'])
+@students_bp.route('/<string:student_id>', methods=['GET'])
 @school_required
 def get_student(student_id):
     if not _verify_student_access(student_id):
@@ -183,7 +203,7 @@ def get_student(student_id):
         joinedload(Student.current_class),
         joinedload(Student.current_section),
         joinedload(Student.house)
-    ).filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    ).filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = student.to_dict()
     data['parents'] = [p.to_dict() for p in student.parents.all()]
     data['documents'] = [d.to_dict() for d in student.documents.all()]
@@ -191,15 +211,15 @@ def get_student(student_id):
         siblings = Student.query.filter(
             Student.school_id == g.school_id,
             Student.sibling_group_id == student.sibling_group_id,
-            Student.id != student.id
+            Student.admission_no != student.admission_no
         ).all()
-        data['siblings'] = [{'id': s.id, 'full_name': f"{s.first_name} {s.last_name or ''}", 'class': s.current_class.name if s.current_class else None, 'admission_no': s.admission_no} for s in siblings]
+        data['siblings'] = [{'id': s.admission_no, 'full_name': f"{s.first_name} {s.last_name or ''}", 'class': s.current_class.name if s.current_class else None, 'admission_no': s.admission_no} for s in siblings]
     else:
         data['siblings'] = []
     return success_response(data)
 
 
-@students_bp.route('/360/<int:student_id>', methods=['GET'])
+@students_bp.route('/360/<string:student_id>', methods=['GET'])
 @school_required
 def get_student_360(student_id):
     if not _verify_student_access(student_id):
@@ -208,7 +228,7 @@ def get_student_360(student_id):
         joinedload(Student.current_class),
         joinedload(Student.current_section),
         joinedload(Student.house)
-    ).filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    ).filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = student.to_dict()
     data['parents'] = [p.to_dict() for p in student.parents.all()]
     data['documents'] = [d.to_dict() for d in student.documents.all()]
@@ -221,7 +241,7 @@ def get_student_360(student_id):
     data['class_teacher'] = None
     if student.current_section and student.current_section.class_teacher_id:
         ct = Staff.query.get(student.current_section.class_teacher_id)
-        data['class_teacher'] = ct.name if ct else None
+        data['class_teacher'] = f"{ct.first_name} {ct.last_name or ''}".strip() if ct else None
     attendance = StudentAttendance.query.filter(
         StudentAttendance.student_id == student_id,
         StudentAttendance.date >= date.today().replace(day=1)
@@ -230,8 +250,8 @@ def get_student_360(student_id):
     for p in data.get('parents', []):
         p['documents'] = [d.to_dict() for d in ParentDocument.query.filter_by(parent_id=p['id'], school_id=g.school_id).all()]
     if student.sibling_group_id:
-        siblings = Student.query.filter(Student.school_id == g.school_id, Student.sibling_group_id == student.sibling_group_id, Student.id != student.id).all()
-        data['siblings'] = [{'id': s.id, 'full_name': f"{s.first_name} {s.last_name or ''}", 'class': s.current_class.name if s.current_class else None} for s in siblings]
+        siblings = Student.query.filter(Student.school_id == g.school_id, Student.sibling_group_id == student.sibling_group_id, Student.admission_no != student.admission_no).all()
+        data['siblings'] = [{'id': s.admission_no, 'full_name': f"{s.first_name} {s.last_name or ''}", 'class': s.current_class.name if s.current_class else None} for s in siblings]
     else:
         data['siblings'] = []
     data['stats'] = {
@@ -257,6 +277,39 @@ def get_student_360(student_id):
 def create_student():
     data = g.get('validated_data') or request.get_json()
 
+    # ---- validation ----
+    phone_val = data.get('phone')
+    if phone_val and not re.match(r'^\d+$', phone_val):
+        return error_response('Phone must contain only digits')
+    emerg_val = data.get('emergency_contact')
+    if emerg_val and not re.match(r'^\d+$', emerg_val):
+        return error_response('Emergency contact must contain only digits')
+    aadhar_val = data.get('aadhar_no')
+    if aadhar_val and not re.match(r'^\d{12}$', aadhar_val):
+        return error_response('Aadhaar number must be exactly 12 digits')
+    for p in data.get('parents', []):
+        pp = p.get('phone')
+        if pp and not re.match(r'^\d+$', pp):
+            return error_response('Parent phone must contain only digits')
+        pe = p.get('email')
+        if pe and '@' not in pe:
+            return error_response('Parent email must contain @')
+        pa = p.get('aadhar_no')
+        if pa and not re.match(r'^\d{12}$', pa):
+            return error_response('Parent aadhaar must be exactly 12 digits')
+
+    class_id = clean_val(data.get('class_id'), int)
+    section_id = clean_val(data.get('section_id'), int)
+    if class_id and not section_id:
+        first = Section.query.filter_by(school_id=g.school_id, class_id=class_id).first()
+        if first:
+            section_id = first.id
+        else:
+            sec = Section(school_id=g.school_id, class_id=class_id, name='A')
+            db.session.add(sec)
+            db.session.flush()
+            section_id = sec.id
+
     student = Student(
         school_id=g.school_id,
         first_name=data['first_name'], last_name=clean_val(data.get('last_name')),
@@ -267,8 +320,8 @@ def create_student():
         mother_tongue=clean_val(data.get('mother_tongue')), aadhar_no=clean_val(data.get('aadhar_no')),
         address=clean_val(data.get('address')), city=clean_val(data.get('city')),
         state=clean_val(data.get('state')), pincode=clean_val(data.get('pincode')),
-        current_class_id=clean_val(data.get('class_id'), int),
-        current_section_id=clean_val(data.get('section_id'), int),
+        current_class_id=class_id,
+        current_section_id=section_id,
         academic_year_id=clean_val(data.get('academic_year_id'), int),
         admission_date=clean_val(data.get('admission_date')),
         emergency_contact=clean_val(data.get('emergency_contact')),
@@ -287,7 +340,7 @@ def create_student():
     for p in parents:
         if p.get('name'):
             parent = ParentDetail(
-                student_id=student.id, school_id=g.school_id,
+                student_id=student.admission_no, school_id=g.school_id,
                 relation=p.get('relation', 'father'), name=p['name'],
                 phone=p.get('phone'), email=p.get('email'),
                 occupation=p.get('occupation'), income=p.get('income'),
@@ -296,17 +349,50 @@ def create_student():
             db.session.add(parent)
 
     timeline = StudentTimeline(
-        school_id=g.school_id, student_id=student.id,
+        school_id=g.school_id, student_id=student.admission_no,
         event_type='admission', title='Student Registered',
         description=f"Student {student.first_name} admitted to the school",
         event_date=datetime.utcnow().date(), created_by=g.user_id
     )
     db.session.add(timeline)
+
+    login_info = None
+    if data.get('create_login'):
+        from app.models.user import User, Role
+        login_id = data.get('login_id') or student.admission_no or f'STU{student.admission_no}'
+        pwd = data.get('password')
+        if not pwd:
+            return error_response('Password is required when creating student login.', 400)
+        if User.query.filter_by(school_id=g.school_id, email=login_id).first():
+            return error_response(f'Login ID "{login_id}" is already in use', 400)
+        student_role = Role.query.filter_by(name='student').first()
+        if not student_role:
+            student_role = Role(name='student', description='Student', is_system_role=True)
+            db.session.add(student_role)
+            db.session.flush()
+        student_user = User(
+            school_id=g.school_id,
+            role_id=student_role.id,
+            email=login_id,
+            first_name=student.first_name,
+            last_name=student.last_name or '',
+            phone=data.get('phone'),
+            is_active=True,
+        )
+        student_user.set_password(pwd)
+        db.session.add(student_user)
+        db.session.flush()
+        student.user_id = student_user.id
+        login_info = {'username': login_id, 'password': pwd}
+
     db.session.commit()
-    return success_response(student.to_dict(), 'Student created', 201)
+    result = student.to_dict()
+    if login_info:
+        result['login'] = login_info
+    return success_response(result, 'Student created', 201)
 
 
-@students_bp.route('/<int:student_id>', methods=['PUT'])
+@students_bp.route('/<string:student_id>', methods=['PUT'])
 @role_required('school_admin', 'teacher')
 @validate({
     'class_id': {'type': int},
@@ -315,8 +401,28 @@ def create_student():
     'house_id': {'type': int},
 })
 def update_student(student_id):
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
+
+    # ---- validation ----
+    if 'emergency_contact' in data:
+        ec = data['emergency_contact']
+        if ec and not re.match(r'^\d+$', ec):
+            return error_response('Emergency contact must contain only digits')
+    if 'aadhar_no' in data:
+        av = data['aadhar_no']
+        if av and not re.match(r'^\d{12}$', av):
+            return error_response('Aadhaar number must be exactly 12 digits')
+    for p_data in data.get('parents', []):
+        pp = p_data.get('phone')
+        if pp and not re.match(r'^\d+$', pp):
+            return error_response('Parent phone must contain only digits')
+        pe = p_data.get('email')
+        if pe and '@' not in pe:
+            return error_response('Parent email must contain @')
+        pa = p_data.get('aadhar_no')
+        if pa and not re.match(r'^\d{12}$', pa):
+            return error_response('Parent aadhaar must be exactly 12 digits')
 
     updatable = ['first_name', 'last_name', 'roll_no', 'gender', 'date_of_birth',
                  'blood_group', 'religion', 'category', 'nationality', 'mother_tongue',
@@ -331,7 +437,17 @@ def update_student(student_id):
     if 'class_id' in data:
         student.current_class_id = clean_val(data['class_id'], int)
     if 'section_id' in data:
-        student.current_section_id = clean_val(data['section_id'], int)
+        section_id = clean_val(data['section_id'], int)
+        if not section_id and student.current_class_id:
+            first = Section.query.filter_by(school_id=g.school_id, class_id=student.current_class_id).first()
+            if first:
+                section_id = first.id
+            else:
+                sec = Section(school_id=g.school_id, class_id=student.current_class_id, name='A')
+                db.session.add(sec)
+                db.session.flush()
+                section_id = sec.id
+        student.current_section_id = section_id
     if 'academic_year_id' in data:
         student.academic_year_id = clean_val(data['academic_year_id'], int)
     if 'house_id' in data:
@@ -341,13 +457,13 @@ def update_student(student_id):
         for p_data in data['parents']:
             if p_data.get('id'):
                 parent = ParentDetail.query.get(p_data['id'])
-                if parent and parent.student_id == student.id:
+                if parent and parent.student_id == student.admission_no:
                     for k in ['name', 'phone', 'email', 'occupation', 'income', 'qualification', 'aadhar_no']:
                         if k in p_data:
                             setattr(parent, k, p_data[k])
             elif p_data.get('name'):
                 parent = ParentDetail(
-                    student_id=student.id, school_id=g.school_id,
+                    student_id=student.admission_no, school_id=g.school_id,
                     relation=p_data.get('relation', 'father'), name=p_data['name'],
                     phone=p_data.get('phone'), email=p_data.get('email'),
                     occupation=p_data.get('occupation'), income=p_data.get('income'),
@@ -359,13 +475,20 @@ def update_student(student_id):
     return success_response(student.to_dict(), 'Student updated')
 
 
-@students_bp.route('/<int:student_id>', methods=['DELETE'])
+@students_bp.route('/<string:student_id>', methods=['DELETE'])
 @role_required('school_admin')
 def delete_student(student_id):
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
+    if student.user_id:
+        from app.models.user import User
+        user = User.query.get(student.user_id)
+        if user:
+            user.is_active = False
+    student.roll_no = None
     student.status = 'inactive'
+    student.leave_date = date.today()
     db.session.commit()
-    return success_response(message='Student deactivated')
+    return success_response(message='Student moved to Ex-Students')
 
 
 # ===================== STUDENT DASHBOARD =====================
@@ -396,7 +519,7 @@ def student_dashboard():
     female = base.filter_by(gender='female', status='active').count()
 
     class_dist = db.session.query(
-        Class.name, db.func.count(Student.id)
+        Class.name, db.func.count(Student.admission_no)
     ).join(Student, Student.current_class_id == Class.id).filter(
         Student.school_id == g.school_id, Student.status == 'active'
     )
@@ -405,7 +528,7 @@ def student_dashboard():
     class_dist = class_dist.group_by(Class.name).all()
 
     house_dist = db.session.query(
-        StudentHouse.name, db.func.count(Student.id)
+        StudentHouse.name, db.func.count(Student.admission_no)
     ).join(Student, Student.house_id == StudentHouse.id).filter(
         Student.school_id == g.school_id, Student.status == 'active'
     )
@@ -461,8 +584,14 @@ def create_class():
     cls = Class(school_id=g.school_id, name=data['name'],
                 numeric_name=data.get('numeric_name'), description=data.get('description'))
     db.session.add(cls)
+    db.session.flush()
+    # Auto-create default Section A
+    sec = Section(school_id=g.school_id, class_id=cls.id, name='A')
+    db.session.add(sec)
     db.session.commit()
-    return success_response(cls.to_dict(), 'Class created', 201)
+    result = cls.to_dict()
+    result['sections'] = [sec.to_dict()]
+    return success_response(result, 'Class created with Section A', 201)
 
 
 @students_bp.route('/sections/<int:class_id>', methods=['GET'])
@@ -661,9 +790,9 @@ def list_promotions():
 })
 def promote_student():
     data = g.get('validated_data') or request.get_json()
-    student = Student.query.filter_by(id=data['student_id'], school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=data['student_id'], school_id=g.school_id).first_or_404()
     promo = StudentPromotion(
-        school_id=g.school_id, student_id=student.id,
+        school_id=g.school_id, student_id=student.admission_no,
         from_class_id=student.current_class_id,
         from_section_id=student.current_section_id,
         to_class_id=data['to_class_id'],
@@ -683,7 +812,7 @@ def promote_student():
 
     to_cls = Class.query.get(data['to_class_id'])
     tl = StudentTimeline(
-        school_id=g.school_id, student_id=student.id,
+        school_id=g.school_id, student_id=student.admission_no,
         event_type='promotion', title=f"Student {data.get('promotion_type', 'promoted')}",
         description=f"Moved to {to_cls.name if to_cls else 'next class'}",
         event_date=datetime.utcnow().date(), created_by=g.user_id
@@ -718,13 +847,13 @@ def bulk_promote():
         Student.status == 'active'
     )
     if excluded_ids:
-        query = query.filter(~Student.id.in_(excluded_ids))
+        query = query.filter(~Student.admission_no.in_(excluded_ids))
     students = query.all()
 
     count = 0
     for student in students:
         promo = StudentPromotion(
-            school_id=g.school_id, student_id=student.id,
+            school_id=g.school_id, student_id=student.admission_no,
             from_class_id=from_class_id, from_section_id=student.current_section_id,
             to_class_id=to_class_id, to_section_id=to_section_id,
             from_academic_year_id=from_ay_id, to_academic_year_id=to_ay_id,
@@ -745,12 +874,12 @@ def bulk_promote():
 
 # ===================== ACHIEVEMENTS =====================
 
-@students_bp.route('/<int:student_id>/achievements', methods=['GET'])
+@students_bp.route('/<string:student_id>/achievements', methods=['GET'])
 @school_required
 def list_achievements(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     query = StudentAchievement.query.filter_by(student_id=student_id, school_id=g.school_id)
     category = request.args.get('category')
     if category:
@@ -759,7 +888,7 @@ def list_achievements(student_id):
     return success_response(paginate(query))
 
 
-@students_bp.route('/<int:student_id>/achievements', methods=['POST'])
+@students_bp.route('/<string:student_id>/achievements', methods=['POST'])
 @role_required('school_admin', 'teacher')
 @validate({
     'title': {'required': True},
@@ -768,7 +897,7 @@ def list_achievements(student_id):
 def add_achievement(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     ach = StudentAchievement(
         school_id=g.school_id, student_id=student_id,
@@ -800,12 +929,12 @@ def delete_achievement(ach_id):
 
 # ===================== BEHAVIOR =====================
 
-@students_bp.route('/<int:student_id>/behavior', methods=['GET'])
+@students_bp.route('/<string:student_id>/behavior', methods=['GET'])
 @school_required
 def list_behavior(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     query = StudentBehavior.query.filter_by(student_id=student_id, school_id=g.school_id)
     b_type = request.args.get('type')
     if b_type:
@@ -814,7 +943,7 @@ def list_behavior(student_id):
     return success_response(paginate(query))
 
 
-@students_bp.route('/<int:student_id>/behavior', methods=['POST'])
+@students_bp.route('/<string:student_id>/behavior', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 @validate({
     'behavior_type': {'required': True},
@@ -824,7 +953,7 @@ def list_behavior(student_id):
 def add_behavior(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     beh = StudentBehavior(
         school_id=g.school_id, student_id=student_id,
@@ -853,12 +982,12 @@ def add_behavior(student_id):
 
 # ===================== TIMELINE =====================
 
-@students_bp.route('/<int:student_id>/timeline', methods=['GET'])
+@students_bp.route('/<string:student_id>/timeline', methods=['GET'])
 @school_required
 def get_timeline(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     query = StudentTimeline.query.filter_by(student_id=student_id, school_id=g.school_id)
     event_type = request.args.get('event_type')
     if event_type:
@@ -867,7 +996,7 @@ def get_timeline(student_id):
     return success_response(paginate(query))
 
 
-@students_bp.route('/<int:student_id>/timeline', methods=['POST'])
+@students_bp.route('/<string:student_id>/timeline', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 @validate({
     'title': {'required': True},
@@ -875,7 +1004,7 @@ def get_timeline(student_id):
 def add_timeline(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     tl = StudentTimeline(
         school_id=g.school_id, student_id=student_id,
@@ -890,18 +1019,18 @@ def add_timeline(student_id):
 
 # ===================== COUNSELING =====================
 
-@students_bp.route('/<int:student_id>/counseling', methods=['GET'])
+@students_bp.route('/<string:student_id>/counseling', methods=['GET'])
 @school_required
 def list_counseling(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     query = StudentCounseling.query.filter_by(student_id=student_id, school_id=g.school_id)
     query = query.order_by(StudentCounseling.session_date.desc())
     return success_response(paginate(query))
 
 
-@students_bp.route('/<int:student_id>/counseling', methods=['POST'])
+@students_bp.route('/<string:student_id>/counseling', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 @validate({
     'session_date': {'required': True},
@@ -909,7 +1038,7 @@ def list_counseling(student_id):
 def add_counseling(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     cs = StudentCounseling(
         school_id=g.school_id, student_id=student_id,
@@ -947,18 +1076,18 @@ def update_counseling(cs_id):
 
 # ===================== MEDICAL =====================
 
-@students_bp.route('/<int:student_id>/medical', methods=['GET'])
+@students_bp.route('/<string:student_id>/medical', methods=['GET'])
 @school_required
 def list_medical(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     query = StudentMedical.query.filter_by(student_id=student_id, school_id=g.school_id)
     query = query.order_by(StudentMedical.record_date.desc())
     return success_response(paginate(query))
 
 
-@students_bp.route('/<int:student_id>/medical', methods=['POST'])
+@students_bp.route('/<string:student_id>/medical', methods=['POST'])
 @role_required('school_admin', 'teacher', 'counselor')
 @validate({
     'title': {'required': True},
@@ -967,7 +1096,7 @@ def list_medical(student_id):
 def add_medical(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     med = StudentMedical(
         school_id=g.school_id, student_id=student_id,
@@ -989,17 +1118,17 @@ def add_medical(student_id):
 
 # ===================== DOCUMENTS =====================
 
-@students_bp.route('/<int:student_id>/documents', methods=['GET'])
+@students_bp.route('/<string:student_id>/documents', methods=['GET'])
 @school_required
 def list_documents(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     docs = StudentDocument.query.filter_by(student_id=student_id, school_id=g.school_id).all()
     return success_response([d.to_dict() for d in docs])
 
 
-@students_bp.route('/<int:student_id>/documents', methods=['POST'])
+@students_bp.route('/<string:student_id>/documents', methods=['POST'])
 @role_required('school_admin', 'teacher')
 @validate({
     'document_type': {'required': True},
@@ -1008,13 +1137,14 @@ def list_documents(student_id):
 def upload_document(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
     doc = StudentDocument(
         student_id=student_id, school_id=g.school_id,
         document_type=data['document_type'],
         document_name=data.get('document_name', data['document_type']),
-        file_url=data['file_url']
+        file_url=data['file_url'],
+        verified=True
     )
     db.session.add(doc)
     tl = StudentTimeline(
@@ -1046,12 +1176,12 @@ def delete_document(doc_id):
     return success_response(message='Document deleted')
 
 
-@students_bp.route('/<int:student_id>/documents/upload', methods=['POST'])
+@students_bp.route('/<string:student_id>/documents/upload', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def upload_student_document_file(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     if 'file' not in request.files:
         return error_response('No file provided')
     file = request.files['file']
@@ -1065,11 +1195,11 @@ def upload_student_document_file(student_id):
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, safe_name)
     file.save(file_path)
-    file_url = f'/uploads/student_docs/{g.school_id}/{student_id}/{safe_name}'
     doc = StudentDocument(
         student_id=student_id, school_id=g.school_id,
-        document_type=doc_type, document_name=doc_name, file_url=file_url
+        document_type=doc_type, document_name=doc_name, file_url=file_path
     )
+    doc.verified = True
     db.session.add(doc)
     tl = StudentTimeline(
         school_id=g.school_id, student_id=student_id,
@@ -1081,23 +1211,37 @@ def upload_student_document_file(student_id):
     return success_response(doc.to_dict(), 'Document uploaded', 201)
 
 
-@students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents', methods=['GET'])
+@students_bp.route('/<string:student_id>/documents/<int:doc_id>/file', methods=['GET'])
+@school_required
+def serve_student_document_file(student_id, doc_id):
+    doc = StudentDocument.query.filter_by(id=doc_id, student_id=student_id, school_id=g.school_id).first_or_404()
+    file_path = doc.file_url
+    if not os.path.isabs(file_path):
+        upload_dir = os.path.join(current_app.root_path, '..', 'uploads')
+        rel = file_path[9:] if file_path.startswith('/uploads/') else file_path
+        file_path = os.path.normpath(os.path.join(upload_dir, rel))
+    if not os.path.exists(file_path):
+        return error_response('File not found', 404)
+    return send_file(file_path)
+
+
+@students_bp.route('/<string:student_id>/parents/<int:parent_id>/documents', methods=['GET'])
 @school_required
 def list_parent_documents(student_id, parent_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
     docs = ParentDocument.query.filter_by(parent_id=parent_id, school_id=g.school_id).all()
     return success_response([d.to_dict() for d in docs])
 
 
-@students_bp.route('/<int:student_id>/parents/<int:parent_id>/documents/upload', methods=['POST'])
+@students_bp.route('/<string:student_id>/parents/<int:parent_id>/documents/upload', methods=['POST'])
 @role_required('school_admin', 'teacher')
 def upload_parent_document_file(student_id, parent_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     ParentDetail.query.filter_by(id=parent_id, student_id=student_id).first_or_404()
     if 'file' not in request.files:
         return error_response('No file provided')
@@ -1112,14 +1256,28 @@ def upload_parent_document_file(student_id, parent_id):
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, safe_name)
     file.save(file_path)
-    file_url = f'/uploads/parent_docs/{g.school_id}/{parent_id}/{safe_name}'
     doc = ParentDocument(
         parent_id=parent_id, school_id=g.school_id,
-        document_type=doc_type, document_name=doc_name, file_url=file_url
+        document_type=doc_type, document_name=doc_name, file_url=file_path
     )
+    doc.verified = True
     db.session.add(doc)
     db.session.commit()
     return success_response(doc.to_dict(), 'Document uploaded', 201)
+
+
+@students_bp.route('/<string:student_id>/parents/<int:parent_id>/documents/<int:doc_id>/file', methods=['GET'])
+@school_required
+def serve_parent_document_file(student_id, parent_id, doc_id):
+    doc = ParentDocument.query.filter_by(id=doc_id, parent_id=parent_id, school_id=g.school_id).first_or_404()
+    file_path = doc.file_url
+    if not os.path.isabs(file_path):
+        upload_dir = os.path.join(current_app.root_path, '..', 'uploads')
+        rel = file_path[9:] if file_path.startswith('/uploads/') else file_path
+        file_path = os.path.normpath(os.path.join(upload_dir, rel))
+    if not os.path.exists(file_path):
+        return error_response('File not found', 404)
+    return send_file(file_path)
 
 
 # ===================== HOUSES =====================
@@ -1168,7 +1326,7 @@ def update_house(house_id):
 })
 def assign_house():
     data = g.get('validated_data') or request.get_json()
-    student = Student.query.filter_by(id=data['student_id'], school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=data['student_id'], school_id=g.school_id).first_or_404()
     student.house_id = data['house_id']
     db.session.commit()
     return success_response(student.to_dict(), 'House assigned')
@@ -1203,32 +1361,32 @@ def link_siblings():
         return error_response('At least 2 students required')
     group_id = None
     for sid in student_ids:
-        s = Student.query.filter_by(id=sid, school_id=g.school_id).first()
+        s = Student.query.filter_by(admission_no=sid, school_id=g.school_id).first()
         if s and s.sibling_group_id:
             group_id = s.sibling_group_id
             break
     if not group_id:
         group_id = str(uuid.uuid4())[:8]
     for sid in student_ids:
-        s = Student.query.filter_by(id=sid, school_id=g.school_id).first()
+        s = Student.query.filter_by(admission_no=sid, school_id=g.school_id).first()
         if s:
             s.sibling_group_id = group_id
     db.session.commit()
     return success_response({'sibling_group_id': group_id}, 'Siblings linked')
 
 
-@students_bp.route('/<int:student_id>/siblings', methods=['GET'])
+@students_bp.route('/<string:student_id>/siblings', methods=['GET'])
 @school_required
 def get_siblings(student_id):
     if not _verify_student_access(student_id):
         return success_response([])
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     if not student.sibling_group_id:
         return success_response([])
     siblings = Student.query.filter(
         Student.school_id == g.school_id,
         Student.sibling_group_id == student.sibling_group_id,
-        Student.id != student.id
+        Student.admission_no != student.admission_no
     ).all()
     return success_response([s.to_dict() for s in siblings])
 
@@ -1294,12 +1452,12 @@ def graduate_to_alumni():
     batch_year = data.get('batch_year', str(datetime.utcnow().year))
     count = 0
     for sid in student_ids:
-        student = Student.query.filter_by(id=sid, school_id=g.school_id).first()
+        student = Student.query.filter_by(admission_no=sid, school_id=g.school_id).first()
         if student:
-            existing = Alumni.query.filter_by(student_id=student.id, school_id=g.school_id).first()
+            existing = Alumni.query.filter_by(student_id=student.admission_no, school_id=g.school_id).first()
             if not existing:
                 alumni = Alumni(
-                    school_id=g.school_id, student_id=student.id,
+                    school_id=g.school_id, student_id=student.admission_no,
                     name=f"{student.first_name} {student.last_name or ''}".strip(),
                     batch_year=batch_year,
                     passing_class=student.current_class.name if student.current_class else None
@@ -1313,12 +1471,12 @@ def graduate_to_alumni():
 
 # ===================== ID CARD =====================
 
-@students_bp.route('/<int:student_id>/id-card', methods=['GET'])
+@students_bp.route('/<string:student_id>/id-card', methods=['GET'])
 @school_required
 def get_id_card(student_id):
     if not _verify_student_access(student_id):
         return error_response('Access denied', 403)
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = student.to_dict()
     data['parents'] = [p.to_dict() for p in student.parents.limit(2).all()]
     return success_response(data)
@@ -1348,7 +1506,7 @@ def bulk_id_cards():
     return success_response(cards, f'{len(cards)} ID cards generated')
 
 
-@students_bp.route('/<int:student_id>/id-card/pdf', methods=['GET'])
+@students_bp.route('/<string:student_id>/id-card/pdf', methods=['GET'])
 @school_required
 def download_id_card_pdf(student_id):
     """Generate and download a professional student ID card PDF"""
@@ -1361,7 +1519,7 @@ def download_id_card_pdf(student_id):
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     school = School.query.get(g.school_id)
     parents = list(student.parents.limit(2).all())
 
@@ -1457,7 +1615,7 @@ def download_id_card_pdf(student_id):
     story.append(Spacer(1, 8*mm))
 
     # ID Card Number and Issue Date
-    id_no = student.id_card_no or f"ID-{student.admission_no or student.id}"
+    id_no = student.id_card_no or f"ID-{student.admission_no or student.admission_no}"
     issue_date = date.today().strftime('%d-%m-%Y')
     story.append(HRFlowable(width="100%", thickness=0.5, color=border_color))
     story.append(Spacer(1, 2*mm))
@@ -1499,10 +1657,10 @@ def download_id_card_pdf(student_id):
 
 # ===================== TRANSFER =====================
 
-@students_bp.route('/<int:student_id>/transfer', methods=['POST'])
+@students_bp.route('/<string:student_id>/transfer', methods=['POST'])
 @role_required('school_admin')
 def transfer_student(student_id):
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
     data = request.get_json()
     student.status = 'transferred'
     tl = StudentTimeline(
@@ -1555,6 +1713,70 @@ def smart_section_allocation():
             count += 1
     db.session.commit()
     return success_response({'allocated_count': count}, f'{count} students allocated to sections')
+
+
+# ===================== LOGIN MANAGEMENT (Principal Only) =====================
+
+@students_bp.route('/<string:student_id>/login', methods=['PUT'])
+@role_required('school_admin', 'principal')
+def update_student_login(student_id):
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
+    data = request.get_json()
+
+    from app.models.user import User
+    login_id = data.get('login_id')
+    password = data.get('password')
+
+    if student.user_id:
+        user = User.query.get(student.user_id)
+        if not user:
+            return error_response('Linked user account not found', 404)
+    else:
+        from app.models.user import Role
+        student_role = Role.query.filter_by(name='student').first()
+        if not student_role:
+            student_role = Role(name='student', description='Student', is_system_role=True)
+            db.session.add(student_role)
+            db.session.flush()
+        if not login_id:
+            return error_response('Login ID is required when creating a new login.', 400)
+        user = User(
+            school_id=g.school_id,
+            role_id=student_role.id,
+            email=login_id,
+            first_name=student.first_name,
+            last_name=student.last_name or '',
+            is_active=True,
+        )
+        db.session.add(user)
+        db.session.flush()
+        student.user_id = user.id
+
+    if login_id:
+        user.email = login_id
+    if password:
+        user.set_password(password)
+    if data.get('is_active') is not None:
+        user.is_active = data['is_active']
+
+    db.session.commit()
+    return success_response({'user_id': user.id, 'email': user.email, 'is_active': user.is_active}, 'Student login updated')
+
+
+@students_bp.route('/<string:student_id>/login', methods=['DELETE'])
+@role_required('school_admin', 'principal')
+def delete_student_login(student_id):
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
+    if not student.user_id:
+        return error_response('No login account exists for this student.', 404)
+
+    from app.models.user import User
+    user = User.query.get(student.user_id)
+    if user:
+        db.session.delete(user)
+    student.user_id = None
+    db.session.commit()
+    return success_response(None, 'Student login deleted')
 
 
 # ===================== BULK IMPORT =====================

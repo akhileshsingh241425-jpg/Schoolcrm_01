@@ -13,7 +13,7 @@ class Role(db.Model):
     __tablename__ = 'roles'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(50), nullable=False, unique=True)
     description = db.Column(db.String(255))
     is_system_role = db.Column(db.Boolean, default=False)
 
@@ -61,7 +61,7 @@ class User(db.Model):
     __tablename__ = 'users'
 
     id = db.Column(db.Integer, primary_key=True)
-    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=True)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=False)
     email = db.Column(db.String(255), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -92,12 +92,25 @@ class User(db.Model):
 
     @property
     def all_roles(self):
-        """Return all roles: primary role + additional roles"""
-        roles = [self.role] if self.role else []
-        for r in self.roles:
-            if r.id != self.role_id:
-                roles.append(r)
-        return roles
+        """Return all roles: primary role + additional roles (direct DB query)"""
+        from app import db as _db
+        primary = Role.query.get(self.role_id)
+        rows = _db.session.execute(
+            user_roles.select().where(user_roles.c.user_id == self.id)
+        ).fetchall()
+        extra_ids = [r.role_id for r in rows]
+        seen = set()
+        result = []
+        if primary:
+            result.append(primary)
+            seen.add(primary.id)
+        for rid in extra_ids:
+            if rid not in seen:
+                r = Role.query.get(rid)
+                if r:
+                    result.append(r)
+                    seen.add(rid)
+        return result
 
     @property
     def role_names(self):
@@ -107,11 +120,31 @@ class User(db.Model):
         return any(r.name in role_names for r in self.all_roles)
 
     def to_dict(self):
+        from app import db as _db
+        from app.models.staff import Staff
+        primary = Role.query.get(self.role_id)
+        rows = _db.session.execute(
+            user_roles.select().where(user_roles.c.user_id == self.id)
+        ).fetchall()
+        extra_ids = [r.role_id for r in rows]
+        seen = set()
+        all_objs = []
+        if primary:
+            all_objs.append(primary)
+            seen.add(primary.id)
+        for rid in extra_ids:
+            if rid not in seen:
+                r = Role.query.get(rid)
+                if r:
+                    all_objs.append(r)
+                    seen.add(rid)
+        staff = Staff.query.filter_by(user_id=self.id).first()
         return {
             'id': self.id,
             'school_id': self.school_id,
-            'role': self.role.to_dict() if self.role else None,
-            'roles': [r.to_dict() for r in self.all_roles],
+            'staff_id': staff.id if staff else None,
+            'role': primary.to_dict() if primary else None,
+            'roles': [r.to_dict() for r in all_objs],
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
@@ -124,15 +157,19 @@ class User(db.Model):
 
     def get_allowed_modules(self):
         """Get list of modules this user can access based on ALL role permissions"""
+        from app import db as _db
         role_ids = [self.role_id]
-        for r in self.roles:
-            if r.id != self.role_id:
-                role_ids.append(r.id)
+        rows = _db.session.execute(
+            user_roles.select().where(user_roles.c.user_id == self.id)
+        ).fetchall()
+        for row in rows:
+            if row.role_id != self.role_id:
+                role_ids.append(row.role_id)
         if not role_ids:
             return []
         perms = RolePermission.query.filter(
             RolePermission.role_id.in_(role_ids),
-            db.or_(RolePermission.school_id == self.school_id, RolePermission.school_id.is_(None))
+            db.or_(RolePermission.school_id == self.school_id if self.school_id else RolePermission.school_id.is_(None), RolePermission.school_id.is_(None))
         ).all()
         perm_ids = list(set(rp.permission_id for rp in perms))
         if not perm_ids:

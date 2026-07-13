@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Paper, Grid, TextField, Button, Switch, FormControlLabel,
   Divider, Snackbar, Alert, Card, CardContent, Tabs, Tab, Table, TableBody,
@@ -7,7 +8,7 @@ import {
   Select, MenuItem, Checkbox, Tooltip, Avatar, InputAdornment
 } from '@mui/material';
 import {
-  Add, Edit, Delete, PersonAdd, Security, Visibility, VisibilityOff,
+  Add, Edit, Delete, PersonAdd, School, Badge, Security, Visibility, VisibilityOff,
   CheckCircle, Cancel, People, AdminPanelSettings, Lock
 } from '@mui/icons-material';
 import { schoolsAPI, authAPI } from '../../services/api';
@@ -15,6 +16,7 @@ import { validateForm } from '../../components/Validation';
 import useAuthStore from '../../store/authStore';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
@@ -99,8 +101,8 @@ function SchoolSettingsTab({ showSnack }) {
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}><TextField fullWidth label="School Name" value={school.name || ''} onChange={(e) => setSchool({ ...school, name: e.target.value })} /></Grid>
           <Grid item xs={12} md={6}><TextField fullWidth label="School Code" value={school.code || ''} disabled /></Grid>
-          <Grid item xs={12} md={6}><TextField fullWidth label="Email" value={school.email || ''} onChange={(e) => setSchool({ ...school, email: e.target.value })} /></Grid>
-          <Grid item xs={12} md={6}><TextField fullWidth label="Phone" value={school.phone || ''} onChange={(e) => setSchool({ ...school, phone: e.target.value })} /></Grid>
+          <Grid item xs={12} md={6}><TextField fullWidth label="Email" value={school.email || ''} error={school.email && !school.email.includes('@')} helperText={school.email && !school.email.includes('@') ? 'Invalid email' : ''} onChange={(e) => setSchool({ ...school, email: e.target.value })} /></Grid>
+          <Grid item xs={12} md={6}><TextField fullWidth label="Phone" value={school.phone || ''} inputProps={{ maxLength: 10 }} onChange={(e) => setSchool({ ...school, phone: e.target.value.replace(/\D/g, '') })} /></Grid>
           <Grid item xs={12}><TextField fullWidth label="Address" value={school.address || ''} onChange={(e) => setSchool({ ...school, address: e.target.value })} /></Grid>
         </Grid>
       </Paper>
@@ -145,6 +147,7 @@ function SchoolSettingsTab({ showSnack }) {
 // USERS & LOGINS TAB
 // ============================================================
 function UsersTab({ showSnack }) {
+  const navigate = useNavigate();
   const [users, setUsers] = useState({ items: [], total: 0 });
   const [roles, setRoles] = useState([]);
   const [filterRole, setFilterRole] = useState('');
@@ -152,7 +155,11 @@ function UsersTab({ showSnack }) {
   const [dialog, setDialog] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showPwd, setShowPwd] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [] });
+  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [],
+    employee_id: '', department: '', designation: '', date_of_joining: '', qualification: '', staff_type: 'teaching', contract_type: 'permanent',
+    admission_no: '', gender: '', date_of_birth: '', address: '', city: '', state: '',
+    parents: [{ relation: 'father', name: '', phone: '' }]
+  });
 
   const loadUsers = useCallback(() => {
     const params = { per_page: 100 };
@@ -168,7 +175,11 @@ function UsersTab({ showSnack }) {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [] });
+    setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role_id: '', role_ids: [],
+      employee_id: '', department: '', designation: '', date_of_joining: '', qualification: '', staff_type: 'teaching', contract_type: 'permanent',
+      admission_no: '', gender: '', date_of_birth: '', address: '', city: '', state: '',
+      parents: [{ relation: 'father', name: '', phone: '' }]
+    });
     setDialog(true);
   };
 
@@ -183,6 +194,9 @@ function UsersTab({ showSnack }) {
     setDialog(true);
   };
 
+  const selectedRoleName = roles.find(r => r.id === form.role_id)?.name || '';
+  const isStudentRole = selectedRoleName === 'student';
+
   const save = () => {
     const errs = validateForm(form, { first_name: ['required'], email: ['email'], phone: ['phone'] });
     if (Object.keys(errs).length) { showSnack(Object.values(errs)[0], 'error'); return; }
@@ -192,8 +206,25 @@ function UsersTab({ showSnack }) {
     if (!editing && !form.password) {
       showSnack('Password required hai new user ke liye', 'error'); return;
     }
+    if (!editing && form.password.length < 8) {
+      showSnack('Password minimum 8 characters ka hona chahiye', 'error'); return;
+    }
+
+    if (isStudentRole) {
+      if (!form.admission_no) { showSnack('Admission No. is required for student', 'error'); return; }
+      if (!form.address) { showSnack('Address is required for student', 'error'); return; }
+      if (!form.parents?.[0]?.name) { showSnack('Parent/Guardian name is required for student', 'error'); return; }
+      if (!form.parents?.[0]?.phone) { showSnack('Parent/Guardian phone is required for student', 'error'); return; }
+    }
+
+    const roleName = roles.find(r => r.id === form.role_id)?.description || 'Unknown Role';
+    if (!window.confirm(`${editing ? 'Update' : 'Create'} user "${form.first_name} ${form.last_name}" with role "${roleName}"?`)) return;
 
     const data = { ...form, role_ids: form.role_ids || [] };
+    if (!editing) {
+      data.staff_type = form.staff_type || 'teaching';
+      data.contract_type = form.contract_type || 'permanent';
+    }
     if (!data.password) delete data.password;
 
     const fn = editing ? authAPI.updateUser(editing.id, data) : authAPI.createUser(data);
@@ -266,10 +297,16 @@ function UsersTab({ showSnack }) {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={6} display="flex" justifyContent="flex-end">
-            <Button variant="contained" startIcon={<PersonAdd />} onClick={openCreate}
-              sx={{ borderRadius: 50, textTransform: 'none' }}>
-              Create New User
+          <Grid item xs={12} sm={6} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button variant="contained" color="success" startIcon={<School />}
+              onClick={() => navigate('/admissions')}
+              sx={{ borderRadius: 2, textTransform: 'none', px: 2 }}>
+              Create New Admission
+            </Button>
+            <Button variant="contained" color="primary" startIcon={<Badge />}
+              onClick={() => navigate('/staff/new')}
+              sx={{ borderRadius: 2, textTransform: 'none', px: 2 }}>
+              Create New Staff
             </Button>
           </Grid>
         </Grid>
@@ -364,6 +401,8 @@ function UsersTab({ showSnack }) {
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Email (Login ID)" value={form.email} required type="email"
+                error={form.email && !form.email.includes('@')}
+                helperText={form.email && !form.email.includes('@') ? 'Invalid email' : ''}
                 onChange={e => setForm({ ...form, email: e.target.value })} />
             </Grid>
             <Grid item xs={12}>
@@ -382,8 +421,8 @@ function UsersTab({ showSnack }) {
                 }} />
             </Grid>
             <Grid item xs={6}>
-              <TextField fullWidth label="Phone" value={form.phone}
-                onChange={e => setForm({ ...form, phone: e.target.value })} />
+              <TextField fullWidth label="Phone" value={form.phone} inputProps={{ maxLength: 10 }}
+                onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} />
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth required>
@@ -425,6 +464,134 @@ function UsersTab({ showSnack }) {
                 </Select>
               </FormControl>
             </Grid>
+
+            {/* ===== STAFF-SPECIFIC FIELDS ===== */}
+            {selectedRoleName && !['super_admin', 'school_admin', 'student', 'parent'].includes(selectedRoleName) && !editing && (
+              <>
+                <Grid item xs={12}><Divider sx={{ my: 1 }} /><Typography variant="subtitle2" fontWeight="bold" color="primary">Staff Details</Typography></Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Employee ID" value={form.employee_id}
+                    onChange={e => setForm({ ...form, employee_id: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Department" value={form.department}
+                    onChange={e => setForm({ ...form, department: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Designation" value={form.designation}
+                    onChange={e => setForm({ ...form, designation: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Date of Joining" type="date" InputLabelProps={{ shrink: true }}
+                    value={form.date_of_joining} onChange={e => setForm({ ...form, date_of_joining: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Qualification" value={form.qualification}
+                    onChange={e => setForm({ ...form, qualification: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Staff Type</InputLabel>
+                    <Select value={form.staff_type} label="Staff Type" onChange={e => setForm({ ...form, staff_type: e.target.value })}>
+                      <MenuItem value="teaching">Teaching</MenuItem>
+                      <MenuItem value="non_teaching">Non-Teaching</MenuItem>
+                      <MenuItem value="admin">Admin</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Contract Type</InputLabel>
+                    <Select value={form.contract_type} label="Contract Type" onChange={e => setForm({ ...form, contract_type: e.target.value })}>
+                      <MenuItem value="permanent">Permanent</MenuItem>
+                      <MenuItem value="contract">Contract</MenuItem>
+                      <MenuItem value="probation">Probation</MenuItem>
+                      <MenuItem value="part_time">Part-Time</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </>
+            )}
+
+            {/* ===== STUDENT-SPECIFIC FIELDS ===== */}
+            {selectedRoleName === 'student' && !editing && (
+              <>
+                <Grid item xs={12}><Divider sx={{ my: 1 }} /><Typography variant="subtitle2" fontWeight="bold" color="primary">Student Details</Typography></Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth required label="Admission No" value={form.admission_no}
+                    onChange={e => setForm({ ...form, admission_no: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Gender</InputLabel>
+                    <Select value={form.gender} label="Gender" onChange={e => setForm({ ...form, gender: e.target.value })}>
+                      <MenuItem value="male">Male</MenuItem>
+                      <MenuItem value="female">Female</MenuItem>
+                      <MenuItem value="other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Date of Birth" type="date" InputLabelProps={{ shrink: true }}
+                    value={form.date_of_birth} onChange={e => setForm({ ...form, date_of_birth: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth required label="City" value={form.city}
+                    onChange={e => setForm({ ...form, city: e.target.value })} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="State" value={form.state}
+                    onChange={e => setForm({ ...form, state: e.target.value })} />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField fullWidth required label="Full Address" multiline rows={2} value={form.address}
+                    onChange={e => setForm({ ...form, address: e.target.value })} />
+                </Grid>
+                <Grid item xs={12}><Divider /><Typography variant="subtitle2" fontWeight="bold" color="primary" mt={1}>Parent / Guardian</Typography></Grid>
+                {form.parents.map((p, idx) => (
+                  <React.Fragment key={idx}>
+                    <Grid item xs={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Relation</InputLabel>
+                        <Select value={p.relation} label="Relation"
+                          onChange={e => {
+                            const parents = [...form.parents];
+                            parents[idx] = { ...parents[idx], relation: e.target.value };
+                            setForm({ ...form, parents });
+                          }}>
+                          <MenuItem value="father">Father</MenuItem>
+                          <MenuItem value="mother">Mother</MenuItem>
+                          <MenuItem value="guardian">Guardian</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <TextField fullWidth required={idx === 0} label="Full Name" value={p.name}
+                        onChange={e => {
+                          const parents = [...form.parents];
+                          parents[idx] = { ...parents[idx], name: e.target.value };
+                          setForm({ ...form, parents });
+                        }} />
+                    </Grid>
+                    <Grid item xs={4}>
+                      <TextField fullWidth required={idx === 0} label="Phone" value={p.phone} inputProps={{ maxLength: 10 }}
+                        onChange={e => {
+                          const parents = [...form.parents];
+                          parents[idx] = { ...parents[idx], phone: e.target.value.replace(/\D/g, '') };
+                          setForm({ ...form, parents });
+                        }} />
+                    </Grid>
+                  </React.Fragment>
+                ))}
+                {form.parents.length < 2 && (
+                  <Grid item xs={12}>
+                    <Button size="small" onClick={() => setForm({ ...form, parents: [...form.parents, { relation: 'mother', name: '', phone: '' }] })}>
+                      + Add Guardian
+                    </Button>
+                  </Grid>
+                )}
+              </>
+            )}
           </Grid>
           {form.role_id && (
             <Box mt={2} p={1.5} bgcolor="#f5f5f5" borderRadius={2}>
@@ -504,15 +671,27 @@ function RolesTab({ showSnack }) {
   }, []);
 
   const togglePermission = (role, moduleKey) => {
-    const hasIt = role.modules?.includes(moduleKey);
-    const newModules = hasIt
-      ? role.modules.filter(m => m !== moduleKey)
+    const schoolHasIt = role.school_modules?.includes(moduleKey);
+    const globalHasIt = role.global_modules?.includes(moduleKey) && !schoolHasIt;
+
+    // Can't remove a global default — only school-overridden modules can be toggled off
+    if (globalHasIt) {
+      showSnack('This is a system default permission. Remove school override first, or contact super admin.', 'warning');
+      return;
+    }
+
+    const newModules = schoolHasIt
+      ? (role.modules || []).filter(m => m !== moduleKey)
       : [...(role.modules || []), moduleKey];
 
     setSaving(`${role.id}-${moduleKey}`);
     authAPI.updateRolePermissions(role.id, { modules: newModules })
       .then(() => {
-        setRoles(prev => prev.map(r => r.id === role.id ? { ...r, modules: newModules } : r));
+        setRoles(prev => prev.map(r => r.id === role.id ? {
+          ...r,
+          modules: [...new Set([...newModules, ...(r.global_modules || [])])],
+          school_modules: newModules
+        } : r));
         setSaving(null);
       })
       .catch(() => { showSnack('Failed to update', 'error'); setSaving(null); });

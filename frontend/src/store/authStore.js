@@ -78,6 +78,24 @@ const useAuthStore = create((set, get) => ({
     if (roleNames.some(n => ['super_admin', 'school_admin', 'principal'].includes(n))) return true;
     return allowedModules.includes(moduleName);
   },
+
+  roleNames: () => {
+    const { user } = get();
+    if (!user) return [];
+    const allRoles = user?.roles || (user?.role ? [user.role] : []);
+    return allRoles.map(r => r.name);
+  },
+
+  canEditModule: (editorRoles) => {
+    const { user } = get();
+    if (!user) return false;
+    const allRoles = user?.roles || (user?.role ? [user.role] : []);
+    const roleNames = allRoles.map(r => r.name);
+    // super_admin, school_admin, principal always have full access
+    if (roleNames.some(n => ['super_admin', 'school_admin', 'principal'].includes(n))) return true;
+    // If user has any of the editor roles, they can edit
+    return roleNames.some(r => editorRoles.includes(r));
+  },
 }));
 
 export default useAuthStore;

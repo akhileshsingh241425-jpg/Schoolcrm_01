@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, g, current_app, send_from_directory
 import os
 import uuid
@@ -41,7 +42,17 @@ def get_school(school_id):
 def update_school(school_id):
     school = School.query.get_or_404(school_id)
     data = request.get_json()
-    
+
+    phone = data.get('phone')
+    if phone is not None and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    secondary_phone = data.get('secondary_phone')
+    if secondary_phone is not None and not re.match(r'^\d+$', str(secondary_phone)):
+        return error_response('Secondary phone must contain only digits', 400)
+    email = data.get('email')
+    if email is not None and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+
     updatable = ['name', 'short_name', 'email', 'phone', 'secondary_phone',
                  'alternate_contacts', 'address', 'city', 'state', 'pincode',
                  'logo_url', 'website', 'domain_name', 'theme_color', 'plan',

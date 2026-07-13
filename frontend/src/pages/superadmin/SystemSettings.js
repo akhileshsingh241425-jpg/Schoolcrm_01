@@ -56,7 +56,7 @@ export default function SystemSettings() {
     // Notifications
     notify_on_new_school: true,
     notify_on_subscription_expire: true,
-    notify_email: 'admin@schoolcrm.com',
+    notify_email: '',
     // Storage
     max_upload_size_mb: '10',
     allowed_file_types: 'jpg,jpeg,png,pdf,doc,docx,xls,xlsx',

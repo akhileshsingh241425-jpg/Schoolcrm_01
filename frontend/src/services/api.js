@@ -126,6 +126,10 @@ export const studentsAPI = {
   // Documents
   listDocuments: (id) => api.get(`/students/${id}/documents`),
   uploadDocument: (id, data) => api.post(`/students/${id}/documents`, data),
+  // Login
+  getLoginStatus: (id) => api.get(`/students/${id}`),
+  updateLogin: (id, data) => api.put(`/students/${id}/login`, data),
+  deleteLogin: (id) => api.delete(`/students/${id}/login`),
   verifyDocument: (id) => api.put(`/students/documents/${id}/verify`),
   deleteDocument: (id) => api.delete(`/students/documents/${id}`),
   // Houses
@@ -158,8 +162,11 @@ export const studentsAPI = {
   uploadStudentDocument: (id, formData) => api.post(`/students/${id}/documents/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  // Document file download
+  getDocumentFile: (studentId, docId) => api.get(`/students/${studentId}/documents/${docId}/file`, { responseType: 'blob' }),
   // Parent documents
   listParentDocuments: (studentId, parentId) => api.get(`/students/${studentId}/parents/${parentId}/documents`),
+  getParentDocumentFile: (studentId, parentId, docId) => api.get(`/students/${studentId}/parents/${parentId}/documents/${docId}/file`, { responseType: 'blob' }),
   uploadParentDocument: (studentId, parentId, formData) => api.post(`/students/${studentId}/parents/${parentId}/documents/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
@@ -168,7 +175,7 @@ export const studentsAPI = {
 // Staff
 export const staffAPI = {
   list: (params) => api.get('/staff/', { params }),
-  get: (id) => api.get(`/staff/${id}`),
+  get: (id, config) => api.get(`/staff/${id}`, config),
   getProfile: (id) => api.get(`/staff/${id}/profile`),
   create: (data) => api.post('/staff/', data),
   update: (id, data) => api.put(`/staff/${id}`, data),
@@ -178,6 +185,9 @@ export const staffAPI = {
   addDocument: (staffId, data) => api.post(`/staff/${staffId}/documents`, data),
   verifyDocument: (docId) => api.put(`/staff/documents/${docId}/verify`),
   deleteDocument: (docId) => api.delete(`/staff/documents/${docId}`),
+  createLogin: (staffId, data) => api.post(`/staff/${staffId}/create-login`, data),
+  updateLogin: (staffId, data) => api.put(`/staff/${staffId}/login`, data),
+  deleteLogin: (staffId) => api.delete(`/staff/${staffId}/login`),
   // Salary Structure
   listSalaryStructures: (params) => api.get('/staff/salary-structures', { params }),
   createSalaryStructure: (data) => api.post('/staff/salary-structures', data),
@@ -223,6 +233,9 @@ export const staffAPI = {
   listPendingApprovals: () => api.get('/staff/pending-approvals'),
   approveStaff: (id) => api.post(`/staff/${id}/approve`),
   rejectStaff: (id, data) => api.post(`/staff/${id}/reject`, data),
+  // Status Toggle
+  toggleStatus: (id, data) => api.post(`/staff/${id}/toggle-status`, data),
+  getStatusHistory: (id) => api.get(`/staff/${id}/status-history`),
   createLogin: (id, data) => api.post(`/staff/${id}/create-login`, data),
 };
 
@@ -248,6 +261,8 @@ export const admissionsAPI = {
   delete: (id) => api.delete(`/admissions/${id}`),
   updateStatus: (id, data) => api.put(`/admissions/${id}/status`, data),
   enroll: (id, data) => api.post(`/admissions/${id}/enroll`, data),
+  payAdmissionFee: (id, data) => api.post(`/admissions/${id}/pay-fee`, data),
+  payTuitionFee: (id, data) => api.post(`/admissions/${id}/pay-tuition`, data),
   // Documents
   getDocuments: (id) => api.get(`/admissions/${id}/documents`),
   uploadDocument: (id, formData) => api.post(`/admissions/${id}/documents`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
@@ -391,6 +406,8 @@ export const academicsAPI = {
   updateSyllabus: (id, data) => api.put(`/academics/syllabus/${id}`, data),
   deleteSyllabus: (id) => api.delete(`/academics/syllabus/${id}`),
   addSyllabusProgress: (id, data) => api.post(`/academics/syllabus/${id}/progress`, data),
+  addSyllabusProgressDirect: (data) => api.post('/academics/syllabus/progress/add', data),
+  updateSyllabusExamSetting: (id, data) => api.put(`/academics/syllabus/${id}/exam-setting`, data),
   getSyllabusOverview: (params) => api.get('/academics/syllabus-overview', { params }),
   // Lesson Plans
   listLessonPlans: (params) => api.get('/academics/lesson-plans', { params }),
@@ -459,6 +476,8 @@ export const attendanceAPI = {
   getStaff: (params) => api.get('/attendance/staff', { params }),
   markStaff: (data) => api.post('/attendance/staff', data),
   staffReport: (params) => api.get('/attendance/staff/report', { params }),
+  updateStaffAttendance: (id, data) => api.put(`/attendance/staff/${id}`, data),
+  staffMonthly: (params) => api.get('/attendance/staff/monthly', { params }),
 
   // Leave types
   getLeaveTypes: (params) => api.get('/attendance/leave-types', { params }),

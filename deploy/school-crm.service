@@ -1,21 +1,28 @@
 [Unit]
 Description=School CRM Flask Backend (Gunicorn)
 After=network.target mysql.service
+Wants=mysql.service
 
 [Service]
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/school-crm/backend
 Environment="PATH=/var/www/school-crm/backend/venv/bin"
+EnvironmentFile=/var/www/school-crm/backend/.env
 ExecStart=/var/www/school-crm/backend/venv/bin/gunicorn \
     --workers 3 \
     --bind 127.0.0.1:4000 \
     --timeout 120 \
     --access-logfile /var/log/school-crm/access.log \
     --error-logfile /var/log/school-crm/error.log \
+    --capture-output \
     "app:create_app('production')"
 Restart=always
 RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

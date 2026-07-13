@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
@@ -269,6 +270,14 @@ def list_visitors():
 @validate({})
 def create_visitor():
     d = g.get('validated_data') or request.get_json()
+
+    vp = d.get('visitor_phone')
+    if vp and not re.match(r'^\d+$', str(vp)):
+        return error_response('Visitor phone must contain only digits', 400)
+    ve = d.get('visitor_email')
+    if ve and '@' not in str(ve):
+        return error_response('Invalid visitor email format', 400)
+
     v = VisitorLog(school_id=g.school_id)
     for k in ['visitor_name', 'visitor_phone', 'visitor_email', 'visitor_photo_url',
               'id_type', 'id_number', 'purpose', 'visiting_person', 'visiting_department',
@@ -413,6 +422,17 @@ def list_emergency():
 @validate({'priority': {'type': int}})
 def create_emergency():
     d = g.get('validated_data') or request.get_json()
+
+    p1 = d.get('phone_primary')
+    if p1 and not re.match(r'^\d+$', str(p1)):
+        return error_response('Primary phone must contain only digits', 400)
+    p2 = d.get('phone_secondary')
+    if p2 and not re.match(r'^\d+$', str(p2)):
+        return error_response('Secondary phone must contain only digits', 400)
+    em = d.get('email')
+    if em and '@' not in str(em):
+        return error_response('Invalid email format', 400)
+
     ec = EmergencyContact(school_id=g.school_id)
     for k in ['person_type', 'person_id', 'contact_name', 'relationship',
               'phone_primary', 'phone_secondary', 'email', 'address', 'priority']:
@@ -429,6 +449,17 @@ def create_emergency():
 def update_emergency(id):
     ec = EmergencyContact.query.filter_by(id=id, school_id=g.school_id).first_or_404()
     d = g.get('validated_data') or request.get_json()
+
+    p1 = d.get('phone_primary')
+    if p1 is not None and not re.match(r'^\d+$', str(p1)):
+        return error_response('Primary phone must contain only digits', 400)
+    p2 = d.get('phone_secondary')
+    if p2 is not None and not re.match(r'^\d+$', str(p2)):
+        return error_response('Secondary phone must contain only digits', 400)
+    em = d.get('email')
+    if em is not None and '@' not in str(em):
+        return error_response('Invalid email format', 400)
+
     for k in ['contact_name', 'relationship', 'phone_primary', 'phone_secondary',
               'email', 'address', 'priority', 'is_active']:
         if k in d:

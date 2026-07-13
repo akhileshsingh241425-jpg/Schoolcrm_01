@@ -12,7 +12,7 @@ import {
   CheckCircle, HourglassEmpty, Phone, Email, Star,
   Assignment, Grade, Assessment, BarChart, Close
 } from '@mui/icons-material';
-import { dashboardAPI } from '../../services/api';
+import { dashboardAPI, attendanceAPI } from '../../services/api';
 import { academicsAPI } from '../../services/api';
 import examMgmtAPI from '../../services/examApi';
 import useAuthStore from '../../store/authStore';
@@ -251,6 +251,8 @@ const LoadingSkeleton = () => (
 export default function TeacherDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [myAttendance, setMyAttendance] = useState(null);
+  const [myStaffId, setMyStaffId] = useState(null);
   const { user, school } = useAuthStore();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -276,6 +278,21 @@ export default function TeacherDashboard() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    attendanceAPI.getMyProfile().then(r => {
+      const s = r.data?.data;
+      if (s?.id) {
+        setMyStaffId(s.id);
+        const today = new Date().toISOString().split('T')[0];
+        attendanceAPI.getStaff({ date: today }).then(r2 => {
+          const records = r2.data?.data || [];
+          const mine = records.find(a => a.staff_id === s.id);
+          setMyAttendance(mine || null);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
 
   if (loading) return <LoadingSkeleton />;
   if (!data) return <Typography color="error">Failed to load dashboard</Typography>;
@@ -384,6 +401,54 @@ export default function TeacherDashboard() {
       </Box>
 
       <Grid container spacing={2.5}>
+        {/* My Attendance (Self) */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ overflow: 'hidden', height: '100%' }}>
+            <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTime sx={{ color: 'primary.main', fontSize: 20 }} />
+                <Typography variant="subtitle1" fontWeight={700}>My Attendance Today</Typography>
+              </Box>
+              <Button size="small" variant="text" onClick={() => navigate('/teacher/my-attendance')}
+                sx={{ textTransform: 'none', fontSize: '0.75rem' }}>
+                Mark
+              </Button>
+            </Box>
+            {myAttendance ? (
+              <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Status</Typography>
+                  <Chip label={myAttendance.status === 'present' ? 'Present' : myAttendance.status === 'late' ? 'Late' : myAttendance.status === 'half_day' ? 'Half Day' : myAttendance.status === 'leave' ? 'On Leave' : 'Absent'}
+                    size="small" color={myAttendance.status === 'present' ? 'success' : myAttendance.status === 'late' ? 'warning' : myAttendance.status === 'half_day' ? 'info' : 'error'}
+                    sx={{ fontWeight: 600, textTransform: 'capitalize' }} />
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Check In</Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {myAttendance.check_in ? myAttendance.check_in.substring(0, 5) : '-'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">Check Out</Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {myAttendance.check_out ? myAttendance.check_out.substring(0, 5) : '-'}
+                  </Typography>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <AccessTime sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary">Not marked yet</Typography>
+                <Button size="small" variant="outlined" sx={{ mt: 1, textTransform: 'none' }}
+                  onClick={() => navigate('/teacher/my-attendance')}>
+                  Mark Attendance
+                </Button>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
         {/* Today's Timetable */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ overflow: 'hidden' }}>

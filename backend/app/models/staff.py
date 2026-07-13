@@ -8,6 +8,7 @@ class Staff(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    user = db.relationship('User', foreign_keys=[user_id], lazy=True)
     employee_id = db.Column(db.String(50))
     first_name = db.Column(db.String(100), nullable=False)
     last_name = db.Column(db.String(100))
@@ -59,8 +60,15 @@ class Staff(db.Model):
         db.UniqueConstraint('school_id', 'employee_id', name='unique_employee'),
     )
 
+    @staticmethod
+    def _mask(val, show=4):
+        if not val:
+            return None
+        s = str(val)
+        return '*' * (len(s) - show) + s[-show:] if len(s) > show else s
+
     def to_dict(self):
-        return {
+        data = {
             'id': self.id,
             'employee_id': self.employee_id,
             'first_name': self.first_name,
@@ -80,17 +88,17 @@ class Staff(db.Model):
             'city': self.city,
             'state': self.state,
             'photo_url': self.photo_url,
-            'aadhar_no': self.aadhar_no,
-            'pan_no': self.pan_no,
+            'aadhar_no': self._mask(self.aadhar_no),
+            'pan_no': self._mask(self.pan_no),
             'bank_name': self.bank_name,
-            'bank_account_no': self.bank_account_no,
-            'ifsc_code': self.ifsc_code,
+            'bank_account_no': self._mask(self.bank_account_no),
+            'ifsc_code': self._mask(self.ifsc_code, show=0),
             'staff_type': self.staff_type,
             'contract_type': self.contract_type,
             'probation_end_date': self.probation_end_date.isoformat() if self.probation_end_date else None,
             'contract_end_date': self.contract_end_date.isoformat() if self.contract_end_date else None,
-            'pf_number': self.pf_number,
-            'esi_number': self.esi_number,
+            'pf_number': self._mask(self.pf_number),
+            'esi_number': self._mask(self.esi_number),
             'emergency_contact': self.emergency_contact,
             'blood_group': self.blood_group,
             'marital_status': self.marital_status,
@@ -99,8 +107,37 @@ class Staff(db.Model):
             'approved_at': self.approved_at.isoformat() if self.approved_at else None,
             'login_created': self.login_created,
             'exit_date': self.exit_date.isoformat() if self.exit_date else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'role': None,
+            'roles': [],
+            'role_ids': []
         }
+        if self.user:
+            rows = db.session.execute(
+                db.text("SELECT role_id FROM user_roles WHERE user_id = :uid"),
+                {'uid': self.user.id}
+            ).fetchall()
+            extra_ids = [r[0] for r in rows]
+            primary = db.session.execute(
+                db.text("SELECT id, name FROM roles WHERE id = :rid"),
+                {'rid': self.user.role_id}
+            ).fetchone()
+            if primary:
+                data['role'] = primary.name
+            seen = {self.user.role_id} if self.user.role_id else set()
+            role_names = []
+            for rid in extra_ids:
+                if rid not in seen:
+                    r = db.session.execute(
+                        db.text("SELECT id, name FROM roles WHERE id = :rid"),
+                        {'rid': rid}
+                    ).fetchone()
+                    if r:
+                        role_names.append(r.name)
+                        seen.add(rid)
+            data['roles'] = role_names
+            data['role_ids'] = [rid for rid in extra_ids if rid != self.user.role_id]
+        return data
 
 
 class StaffDocument(db.Model):
@@ -499,6 +536,34 @@ class TrainingRecord(db.Model):
             'certificate_url': self.certificate_url,
             'status': self.status,
             'remarks': self.remarks,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class StaffStatusLog(db.Model):
+    __tablename__ = 'staff_status_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='CASCADE'), nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    old_status = db.Column(db.String(20), nullable=False)
+    new_status = db.Column(db.String(20), nullable=False)
+    changed_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    staff = db.relationship('Staff', backref='status_logs')
+    changer = db.relationship('User', foreign_keys=[changed_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'staff_id': self.staff_id,
+            'old_status': self.old_status,
+            'new_status': self.new_status,
+            'changed_by': self.changed_by,
+            'changed_by_name': self.changer.full_name if self.changer else '',
+            'reason': self.reason,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

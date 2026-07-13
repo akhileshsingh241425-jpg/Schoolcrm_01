@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   People, School, Edit, Refresh, Person, CheckCircle, Search,
-  AdminPanelSettings, SwapHoriz, Close, Badge
+  AdminPanelSettings, SwapHoriz, Close, Badge, RemoveCircle
 } from '@mui/icons-material';
 import { staffAPI, authAPI } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -97,6 +97,19 @@ export default function StaffPositions() {
       toast.error(err.response?.data?.message || 'Failed to assign');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRemove = async (posKey) => {
+    const holder = getPositionHolder(posKey);
+    if (!holder) return;
+    if (!window.confirm(`Remove ${holder.first_name} ${holder.last_name} from this position?`)) return;
+    try {
+      await staffAPI.update(holder.id, { designation: '' });
+      toast.success(`Position cleared successfully!`);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove');
     }
   };
 
@@ -200,17 +213,27 @@ export default function StaffPositions() {
                     </Box>
                   )}
 
-                  {/* Action */}
-                  <Button fullWidth size="small"
-                    variant={holder ? 'text' : 'contained'}
-                    color={holder ? 'primary' : 'primary'}
-                    startIcon={holder ? <SwapHoriz sx={{ fontSize: 14 }} /> : <Person sx={{ fontSize: 14 }} />}
-                    onClick={() => { setAssignDialog(pos.key); setSelectedStaff(holder?.id?.toString() || ''); }}
-                    sx={{ mt: 1.5, borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.75rem',
-                      ...(holder ? {} : { bgcolor: pos.color, '&:hover': { bgcolor: alpha(pos.color, 0.85) } })
-                    }}>
-                    {holder ? 'Change Person' : 'Assign Now'}
-                  </Button>
+                  {/* Actions */}
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                    <Button fullWidth size="small"
+                      variant={holder ? 'text' : 'contained'}
+                      color={holder ? 'primary' : 'primary'}
+                      startIcon={holder ? <SwapHoriz sx={{ fontSize: 14 }} /> : <Person sx={{ fontSize: 14 }} />}
+                      onClick={() => { setAssignDialog(pos.key); setSelectedStaff(holder?.id?.toString() || ''); }}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.75rem',
+                        ...(holder ? {} : { bgcolor: pos.color, '&:hover': { bgcolor: alpha(pos.color, 0.85) } })
+                      }}>
+                      {holder ? 'Change Person' : 'Assign Now'}
+                    </Button>
+                    {holder && (
+                      <Button size="small" variant="outlined" color="error"
+                        startIcon={<RemoveCircle sx={{ fontSize: 14 }} />}
+                        onClick={() => handleRemove(pos.key)}
+                        sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', minWidth: 40 }}>
+                        Remove
+                      </Button>
+                    )}
+                  </Box>
                 </CardContent>
               </Card>
             </Grid>

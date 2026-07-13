@@ -191,7 +191,7 @@ def _send_to_parent(school_id, alert_type, channels, contact, student, subject, 
         log = NotificationLog(
             school_id=school_id, alert_type=alert_type, channel='email',
             recipient_name=contact['name'], recipient_contact=contact['email'],
-            student_id=student.id if student else None,
+            student_id=student.admission_no if student else None,
             subject=subject, message=message,
             status='sent' if success else 'failed',
             error_message=err
@@ -204,7 +204,7 @@ def _send_to_parent(school_id, alert_type, channels, contact, student, subject, 
         log = NotificationLog(
             school_id=school_id, alert_type=alert_type, channel='whatsapp',
             recipient_name=contact['name'], recipient_contact=contact['whatsapp'],
-            student_id=student.id if student else None,
+            student_id=student.admission_no if student else None,
             subject=subject, message=message,
             status='sent' if success else 'failed',
             error_message=err
@@ -252,7 +252,7 @@ def trigger_late_arrival_alert():
     all_students = Student.query.filter_by(school_id=g.school_id, is_active=True).all()
 
     # Students NOT marked yet = potentially not arrived
-    absent_students = [s for s in all_students if s.id not in marked_ids]
+    absent_students = [s for s in all_students if s.admission_no not in marked_ids]
 
     if not absent_students:
         return success_response({'sent': 0, 'total_absent': 0}, 'All students have arrived!')
@@ -267,7 +267,7 @@ def trigger_late_arrival_alert():
     school_name = school.name if school else 'School'
 
     for student in absent_students:
-        contacts = _get_parent_contacts(student.id, g.school_id)
+        contacts = _get_parent_contacts(student.admission_no, g.school_id)
         student_name = f"{student.first_name} {student.last_name or ''}".strip()
 
         subject = f"Alert: {student_name} has not reached school yet"
@@ -330,14 +330,14 @@ def trigger_monthly_attendance_report():
         # Count attendance for the month
         total_days = StudentAttendance.query.filter(
             StudentAttendance.school_id == g.school_id,
-            StudentAttendance.student_id == student.id,
+            StudentAttendance.student_id == student.admission_no,
             extract('month', StudentAttendance.date) == month,
             extract('year', StudentAttendance.date) == year
         ).count()
 
         present_days = StudentAttendance.query.filter(
             StudentAttendance.school_id == g.school_id,
-            StudentAttendance.student_id == student.id,
+            StudentAttendance.student_id == student.admission_no,
             extract('month', StudentAttendance.date) == month,
             extract('year', StudentAttendance.date) == year,
             StudentAttendance.status.in_(['present', 'late'])
@@ -345,7 +345,7 @@ def trigger_monthly_attendance_report():
 
         absent_days = StudentAttendance.query.filter(
             StudentAttendance.school_id == g.school_id,
-            StudentAttendance.student_id == student.id,
+            StudentAttendance.student_id == student.admission_no,
             extract('month', StudentAttendance.date) == month,
             extract('year', StudentAttendance.date) == year,
             StudentAttendance.status == 'absent'
@@ -376,7 +376,7 @@ def trigger_monthly_attendance_report():
             )
         message += f"\nRegards,\n{school_name}"
 
-        contacts = _get_parent_contacts(student.id, g.school_id)
+        contacts = _get_parent_contacts(student.admission_no, g.school_id)
         for contact in contacts:
             results = _send_to_parent(g.school_id, 'monthly_attendance', channels, contact, student, subject, message)
             for r in results:
@@ -453,7 +453,7 @@ def trigger_exam_notification():
                 f"Please ensure {student_name} prepares well.\n\n"
                 f"Regards,\n{school_name}"
             )
-            contacts = _get_parent_contacts(student.id, g.school_id)
+            contacts = _get_parent_contacts(student.admission_no, g.school_id)
             for contact in contacts:
                 results = _send_to_parent(g.school_id, 'exam_schedule', channels, contact, student, subject, message)
                 sent_count += sum(1 for r in results if r['success'])
@@ -509,7 +509,7 @@ def trigger_exam_notification():
                 f"Total: {total_marks}/{total_max} ({pct}%)\n\n"
                 f"Regards,\n{school_name}"
             )
-            contacts = _get_parent_contacts(student.id, g.school_id)
+            contacts = _get_parent_contacts(student.admission_no, g.school_id)
             for contact in contacts:
                 send_results = _send_to_parent(g.school_id, 'exam_result', channels, contact, student, subject, message)
                 sent_count += sum(1 for r in send_results if r['success'])

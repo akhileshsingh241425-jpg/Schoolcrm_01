@@ -24,12 +24,23 @@ def _get_teacher_staff():
 
 
 def _get_teacher_section_ids(staff_id):
-    """Get section IDs where this staff is class_teacher or co_class_teacher."""
+    """Get section IDs where this staff is class_teacher or co_class_teacher.
+       Falls back to Class-level assignment if no Section-level match."""
     sections = Section.query.filter(
         Section.school_id == g.school_id,
         or_(Section.class_teacher_id == staff_id, Section.co_class_teacher_id == staff_id)
     ).all()
-    return [s.id for s in sections]
+    section_ids = {s.id for s in sections}
+    # Fallback: check Class-level class_teacher_id / co_class_teacher_id
+    from app.models.student import Class
+    classes = Class.query.filter(
+        Class.school_id == g.school_id,
+        or_(Class.class_teacher_id == staff_id, Class.co_class_teacher_id == staff_id)
+    ).all()
+    for cls in classes:
+        for sec in cls.sections:
+            section_ids.add(sec.id)
+    return list(section_ids)
 
 
 def _is_admin():
@@ -148,8 +159,8 @@ def mark_student_attendance():
 
     # Batch fetch all students to avoid N+1
     student_ids = [r['student_id'] for r in records]
-    students_map = {s.id: s for s in Student.query.filter(
-        Student.id.in_(student_ids), Student.school_id == g.school_id
+    students_map = {s.admission_no: s for s in Student.query.filter(
+        Student.admission_no.in_(student_ids), Student.school_id == g.school_id
     ).all()} if student_ids else {}
 
     # If teacher, verify all students belong to their sections
@@ -244,7 +255,7 @@ def student_attendance_report():
     records = query.order_by(StudentAttendance.date.desc()).all()
 
     total = len(records)
-    present = sum(1 for r in records if r.status == 'present')
+    present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
     absent = sum(1 for r in records if r.status == 'absent')
     late = sum(1 for r in records if r.status == 'late')
     half_day = sum(1 for r in records if r.status == 'half_day')
@@ -304,7 +315,7 @@ def get_student_attendance_detail(student_id):
         monthly[key]['total'] += 1
 
     return success_response({
-        'student': {'id': student.id, 'name': student.full_name,
+        'student': {'id': student.admission_no, 'name': student.full_name,
                      'class_id': student.current_class_id,
                      'section_id': student.current_section_id},
         'records': [r.to_dict() for r in records[:100]],
@@ -390,8 +401,8 @@ def mark_period_attendance():
 
     # Batch fetch students
     student_ids = [r['student_id'] for r in records]
-    students_map = {s.id: s for s in Student.query.filter(
-        Student.id.in_(student_ids), Student.school_id == g.school_id
+    students_map = {s.admission_no: s for s in Student.query.filter(
+        Student.admission_no.in_(student_ids), Student.school_id == g.school_id
     ).all()} if student_ids else {}
 
     # If teacher, verify all students belong to their sections
@@ -434,23 +445,48 @@ def mark_period_attendance():
 # =====================================================
 
 @attendance_bp.route('/staff', methods=['GET'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 def get_staff_attendance():
     att_date = request.args.get('date', date.today().isoformat())
-    records = StaffAttendance.query.options(
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+
+    query = StaffAttendance.query.options(
         joinedload(StaffAttendance.staff)
-    ).filter_by(school_id=g.school_id, date=att_date).all()
+    ).filter_by(school_id=g.school_id)
+
+    # If teacher (non-admin), only see own attendance
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if staff:
+            query = query.filter_by(staff_id=staff.id)
+
+    if from_date and to_date:
+        query = query.filter(StaffAttendance.date >= from_date, StaffAttendance.date <= to_date)
+    elif att_date:
+        query = query.filter_by(date=att_date)
+
+    records = query.order_by(StaffAttendance.date.desc()).all()
     return success_response([r.to_dict() for r in records])
 
 
 @attendance_bp.route('/staff', methods=['POST'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 @validate({'attendance': {'required': True}})
 def mark_staff_attendance():
     data = g.get('validated_data') or request.get_json()
     att_date = data.get('date', date.today().isoformat())
     records = data.get('attendance', [])
     capture_mode = data.get('capture_mode', 'manual')
+
+    # If teacher (non-admin), only allow marking own attendance
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if not staff:
+            return error_response('Staff record not found', 404)
+        for record in records:
+            if record['staff_id'] != staff.id:
+                return error_response('Teachers can only mark their own attendance', 403)
 
     for record in records:
         existing = StaffAttendance.query.filter_by(
@@ -461,6 +497,7 @@ def mark_staff_attendance():
             existing.check_in = record.get('check_in')
             existing.check_out = record.get('check_out')
             existing.capture_mode = capture_mode
+            existing.remarks = record.get('remarks')
         else:
             att = StaffAttendance(
                 staff_id=record['staff_id'],
@@ -478,8 +515,21 @@ def mark_staff_attendance():
     return success_response(message='Staff attendance marked')
 
 
+@attendance_bp.route('/staff/<int:id>', methods=['PUT'])
+@role_required('principal', 'school_admin')
+def update_staff_attendance(id):
+    """Principal/Admin can edit any staff attendance record"""
+    rec = StaffAttendance.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    data = request.get_json() or {}
+    for field in ['status', 'check_in', 'check_out', 'remarks', 'capture_mode']:
+        if field in data:
+            setattr(rec, field, data[field])
+    db.session.commit()
+    return success_response(rec.to_dict(), message='Attendance record updated')
+
+
 @attendance_bp.route('/staff/report', methods=['GET'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 def staff_attendance_report():
     staff_id = request.args.get('staff_id', type=int)
     from_date = request.args.get('from_date')
@@ -488,7 +538,18 @@ def staff_attendance_report():
     query = StaffAttendance.query.options(
         joinedload(StaffAttendance.staff)
     ).filter_by(school_id=g.school_id)
-    if staff_id:
+
+    # Teacher non-admin: only see own report
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if staff:
+            query = query.filter_by(staff_id=staff.id)
+        else:
+            return success_response({'records': [], 'summary': {
+                'total_days': 0, 'present': 0, 'absent': 0, 'late': 0, 'percentage': 0
+            }})
+
+    if staff_id and _is_admin():
         query = query.filter_by(staff_id=staff_id)
     if from_date:
         query = query.filter(StaffAttendance.date >= from_date)
@@ -497,7 +558,7 @@ def staff_attendance_report():
 
     records = query.order_by(StaffAttendance.date.desc()).all()
     total = len(records)
-    present = sum(1 for r in records if r.status in ('present', 'late'))
+    present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
 
     return success_response({
         'records': [r.to_dict() for r in records],
@@ -505,6 +566,63 @@ def staff_attendance_report():
             'total_days': total, 'present': present,
             'absent': sum(1 for r in records if r.status == 'absent'),
             'late': sum(1 for r in records if r.status == 'late'),
+            'percentage': round((present / total * 100), 2) if total > 0 else 0
+        }
+    })
+
+
+@attendance_bp.route('/staff/monthly', methods=['GET'])
+@role_required('school_admin', 'principal', 'teacher')
+def staff_monthly_attendance():
+    """Get monthly attendance for any staff member (teacher/principal view)"""
+    staff_id = request.args.get('staff_id', type=int)
+    month = request.args.get('month')  # YYYY-MM format
+    
+    if not staff_id or not month:
+        return error_response('staff_id and month (YYYY-MM) are required')
+
+    try:
+        year, mon = month.split('-')
+        year, mon = int(year), int(mon)
+    except:
+        return error_response('Invalid month format. Use YYYY-MM')
+
+    # Teacher non-admin: only view their own
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if not staff or staff.id != staff_id:
+            return error_response('You can only view your own attendance', 403)
+
+    staff_member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first()
+    if not staff_member:
+        return error_response('Staff not found', 404)
+
+    records = StaffAttendance.query.filter(
+        StaffAttendance.staff_id == staff_id,
+        StaffAttendance.school_id == g.school_id,
+        extract('year', StaffAttendance.date) == year,
+        extract('month', StaffAttendance.date) == mon
+    ).order_by(StaffAttendance.date).all()
+
+    total = len(records)
+    present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
+    
+    # Build day-wise map
+    day_map = {}
+    for r in records:
+        day_map[r.date.day] = r.to_dict()
+
+    return success_response({
+        'staff': staff_member.to_dict(),
+        'records': [r.to_dict() for r in records],
+        'day_wise': day_map,
+        'summary': {
+            'total_days': total,
+            'present': present,
+            'absent': sum(1 for r in records if r.status == 'absent'),
+            'late': sum(1 for r in records if r.status == 'late'),
+            'half_day': sum(1 for r in records if r.status == 'half_day'),
+            'leave': sum(1 for r in records if r.status == 'leave'),
             'percentage': round((present / total * 100), 2) if total > 0 else 0
         }
     })
@@ -703,7 +821,7 @@ def get_late_arrivals():
 
     # Teacher scoping: only show late arrivals for students in their sections
     if scope and scope['section_ids']:
-        allowed_student_ids = [s[0] for s in db.session.query(Student.id).filter(
+        allowed_student_ids = [s[0] for s in db.session.query(Student.admission_no).filter(
             Student.school_id == g.school_id,
             Student.current_section_id.in_(scope['section_ids'])
         ).all()]
@@ -740,7 +858,7 @@ def record_late_arrival():
     # Teacher scoping: only allow recording for students in their sections
     scope = get_teacher_scope()
     if scope and data.get('person_type') == 'student':
-        student = Student.query.filter_by(id=data['person_id'], school_id=g.school_id).first()
+        student = Student.query.filter_by(admission_no=data['person_id'], school_id=g.school_id).first()
         if not student:
             return error_response('Student not found', 404)
         if student.current_section_id not in scope['section_ids']:
@@ -869,7 +987,7 @@ def get_event_attendance():
 
     # Teacher scoping: only show events for students in their sections
     if scope and scope['section_ids']:
-        allowed_ids = [s[0] for s in db.session.query(Student.id).filter(
+        allowed_ids = [s[0] for s in db.session.query(Student.admission_no).filter(
             Student.school_id == g.school_id,
             Student.current_section_id.in_(scope['section_ids'])
         ).all()]
@@ -1025,7 +1143,7 @@ def attendance_alerts():
     alerts = []
     for student in student_query.all():
         records = StudentAttendance.query.filter_by(
-            student_id=student.id, school_id=g.school_id
+            student_id=student.admission_no, school_id=g.school_id
         ).filter(
             StudentAttendance.period.is_(None),
             StudentAttendance.date >= from_date,
@@ -1035,12 +1153,12 @@ def attendance_alerts():
         total = len(records)
         if total == 0:
             continue
-        present = sum(1 for r in records if r.status in ('present', 'late'))
+        present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
         pct = round((present / total * 100), 2)
 
         if pct < threshold:
             alerts.append({
-                'student_id': student.id,
+                'student_id': student.admission_no,
                 'student_name': student.full_name,
                 'class_id': student.current_class_id,
                 'section_id': student.current_section_id,

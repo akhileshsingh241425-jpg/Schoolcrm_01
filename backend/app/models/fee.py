@@ -54,7 +54,7 @@ class FeeInstallment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_structure_id = db.Column(db.Integer, db.ForeignKey('fee_structures.id', ondelete='CASCADE'), nullable=False)
     installment_no = db.Column(db.Integer, nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -104,7 +104,7 @@ class FeePayment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_structure_id = db.Column(db.Integer, db.ForeignKey('fee_structures.id', ondelete='CASCADE'), nullable=False)
     installment_id = db.Column(db.Integer, db.ForeignKey('fee_installments.id'), nullable=True)
     amount_paid = db.Column(db.Numeric(12, 2), nullable=False)
@@ -169,7 +169,7 @@ class FeeReceipt(db.Model):
     payment_id = db.Column(db.Integer, db.ForeignKey('fee_payments.id', ondelete='CASCADE'), nullable=False)
     receipt_no = db.Column(db.String(50), nullable=False)
     receipt_date = db.Column(db.Date, nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     amount_in_words = db.Column(db.String(255))
     pdf_url = db.Column(db.String(500))
@@ -195,7 +195,7 @@ class FeeDiscount(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_category_id = db.Column(db.Integer, db.ForeignKey('fee_categories.id', ondelete='CASCADE'), nullable=False)
     discount_type = db.Column(db.Enum('percentage', 'fixed'), nullable=False)
     discount_value = db.Column(db.Numeric(12, 2), nullable=False)
@@ -252,7 +252,7 @@ class ScholarshipAward(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarships.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     status = db.Column(db.Enum('pending', 'approved', 'rejected', 'active', 'revoked'), default='pending')
     approved_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -279,7 +279,7 @@ class Concession(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_category_id = db.Column(db.Integer, db.ForeignKey('fee_categories.id'), nullable=True)
     concession_type = db.Column(db.Enum('percentage', 'fixed'), default='fixed')
     amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -369,7 +369,8 @@ class Vendor(db.Model):
             'contact_person': self.contact_person,
             'phone': self.phone, 'email': self.email,
             'address': self.address, 'gst_no': self.gst_no,
-            'pan_no': self.pan_no, 'category': self.category,
+            'pan_no': f'****{self.pan_no[-4:]}' if self.pan_no and len(self.pan_no) > 4 else self.pan_no,
+            'category': self.category,
             'status': self.status
         }
 
@@ -507,7 +508,7 @@ class FeeRefund(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     payment_id = db.Column(db.Integer, db.ForeignKey('fee_payments.id'), nullable=True)
     refund_amount = db.Column(db.Numeric(12, 2), nullable=False)
     reason = db.Column(db.Text)

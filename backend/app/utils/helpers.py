@@ -7,6 +7,14 @@ from sqlalchemy import or_
 from functools import wraps
 
 
+def get_client_ip():
+    """Get real client IP behind Nginx reverse proxy."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or '0.0.0.0'
+
+
 def validate(rules):
     """Decorator to validate request JSON data against rules.
 

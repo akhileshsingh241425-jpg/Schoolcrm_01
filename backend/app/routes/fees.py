@@ -39,7 +39,7 @@ def finance_dashboard():
     if class_ids:
         counts = db.session.query(
             Student.current_class_id,
-            func.count(Student.id)
+            func.count(Student.admission_no)
         ).filter(
             Student.school_id == sid,
             Student.status == 'active',
@@ -272,7 +272,7 @@ def record_payment():
         ).first()
         if not student:
             return error_response(f'Student with admission no "{admission_no}" not found', 404)
-        student_id = student.id
+        student_id = student.admission_no
     elif not student_id:
         return error_response('Either student_id or admission_no is required', 400)
 

@@ -42,6 +42,13 @@ class PlatformStaff(db.Model):
     payrolls = db.relationship('PlatformStaffPayroll', backref='staff', lazy='dynamic')
     leaves = db.relationship('PlatformStaffLeave', backref='staff', lazy='dynamic')
 
+    @staticmethod
+    def _mask(val, show=4):
+        if not val:
+            return None
+        s = str(val)
+        return '*' * (len(s) - show) + s[-show:] if len(s) > show else s
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -63,14 +70,14 @@ class PlatformStaff(db.Model):
             'city': self.city,
             'state': self.state,
             'photo_url': self.photo_url,
-            'aadhar_no': self.aadhar_no,
-            'pan_no': self.pan_no,
+            'aadhar_no': self._mask(self.aadhar_no),
+            'pan_no': self._mask(self.pan_no),
             'bank_name': self.bank_name,
-            'bank_account_no': self.bank_account_no,
-            'ifsc_code': self.ifsc_code,
+            'bank_account_no': self._mask(self.bank_account_no),
+            'ifsc_code': self._mask(self.ifsc_code, show=0),
             'staff_type': self.staff_type,
             'contract_type': self.contract_type,
-            'pf_number': self.pf_number,
+            'pf_number': self._mask(self.pf_number),
             'emergency_contact': self.emergency_contact,
             'emergency_person': self.emergency_person,
             'blood_group': self.blood_group,

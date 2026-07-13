@@ -97,6 +97,7 @@ class Admission(db.Model):
 
     # Academic Info
     class_applied = db.Column(db.Integer, db.ForeignKey('classes.id'))
+    section_applied = db.Column(db.Integer, db.ForeignKey('sections.id'))
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
     previous_school = db.Column(db.String(255))
     previous_class = db.Column(db.String(50))
@@ -140,12 +141,14 @@ class Admission(db.Model):
     fee_receipt_no = db.Column(db.String(50))
     fee_payment_date = db.Column(db.Date)
     fee_payment_mode = db.Column(db.String(20))
+    tuition_fee_yearly = db.Column(db.Numeric(10, 2))
+    tuition_fee_paid = db.Column(db.Numeric(10, 2), default=0)
 
     # Processing
     processed_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     approved_date = db.Column(db.DateTime)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -154,6 +157,7 @@ class Admission(db.Model):
     # Relationships
     lead = db.relationship('Lead', backref='admission')
     applied_class = db.relationship('Class', foreign_keys=[class_applied])
+    applied_section = db.relationship('Section', foreign_keys=[section_applied])
     academic_year = db.relationship('AcademicYear', foreign_keys=[academic_year_id])
     student = db.relationship('Student', backref='admission_record')
     documents = db.relationship('AdmissionDocument', backref='admission', lazy='dynamic', cascade='all, delete-orphan')
@@ -172,6 +176,7 @@ class Admission(db.Model):
     def to_dict(self, include_documents=False, include_history=False):
         result = {
             'id': self.id,
+            'school_id': self.school_id,
             'application_no': self.application_no,
             'student_name': self.student_name,
             'date_of_birth': self.date_of_birth.isoformat() if self.date_of_birth else None,
@@ -206,6 +211,8 @@ class Admission(db.Model):
 
             'class_applied': self.applied_class.to_dict() if self.applied_class else None,
             'class_applied_id': self.class_applied,
+            'section_applied': self.applied_section.to_dict() if self.applied_section else None,
+            'section_applied_id': self.section_applied,
             'academic_year': self.academic_year.to_dict() if self.academic_year else None,
             'academic_year_id': self.academic_year_id,
             'previous_school': self.previous_school,
@@ -237,6 +244,9 @@ class Admission(db.Model):
             'admission_fee_amount': float(self.admission_fee_amount) if self.admission_fee_amount else None,
             'fee_receipt_no': self.fee_receipt_no,
             'fee_payment_date': self.fee_payment_date.isoformat() if self.fee_payment_date else None,
+            'fee_payment_mode': self.fee_payment_mode,
+            'tuition_fee_yearly': float(self.tuition_fee_yearly) if self.tuition_fee_yearly else None,
+            'tuition_fee_paid': float(self.tuition_fee_paid) if self.tuition_fee_paid else 0,
 
             'processed_by': self.processor.full_name if self.processor else None,
             'approved_by': self.approver.full_name if self.approver else None,
@@ -508,7 +518,7 @@ class TransferCertificate(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     tc_number = db.Column(db.String(50), nullable=False)
     issue_date = db.Column(db.Date, nullable=False, default=date.today)
     reason = db.Column(db.Enum('transfer', 'leaving', 'graduated', 'other'), default='leaving')

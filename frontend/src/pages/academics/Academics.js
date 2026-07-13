@@ -24,7 +24,7 @@ export default function Academics() {
   const [loading, setLoading] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
-  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
+  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal', 'exam_controller'));
   const TABS = isAdmin ? ADMIN_TABS : TEACHER_TABS;
 
   // Shared data
@@ -56,7 +56,7 @@ export default function Academics() {
       {isAdmin && tab === 4 && <SubjectsTab subjects={subjects} setSubjects={setSubjects} showSnack={showSnack} />}
       {isAdmin && tab === 5 && <TimetableTab classes={classes} subjects={subjects} showSnack={showSnack} />}
       {isAdmin && tab === 6 && <GradingTab gradingSystems={gradingSystems} setGradingSystems={setGradingSystems} showSnack={showSnack} />}
-      {isAdmin && tab === 7 && <HallsTab showSnack={showSnack} />}
+      {tab === 7 && <HallsTab classes={classes} showSnack={showSnack} />}
       {isAdmin && tab === 8 && <ClassTeachersTab classes={classes} showSnack={showSnack} />}
       {(!isAdmin ? tab === 1 : tab === 9) && <SyllabusTab classes={classes} subjects={subjects} academicYears={academicYears} showSnack={showSnack} />}
       {(!isAdmin ? tab === 2 : tab === 10) && <HomeworkTab classes={classes} subjects={subjects} showSnack={showSnack} />}
@@ -1030,17 +1030,18 @@ function GradingTab({ gradingSystems, setGradingSystems, showSnack }) {
 // ============================================================
 // HALLS TAB
 // ============================================================
-function HallsTab({ showSnack }) {
+function HallsTab({ classes, showSnack }) {
   const [halls, setHalls] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
-  const [form, setForm] = useState({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false });
+  const [form, setForm] = useState({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' });
   const [editing, setEditing] = useState(null);
 
   const reload = () => academicsAPI.listExamHalls().then(r => setHalls(r.data.data || [])).catch(() => {});
   useEffect(() => { reload(); }, []);
 
   const save = () => {
-    const fn = editing ? academicsAPI.updateExamHall(editing.id, form) : academicsAPI.createExamHall(form);
+    const data = { ...form, assigned_class_id: form.assigned_class_id ? parseInt(form.assigned_class_id) : null };
+    const fn = editing ? academicsAPI.updateExamHall(editing.id, data) : academicsAPI.createExamHall(data);
     fn.then(() => { showSnack(editing ? 'Updated' : 'Created'); setOpenDialog(false); setEditing(null); reload(); }).catch(() => showSnack('Failed', 'error'));
   };
 
@@ -1051,14 +1052,14 @@ function HallsTab({ showSnack }) {
 
   const edit = (h) => {
     setEditing(h);
-    setForm({ name: h.name, building: h.building || '', floor: h.floor || '', capacity: h.capacity, rows: h.rows || '', columns: h.columns || '', has_cctv: h.has_cctv || false });
+    setForm({ name: h.name, building: h.building || '', floor: h.floor || '', capacity: h.capacity, rows: h.rows || '', columns: h.columns || '', has_cctv: h.has_cctv || false, assigned_class_id: h.assigned_class_id || '' });
     setOpenDialog(true);
   };
 
   return (
     <Box>
       <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setForm({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false }); setOpenDialog(true); }}>Add Hall</Button>
+        <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setForm({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' }); setOpenDialog(true); }}>Add Room</Button>
       </Box>
 
       <Grid container spacing={2}>
@@ -1081,6 +1082,7 @@ function HallsTab({ showSnack }) {
                 <Typography variant="body2"><strong>Floor:</strong> {h.floor || '-'}</Typography>
                 <Typography variant="body2"><strong>Capacity:</strong> {h.capacity} students</Typography>
                 {h.rows && <Typography variant="body2"><strong>Layout:</strong> {h.rows} × {h.columns} seats</Typography>}
+                {h.assigned_class_name && <Typography variant="body2"><strong>Assigned Class:</strong> {h.assigned_class_name}</Typography>}
                 <Box mt={1}>
                   {h.has_cctv && <Chip label="CCTV" size="small" color="success" icon={<CheckCircle />} />}
                   <Chip label={h.is_active !== false ? 'Active' : 'Inactive'} size="small" sx={{ ml: 0.5 }} color={h.is_active !== false ? 'primary' : 'default'} />
@@ -1091,19 +1093,26 @@ function HallsTab({ showSnack }) {
         ))}
       </Grid>
 
-      {!halls.length && <Paper sx={{ p: 3, textAlign: 'center' }}><Typography color="text.secondary">No exam halls</Typography></Paper>}
+      {!halls.length && <Paper sx={{ p: 3, textAlign: 'center' }}><Typography color="text.secondary">No rooms created yet</Typography></Paper>}
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editing ? 'Edit Hall' : 'Add Exam Hall'}</DialogTitle>
+        <DialogTitle>{editing ? 'Edit Room' : 'Add Room'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6}><TextField fullWidth label="Hall Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Room Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Building" value={form.building} onChange={e => setForm({ ...form, building: e.target.value })} /></Grid>
             <Grid item xs={6} sm={4}><TextField fullWidth label="Floor" value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} /></Grid>
             <Grid item xs={6} sm={4}><TextField fullWidth type="number" label="Capacity" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} required /></Grid>
             <Grid item xs={12} sm={4}><FormControlLabel control={<Switch checked={form.has_cctv} onChange={e => setForm({ ...form, has_cctv: e.target.checked })} />} label="CCTV" /></Grid>
             <Grid item xs={6}><TextField fullWidth type="number" label="Rows" value={form.rows} onChange={e => setForm({ ...form, rows: e.target.value })} /></Grid>
             <Grid item xs={6}><TextField fullWidth type="number" label="Columns" value={form.columns} onChange={e => setForm({ ...form, columns: e.target.value })} /></Grid>
+            <Grid item xs={12}>
+              <TextField select fullWidth label="Assign to Class (normal days)" value={form.assigned_class_id}
+                onChange={e => setForm({ ...form, assigned_class_id: e.target.value })}>
+                <MenuItem value="">— Not assigned —</MenuItem>
+                {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              </TextField>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions><Button onClick={() => setOpenDialog(false)}>Cancel</Button><Button variant="contained" onClick={save}>{editing ? 'Update' : 'Create'}</Button></DialogActions>

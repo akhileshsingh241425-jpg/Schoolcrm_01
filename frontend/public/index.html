@@ -17,6 +17,8 @@
             if (token && refresh) {
                 localStorage.setItem('access_token', token);
                 localStorage.setItem('refresh_token', refresh);
+                var clean = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, clean);
             }
         })();
     </script>

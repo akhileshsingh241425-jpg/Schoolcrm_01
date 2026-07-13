@@ -5,11 +5,12 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem,
   FormControl, InputLabel, IconButton, Tooltip, LinearProgress, Alert, Stack,
-  Checkbox, FormControlLabel, CircularProgress, Divider, InputAdornment
+  Checkbox, FormControlLabel, Switch, CircularProgress, Divider, InputAdornment, alpha
 } from '@mui/material';
 import {
   Add, Edit, Delete, Refresh, Warning, Assignment, MenuBook,
-  CalendarMonth, SwapHoriz, Search, ThumbUp, ThumbDown, Undo, ArrowForward
+  CalendarMonth, SwapHoriz, Search, ThumbUp, ThumbDown, Undo, ArrowForward,
+  CheckCircle, Cancel, MeetingRoom
 } from '@mui/icons-material';
 import { validateForm } from '../../components/Validation';
 import { academicsAPI, studentsAPI, staffAPI } from '../../services/api';
@@ -80,19 +81,26 @@ const btnStyle = { borderRadius: '6px', textTransform: 'none', fontFamily, fontW
 const inputStyle = { '& .MuiOutlinedInput-root': { borderRadius: '6px', fontFamily }, '& .MuiInputLabel-root': { fontFamily } };
 const selectStyle = { borderRadius: '6px', fontFamily };
 
+const formatTeacherName = (s) => {
+  if (!s) return '';
+  const extraRoles = (s.roles || []).filter(r => r !== 'teacher' && r !== 'staff');
+  const roleStr = extraRoles.length > 0 ? ` [${extraRoles.join(', ')}]` : '';
+  return `${s.first_name || ''} ${s.last_name || ''}`.trim() + roleStr;
+};
+
 // ============================================================
 // TAB NAMES
 // ============================================================
 const TAB_NAMES = [
   'Dashboard', 'Subjects', 'Teacher Assignment', 'Class Teachers', 'Timetable',
   'Substitutions',
-  'Syllabus Progress', 'Promotions', 'Calendar', 'Reports'
+  'Syllabus Progress', 'Promotions', 'Calendar', 'Reports', 'Rooms'
 ];
 
 const TAB_MAP = {
   '': 0, 'dashboard': 0, 'subjects': 1, 'teachers': 2, 'class-teachers': 3,
   'timetable': 4, 'substitutions': 5, 'syllabus': 6, 'promotions': 7,
-  'calendar': 8, 'reports': 9,
+  'calendar': 8, 'reports': 9, 'rooms': 10,
 };
 
 // ============================================================
@@ -149,6 +157,7 @@ export default function AcademicController() {
       {tab === 7 && <PromotionsTab classes={classes} />}
       {tab === 8 && <CalendarTab classes={classes} />}
       {tab === 9 && <ReportsTab classes={classes} />}
+      {tab === 10 && <RoomManagementTab classes={classes} />}
     </Box>
   );
 }
@@ -491,8 +500,8 @@ function TeacherAssignmentTab({ classes, staff, subjects }) {
             <FormControl fullWidth size="small">
               <InputLabel sx={{ fontFamily }}>Teacher</InputLabel>
               <Select value={form.teacher_id} onChange={e => setForm({ ...form, teacher_id: e.target.value })} label="Teacher" sx={selectStyle}>
-                {staff.filter(s => s.role === 'teacher' || s.designation?.toLowerCase().includes('teacher')).map(s => (
-                  <MenuItem key={s.id} value={s.id}>{s.first_name} {s.last_name}</MenuItem>
+                {staff.filter(s => s.staff_type === 'teaching').map(s => (
+                  <MenuItem key={s.id} value={s.id}>{formatTeacherName(s)}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -584,16 +593,19 @@ function ClassTeachersTab({ classes, staff }) {
   }, [form.class_id]);
 
   const handleAssign = async () => {
-    const errs = validateForm(form, { section_id: ['required'] });
-    if (Object.keys(errs).length) { toast.error(Object.values(errs)[0]); return; }
+    const hasSections = sections.length > 0;
+    if (hasSections && !form.section_id) { toast.error('Section is required'); return; }
     if (form.teacher_id && form.co_teacher_id && form.teacher_id === form.co_teacher_id) {
       toast.error('Class Teacher and Co-Class Teacher cannot be the same person');
       return;
     }
     try {
-      const payload = { section_id: form.section_id };
-      if (form.teacher_id) payload.class_teacher_id = form.teacher_id;
-      if (form.co_teacher_id) payload.co_class_teacher_id = form.co_teacher_id;
+      const payload = { class_teacher_id: form.teacher_id || null, co_class_teacher_id: form.co_teacher_id || null };
+      if (hasSections) {
+        payload.section_id = form.section_id;
+      } else {
+        payload.class_id = form.class_id;
+      }
       await academicsAPI.assignClassTeacher(payload);
       toast.success('Class teacher assigned successfully');
       setDialogOpen(false);
@@ -642,7 +654,7 @@ function ClassTeachersTab({ classes, staff }) {
     return a.co_class_teacher_name || '-';
   };
 
-  const teachers = staff.filter(s => s.role === 'teacher' || s.designation?.toLowerCase().includes('teacher'));
+  const teachers = staff.filter(s => s.staff_type === 'teaching');
 
   if (loading) return <LinearProgress />;
 
@@ -682,15 +694,9 @@ function ClassTeachersTab({ classes, staff }) {
                 </TableCell>
                 <TableCell>{a.student_count || 0}</TableCell>
                 <TableCell>
-                  {a.section_id ? (
-                    <IconButton size="small" onClick={() => openEditDialog(a)} sx={{ color: '#1976d2' }}>
-                      <Edit sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  ) : (
-                    <Button size="small" variant="outlined" onClick={() => toast('Go to Class & Section Management to create sections', { icon: 'ℹ️' })}>
-                      Add Section
-                    </Button>
-                  )}
+                  <IconButton size="small" onClick={() => openEditDialog(a)} sx={{ color: '#1976d2' }}>
+                    <Edit sx={{ fontSize: 16 }} />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -708,19 +714,21 @@ function ClassTeachersTab({ classes, staff }) {
                 {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </Select>
             </FormControl>
-            <FormControl fullWidth size="small">
-              <InputLabel sx={{ fontFamily }}>Section</InputLabel>
-              <Select value={form.section_id} onChange={e => setForm({ ...form, section_id: e.target.value })} label="Section" sx={selectStyle}>
-                {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            {sections.length > 0 && (
+              <FormControl fullWidth size="small">
+                <InputLabel sx={{ fontFamily }}>Section</InputLabel>
+                <Select value={form.section_id} onChange={e => setForm({ ...form, section_id: e.target.value })} label="Section" sx={selectStyle}>
+                  {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+            )}
             <Divider sx={{ my: 1 }} />
             <FormControl fullWidth size="small">
               <InputLabel sx={{ fontFamily }}>Class Teacher</InputLabel>
               <Select value={form.teacher_id} onChange={e => setForm({ ...form, teacher_id: e.target.value })} label="Class Teacher" sx={selectStyle}>
                 <MenuItem value="">— None —</MenuItem>
                 {teachers.map(s => (
-                  <MenuItem key={s.id} value={s.id} disabled={s.id === form.co_teacher_id}>{s.first_name} {s.last_name}</MenuItem>
+                  <MenuItem key={s.id} value={s.id} disabled={s.id === form.co_teacher_id}>{formatTeacherName(s)}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -729,7 +737,7 @@ function ClassTeachersTab({ classes, staff }) {
               <Select value={form.co_teacher_id} onChange={e => setForm({ ...form, co_teacher_id: e.target.value })} label="Co-Class Teacher (Optional)" sx={selectStyle}>
                 <MenuItem value="">— None —</MenuItem>
                 {teachers.map(s => (
-                  <MenuItem key={s.id} value={s.id} disabled={s.id === form.teacher_id}>{s.first_name} {s.last_name}</MenuItem>
+                  <MenuItem key={s.id} value={s.id} disabled={s.id === form.teacher_id}>{formatTeacherName(s)}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -815,17 +823,18 @@ function TimetableTab({ classes, subjects, staff }) {
   };
 
   const handleAutoGenerate = async () => {
-    if (!selectedClass || !selectedSection) {
-      toast.error('Please select both Class and Section to auto-generate');
+    if (!selectedClass) {
+      toast.error('Please select a Class first');
       return;
     }
-    if (!window.confirm('This will replace the existing timetable for this class/section. Continue?')) return;
+    const secLabel = sections.find(s => String(s.id) === selectedSection)?.name || 'Default';
+    if (!window.confirm(`This will replace the existing timetable for this class/section (${secLabel}). Continue?`)) return;
     setGenerating(true);
     setGenResult(null);
     try {
       const res = await academicsAPI.autoGenerateTimetable({
         class_id: selectedClass,
-        section_id: selectedSection,
+        section_id: selectedSection || undefined,
         periods_per_day: 8,
         days: days,
       });
@@ -969,8 +978,8 @@ function TimetableTab({ classes, subjects, staff }) {
               <InputLabel sx={{ fontFamily }}>Teacher</InputLabel>
               <Select value={form.teacher_id} onChange={e => setForm({ ...form, teacher_id: e.target.value })} label="Teacher" sx={selectStyle}>
                 <MenuItem value="">— None —</MenuItem>
-                {staff.filter(s => s.role === 'teacher' || s.designation?.toLowerCase().includes('teacher')).map(s => (
-                  <MenuItem key={s.id} value={s.id}>{s.first_name} {s.last_name}</MenuItem>
+                {staff.filter(s => s.staff_type === 'teaching').map(s => (
+                  <MenuItem key={s.id} value={s.id}>{formatTeacherName(s)}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1060,6 +1069,14 @@ function SubstitutionsTab({ staff, classes }) {
     }
   };
 
+  const handleUpdateStatus = async (id, status) => {
+    try {
+      await acAPI.updateSubstitution(id, { status });
+      toast.success(`Substitution ${status}`);
+      loadData();
+    } catch { toast.error('Failed to update'); }
+  };
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this substitution?')) return;
     try {
@@ -1071,7 +1088,7 @@ function SubstitutionsTab({ staff, classes }) {
 
   if (loading) return <LinearProgress />;
 
-  const teachers = staff.filter(s => s.role === 'teacher' || s.designation?.toLowerCase().includes('teacher'));
+  const teachers = staff.filter(s => s.staff_type === 'teaching');
 
   return (
     <Box>
@@ -1112,7 +1129,23 @@ function SubstitutionsTab({ staff, classes }) {
                     color={s.status === 'completed' ? 'success' : s.status === 'cancelled' ? 'error' : 'primary'} />
                 </TableCell>
                 <TableCell>
-                  <IconButton size="small" onClick={() => handleDelete(s.id)}><Delete sx={{ fontSize: 16 }} /></IconButton>
+                  <Box display="flex" gap={0.5}>
+                    {s.status === 'assigned' && (
+                      <Tooltip title="Mark Completed">
+                        <IconButton size="small" color="success" onClick={() => handleUpdateStatus(s.id, 'completed')}>
+                          <CheckCircle sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {s.status === 'assigned' && (
+                      <Tooltip title="Cancel">
+                        <IconButton size="small" color="warning" onClick={() => handleUpdateStatus(s.id, 'cancelled')}>
+                          <Cancel sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <IconButton size="small" onClick={() => handleDelete(s.id)}><Delete sx={{ fontSize: 16 }} /></IconButton>
+                  </Box>
                 </TableCell>
               </TableRow>
             ))}
@@ -1130,13 +1163,13 @@ function SubstitutionsTab({ staff, classes }) {
             <FormControl fullWidth size="small">
               <InputLabel>Original Teacher</InputLabel>
               <Select value={form.original_teacher_id} onChange={e => setForm({ ...form, original_teacher_id: e.target.value })} label="Original Teacher" sx={selectStyle}>
-                {teachers.map(t => <MenuItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</MenuItem>)}
+                {teachers.map(t => <MenuItem key={t.id} value={t.id}>{formatTeacherName(t)}</MenuItem>)}
               </Select>
             </FormControl>
             <FormControl fullWidth size="small">
               <InputLabel>Substitute Teacher</InputLabel>
               <Select value={form.substitute_teacher_id} onChange={e => setForm({ ...form, substitute_teacher_id: e.target.value })} label="Substitute Teacher" sx={selectStyle}>
-                {teachers.map(t => <MenuItem key={t.id} value={t.id}>{t.first_name} {t.last_name}</MenuItem>)}
+                {teachers.map(t => <MenuItem key={t.id} value={t.id}>{formatTeacherName(t)}</MenuItem>)}
               </Select>
             </FormControl>
             <FormControl fullWidth size="small">
@@ -1840,17 +1873,19 @@ function SyllabusProgressTab({ classes, subjects }) {
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ class_id: '', subject_id: '', book_name: '', total_chapters: '', estimated_hours: '', term: 'term1' });
 
   const loadData = useCallback(() => {
     setLoading(true);
-    academicsAPI.getSyllabusOverview({ class_id: selectedClass || undefined, subject_id: selectedSubject || undefined })
+    const params = {};
+    if (selectedClass) params.class_id = selectedClass;
+    if (selectedSubject) params.subject_id = selectedSubject;
+    academicsAPI.listSyllabus(params)
       .then(r => {
         const d = r.data?.data;
-        // Endpoint returns an object { by_subject: [...] }; fall back to array shapes
-        if (Array.isArray(d)) setData(d);
-        else if (Array.isArray(d?.by_subject)) setData(d.by_subject);
-        else if (Array.isArray(d?.items)) setData(d.items);
-        else setData([]);
+        setData(Array.isArray(d) ? d : []);
       })
       .catch(() => setData([]))
       .finally(() => setLoading(false));
@@ -1858,11 +1893,36 @@ function SyllabusProgressTab({ classes, subjects }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const handleAdd = async () => {
+    if (!form.class_id || !form.subject_id) {
+      toast.error('Class and Subject are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await academicsAPI.createSyllabus({
+        class_id: parseInt(form.class_id),
+        subject_id: parseInt(form.subject_id),
+        book_name: form.book_name || undefined,
+        total_chapters: form.total_chapters ? parseInt(form.total_chapters) : undefined,
+        estimated_hours: form.estimated_hours ? parseInt(form.estimated_hours) : undefined,
+        term: form.term,
+      });
+      toast.success('Syllabus added');
+      setAddOpen(false);
+      setForm({ class_id: '', subject_id: '', book_name: '', total_chapters: '', estimated_hours: '', term: 'term1' });
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add syllabus');
+    }
+    setSaving(false);
+  };
+
   if (loading) return <LinearProgress />;
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>Class</InputLabel>
           <Select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} label="Class" sx={selectStyle}>
@@ -1878,6 +1938,7 @@ function SyllabusProgressTab({ classes, subjects }) {
           </Select>
         </FormControl>
         <Button size="small" startIcon={<Refresh />} onClick={loadData} sx={btnStyle}>Refresh</Button>
+        <Button size="small" variant="contained" startIcon={<Add />} onClick={() => setAddOpen(true)} sx={btnStyle}>Add Book</Button>
       </Box>
 
       {data.length === 0 ? (
@@ -1889,34 +1950,54 @@ function SyllabusProgressTab({ classes, subjects }) {
               <TableRow>
                 <TableCell>Subject</TableCell>
                 <TableCell>Class</TableCell>
-                <TableCell>Teacher</TableCell>
-                <TableCell>Total Topics</TableCell>
-                <TableCell>Completed</TableCell>
-                <TableCell>Progress</TableCell>
+                <TableCell>Book Name</TableCell>
+                <TableCell>Ch #</TableCell>
+                <TableCell>Chapter Name</TableCell>
+                <TableCell>Topics</TableCell>
+                <TableCell>Hours</TableCell>
+                <TableCell>Exam</TableCell>
+                <TableCell>Completion</TableCell>
                 <TableCell>Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {data.map((item, i) => {
-                const pct = item.completion_percentage || item.avg_completion || 0;
-                const status = pct >= 80 ? 'On Track' : pct >= 50 ? 'In Progress' : pct >= 20 ? 'Behind' : 'At Risk';
-                const statusColor = pct >= 80 ? 'success' : pct >= 50 ? 'primary' : pct >= 20 ? 'warning' : 'error';
+                const isBookEntry = item.chapter_number === null || item.chapter_number === undefined;
+                const pct = item.completion_percentage || 0;
+                const status = isBookEntry ? 'Book' : (pct >= 100 ? 'Completed' : pct >= 50 ? 'In Progress' : pct > 0 ? 'Started' : 'Not Started');
+                const statusColor = isBookEntry ? 'info' : (pct >= 100 ? 'success' : pct >= 50 ? 'primary' : pct > 0 ? 'warning' : 'default');
+                const totalAdded = data.filter(d => d.chapter_number !== null && d.chapter_number !== undefined && d.subject_id === item.subject_id && d.class_id === item.class_id).length;
                 return (
-                  <TableRow key={i}>
+                  <TableRow key={item.id || i} sx={isBookEntry ? { bgcolor: alpha('#e3f2fd', 0.3) } : {}}>
                     <TableCell><strong>{item.subject_name || '-'}</strong></TableCell>
                     <TableCell>{item.class_name || '-'}</TableCell>
-                    <TableCell>{item.teacher_name || '-'}</TableCell>
-                    <TableCell>{item.total_topics || 0}</TableCell>
-                    <TableCell>{item.completed_topics || 0}</TableCell>
-                    <TableCell sx={{ minWidth: 150 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <LinearProgress variant="determinate" value={Math.min(pct, 100)}
-                          sx={{ flex: 1, height: 8, borderRadius: '4px' }} />
-                        <Typography variant="caption" fontWeight={700}>{Math.round(pct)}%</Typography>
-                      </Box>
+                    <TableCell>{isBookEntry ? <strong>{item.book_name || '-'}</strong> : (item.book_name || '-')}</TableCell>
+                    <TableCell>{isBookEntry ? (item.total_chapters ? `${totalAdded}/${item.total_chapters}` : `${totalAdded} added`) : (item.chapter_number || '-')}</TableCell>
+                    <TableCell>{isBookEntry ? <Typography variant="caption" color="text.secondary">Syllabus Plan</Typography> : (item.chapter_name || '-')}</TableCell>
+                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {isBookEntry ? '-' : (typeof item.topics === 'string' ? item.topics.substring(0, 60) : '-')}
+                    </TableCell>
+                    <TableCell>{isBookEntry ? <strong>{item.estimated_hours || '-'}</strong> : (item.estimated_hours || '-')}</TableCell>
+                    <TableCell>
+                      {item.exam_included ? (
+                        <Chip label={`${item.exam_weightage || '?'} marks`} size="small" color="success" sx={chipStyle} />
+                      ) : (
+                        <Typography variant="caption" color="text.disabled">—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 130 }}>
+                      {isBookEntry ? (
+                        <Typography variant="caption" color="text.disabled">—</Typography>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <LinearProgress variant="determinate" value={Math.min(pct, 100)}
+                            sx={{ flex: 1, height: 8, borderRadius: '4px' }} />
+                          <Typography variant="caption" fontWeight={700}>{Math.round(pct)}%</Typography>
+                        </Box>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Chip label={status} size="small" color={statusColor} sx={chipStyle} />
+                      <Chip label={status} size="small" color={statusColor} variant={isBookEntry ? 'outlined' : 'filled'} sx={chipStyle} />
                     </TableCell>
                   </TableRow>
                 );
@@ -1925,6 +2006,41 @@ function SyllabusProgressTab({ classes, subjects }) {
           </Table>
         </TableContainer>
       )}
+
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth PaperProps={dialogPaperProps}>
+        <DialogTitle sx={{ borderBottom: '1px solid #e9ecef', fontFamily, fontWeight: 600 }}>Add Syllabus</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+            <Stack spacing={2.5} sx={{ mt: 1 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Class</InputLabel>
+                <Select value={form.class_id} onChange={e => setForm({ ...form, class_id: e.target.value })} label="Class" sx={selectStyle}>
+                  {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel>Subject</InputLabel>
+                <Select value={form.subject_id} onChange={e => setForm({ ...form, subject_id: e.target.value })} label="Subject" sx={selectStyle}>
+                  {subjects.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField fullWidth size="small" label="Book Name" value={form.book_name} onChange={e => setForm({ ...form, book_name: e.target.value })} placeholder="e.g. Mathematics NCERT, RD Sharma" />
+              <TextField fullWidth size="small" label="Total Chapters" type="number" value={form.total_chapters} onChange={e => setForm({ ...form, total_chapters: e.target.value })} />
+              <TextField fullWidth size="small" label="Estimated Hours (total)" type="number" value={form.estimated_hours} onChange={e => setForm({ ...form, estimated_hours: e.target.value })} />
+              <FormControl fullWidth size="small">
+                <InputLabel>Term</InputLabel>
+                <Select value={form.term} onChange={e => setForm({ ...form, term: e.target.value })} label="Term" sx={selectStyle}>
+                  <MenuItem value="term1">Term 1</MenuItem>
+                  <MenuItem value="term2">Term 2</MenuItem>
+                  <MenuItem value="annual">Annual</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAddOpen(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd} disabled={saving} sx={{ borderRadius: 2, textTransform: 'none' }}>{saving ? 'Saving...' : 'Add'}</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -2608,7 +2724,7 @@ function ReportsTab({ classes }) {
             <InputLabel>Teacher</InputLabel>
             <Select value={selectedTeacher} onChange={e => setSelectedTeacher(e.target.value)} label="Teacher" sx={selectStyle}>
               <MenuItem value="">Select Teacher</MenuItem>
-              {teachers.map(t => <MenuItem key={t.id} value={t.id}>{t.first_name} {t.last_name || ''}</MenuItem>)}
+              {teachers.map(t => <MenuItem key={t.id} value={t.id}>{formatTeacherName(t)}</MenuItem>)}
             </Select>
           </FormControl>
         )}
@@ -2628,6 +2744,107 @@ function ReportsTab({ classes }) {
           {reportType === 'trends' && renderTrends()}
         </>
       )}
+    </Box>
+  );
+}
+
+// ============================================================
+// 11. ROOM MANAGEMENT TAB
+// ============================================================
+function RoomManagementTab({ classes }) {
+  const [rooms, setRooms] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [form, setForm] = useState({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' });
+  const [editing, setEditing] = useState(null);
+
+  const reload = () => academicsAPI.listExamHalls().then(r => setRooms(r.data.data || [])).catch(() => {});
+  useEffect(() => { reload(); }, []);
+
+  const save = () => {
+    const data = { ...form, assigned_class_id: form.assigned_class_id ? parseInt(form.assigned_class_id) : null };
+    const fn = editing ? academicsAPI.updateExamHall(editing.id, data) : academicsAPI.createExamHall(data);
+    fn.then(() => { toast.success(editing ? 'Updated' : 'Created'); setOpenDialog(false); setEditing(null); reload(); }).catch(() => toast.error('Failed'));
+  };
+
+  const del = (id) => {
+    if (!window.confirm('Delete room?')) return;
+    academicsAPI.deleteExamHall(id).then(() => { toast.success('Deleted'); reload(); }).catch(() => toast.error('Failed'));
+  };
+
+  const edit = (r) => {
+    setEditing(r);
+    setForm({ name: r.name, building: r.building || '', floor: r.floor || '', capacity: r.capacity, rows: r.rows || '', columns: r.columns || '', has_cctv: r.has_cctv || false, assigned_class_id: r.assigned_class_id || '' });
+    setOpenDialog(true);
+  };
+
+  return (
+    <Box>
+      <Box sx={{ ...sectionTitle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Room Management</span>
+        <Button variant="contained" size="small" startIcon={<Add />} onClick={() => { setEditing(null); setForm({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' }); setOpenDialog(true); }} sx={btnStyle}>Add Room</Button>
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Create rooms and assign each to a class for normal days. On exam days, these rooms become exam halls for seating arrangements.
+      </Typography>
+
+      <Grid container spacing={2}>
+        {rooms.map(r => (
+          <Grid item xs={12} md={4} key={r.id}>
+            <Card sx={cardStyle}>
+              <CardContent sx={{ p: 2 }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <MeetingRoom color="primary" />
+                    <Typography variant="h6" sx={{ fontFamily, fontWeight: 600, fontSize: '1rem' }}>{r.name}</Typography>
+                  </Box>
+                  <Box>
+                    <IconButton size="small" onClick={() => edit(r)}><Edit fontSize="small" /></IconButton>
+                    <IconButton size="small" color="error" onClick={() => del(r.id)}><Delete fontSize="small" /></IconButton>
+                  </Box>
+                </Box>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="body2" sx={{ fontFamily }}><strong>Building:</strong> {r.building || '-'}</Typography>
+                <Typography variant="body2" sx={{ fontFamily }}><strong>Floor:</strong> {r.floor || '-'}</Typography>
+                <Typography variant="body2" sx={{ fontFamily }}><strong>Capacity:</strong> {r.capacity} students</Typography>
+                {r.rows && <Typography variant="body2" sx={{ fontFamily }}><strong>Layout:</strong> {r.rows} × {r.columns} seats</Typography>}
+                {r.assigned_class_name && <Typography variant="body2" sx={{ fontFamily, color: 'primary.main' }}><strong>Assigned Class:</strong> {r.assigned_class_name}</Typography>}
+                <Box mt={1}>
+                  {r.has_cctv && <Chip label="CCTV" size="small" color="success" icon={<CheckCircle />} sx={chipStyle} />}
+                  <Chip label={r.is_active !== false ? 'Active' : 'Inactive'} size="small" sx={{ ...chipStyle, ml: 0.5 }} color={r.is_active !== false ? 'primary' : 'default'} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {!rooms.length && <Alert severity="info">No rooms created yet. Add one!</Alert>}
+
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth PaperProps={dialogPaperProps}>
+        <DialogTitle sx={{ fontFamily, fontWeight: 600 }}>{editing ? 'Edit Room' : 'Add Room'}</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={6}><TextField fullWidth size="small" label="Room Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required sx={inputStyle} /></Grid>
+            <Grid item xs={6}><TextField fullWidth size="small" label="Building" value={form.building} onChange={e => setForm({ ...form, building: e.target.value })} sx={inputStyle} /></Grid>
+            <Grid item xs={6} sm={4}><TextField fullWidth size="small" label="Floor" value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} sx={inputStyle} /></Grid>
+            <Grid item xs={6} sm={4}><TextField fullWidth size="small" type="number" label="Capacity" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} required sx={inputStyle} /></Grid>
+            <Grid item xs={12} sm={4}><FormControlLabel control={<Switch checked={form.has_cctv} onChange={e => setForm({ ...form, has_cctv: e.target.checked })} />} label="CCTV" sx={{ '& .MuiTypography-root': { fontFamily } }} /></Grid>
+            <Grid item xs={6}><TextField fullWidth size="small" type="number" label="Rows" value={form.rows} onChange={e => setForm({ ...form, rows: e.target.value })} sx={inputStyle} /></Grid>
+            <Grid item xs={6}><TextField fullWidth size="small" type="number" label="Columns" value={form.columns} onChange={e => setForm({ ...form, columns: e.target.value })} sx={inputStyle} /></Grid>
+            <Grid item xs={12}>
+              <TextField select fullWidth size="small" label="Assign to Class (normal days)" value={form.assigned_class_id}
+                onChange={e => setForm({ ...form, assigned_class_id: e.target.value })} sx={inputStyle}>
+                <MenuItem value="">— Not assigned —</MenuItem>
+                {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              </TextField>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setOpenDialog(false)} sx={{ ...btnStyle, color: '#6c757d' }}>Cancel</Button>
+          <Button variant="contained" onClick={save} sx={btnStyle}>{editing ? 'Update' : 'Create'}</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
