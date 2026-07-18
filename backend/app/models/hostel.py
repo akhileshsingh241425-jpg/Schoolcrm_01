@@ -55,7 +55,7 @@ class HostelAllocation(db.Model):
     __tablename__ = 'hostel_allocations'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     room_id = db.Column(db.Integer, db.ForeignKey('hostel_rooms.id'), nullable=False)
     bed_number = db.Column(db.String(10))
     allocation_date = db.Column(db.Date, nullable=False)
@@ -100,7 +100,7 @@ class MessAttendance(db.Model):
     __tablename__ = 'mess_attendance'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     meal_type = db.Column(db.String(20), nullable=False)
     status = db.Column(db.String(20), default='present')  # present, absent, late
@@ -120,7 +120,7 @@ class OutpassRequest(db.Model):
     __tablename__ = 'outpass_requests'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     outpass_type = db.Column(db.String(20), default='day')  # day, night, weekend, emergency
     reason = db.Column(db.Text, nullable=False)
     from_date = db.Column(db.DateTime, nullable=False)
@@ -148,7 +148,7 @@ class HostelVisitor(db.Model):
     __tablename__ = 'hostel_visitors'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     visitor_name = db.Column(db.String(100), nullable=False)
     relation = db.Column(db.String(50))
     contact_number = db.Column(db.String(20))
@@ -175,7 +175,7 @@ class HostelComplaint(db.Model):
     __tablename__ = 'hostel_complaints'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     complaint_type = db.Column(db.String(30), nullable=False)  # maintenance, food, roommate, hygiene, other
     subject = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=False)

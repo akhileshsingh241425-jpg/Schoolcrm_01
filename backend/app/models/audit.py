@@ -5,7 +5,7 @@ from datetime import datetime
 class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
 
-    id = db.Column(db.BigInteger, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=True)
     user_id = db.Column(db.Integer)
     action = db.Column(db.String(100), nullable=False)

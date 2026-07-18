@@ -90,6 +90,17 @@ export const examMgmtAPI = {
   getRoomSeating: (examId, hallId, params) => api.get(`${BASE}/room-seating/${examId}/${hallId}`, { params }),
   saveRoomSeating: (examId, hallId, data) => api.post(`${BASE}/room-seating/${examId}/${hallId}`, data),
   getAllRoomSeatings: (examId) => api.get(`${BASE}/room-seating/exam/${examId}`),
+
+  // ═══════════════════════════════════════════════════════════
+  // SEATING ARRANGEMENT (with approval workflow)
+  // ═══════════════════════════════════════════════════════════
+  listSeatingArrangements: (params) => api.get(`${BASE}/seating-arrangement`, { params }),
+  createSeatingArrangement: (data) => api.post(`${BASE}/seating-arrangement`, data),
+  getSeatingArrangement: (id) => api.get(`${BASE}/seating-arrangement/${id}`),
+  updateSeatingArrangement: (id, data) => api.put(`${BASE}/seating-arrangement/${id}`, data),
+  submitSeatingArrangement: (id) => api.post(`${BASE}/seating-arrangement/${id}/submit`),
+  approveSeatingArrangement: (id) => api.post(`${BASE}/seating-arrangement/${id}/approve`),
+  rejectSeatingArrangement: (id, data) => api.post(`${BASE}/seating-arrangement/${id}/reject`, data),
 };
 
 export default examMgmtAPI;

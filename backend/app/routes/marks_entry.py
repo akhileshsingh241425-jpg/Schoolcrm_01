@@ -268,7 +268,8 @@ def set_deadlines():
 
         # Parse deadline date
         try:
-            deadline_date = datetime.fromisoformat(deadline_date_str)
+            ds = deadline_date_str.replace('Z', '+00:00')
+            deadline_date = datetime.fromisoformat(ds).replace(tzinfo=None)
         except (ValueError, TypeError):
             errors.append({
                 'exam_schedule_id': exam_schedule_id,
@@ -364,7 +365,7 @@ def list_deadlines():
 def check_expired_deadlines():
     """Trigger deadline check and auto-lock expired schedules."""
     locked_count = check_deadlines_and_lock(g.school_id)
-    return success_response({'locked_count': locked_count}, 'Deadline check completed')
+    return success_response({'checked': locked_count, 'auto_locked': locked_count}, 'Deadline check completed')
 
 
 # ============================================================

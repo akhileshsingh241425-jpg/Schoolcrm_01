@@ -95,7 +95,7 @@ export default function TeacherClasses() {
         class_id: cls?.class_id || filteredStudents[0]?.class_id,
         section_id: selectedClass !== 'all' ? selectedClass : filteredStudents[0]?.section_id,
         date: attDate,
-        entries,
+        attendance: entries,
       });
       toast.success('Attendance saved!');
       setAttMarked(true);

@@ -149,7 +149,7 @@ def razorpay_create_order():
         ).first()
         if not student:
             return error_response(f'Student with admission no "{admission_no}" not found', 404)
-        student_id = student.id
+        student_id = student.admission_no
     elif not student_id:
         return error_response('Either student_id or admission_no is required', 400)
 
@@ -341,7 +341,7 @@ def paytm_initiate():
         ).first()
         if not student:
             return error_response(f'Student with admission no "{admission_no}" not found', 404)
-        student_id = student.id
+        student_id = student.admission_no
     elif not student_id:
         return error_response('Either student_id or admission_no is required', 400)
 

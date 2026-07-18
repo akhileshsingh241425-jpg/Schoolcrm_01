@@ -1,5 +1,7 @@
 """Global Search & Notifications API — works for all roles."""
-from flask import Blueprint, request, g, jsonify
+import json
+import queue
+from flask import Blueprint, request, g, jsonify, Response, stream_with_context
 from app import db
 from app.utils.decorators import school_required
 from app.utils.helpers import success_response, error_response
@@ -156,3 +158,67 @@ def mark_all_read():
     ).update({'read_at': datetime.utcnow()})
     db.session.commit()
     return success_response(message='All notifications marked as read')
+
+
+# ============================================================
+# SSE — REAL-TIME EMERGENCY PUSH
+# ============================================================
+# In-memory client registry: {school_id: {user_id: [Queue, ...]}}
+_sse_clients = {}
+
+
+def _sse_add_client(school_id, user_id):
+    q = queue.Queue(maxsize=100)
+    _sse_clients.setdefault(school_id, {}).setdefault(user_id, []).append(q)
+    return q
+
+
+def _sse_remove_client(school_id, user_id, q):
+    clients = _sse_clients.get(school_id, {}).get(user_id, [])
+    clients[:] = [x for x in clients if x is not q]
+    if not clients:
+        _sse_clients[school_id].pop(user_id, None)
+    if not _sse_clients.get(school_id):
+        _sse_clients.pop(school_id, None)
+
+
+def push_emergency(school_id, title, message):
+    """Push an emergency alert to all SSE-connected users in a school."""
+    event = json.dumps({'title': title, 'message': message})
+    for user_id, queues in list(_sse_clients.get(school_id, {}).items()):
+        for q in queues:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                pass
+
+
+@global_bp.route('/emergency-stream')
+@school_required
+def emergency_stream():
+    """SSE endpoint — real-time emergency push without polling."""
+    q = _sse_add_client(g.school_id, g.user_id)
+
+    def generate():
+        try:
+            yield 'event: connected\ndata: {}\n\n'
+            while True:
+                try:
+                    data = q.get(timeout=30)
+                    yield f'event: emergency\ndata: {data}\n\n'
+                except queue.Empty:
+                    yield ': keepalive\n\n'
+        except GeneratorExit:
+            pass
+        finally:
+            _sse_remove_client(g.school_id, g.user_id, q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )

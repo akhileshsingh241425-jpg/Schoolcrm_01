@@ -24,7 +24,7 @@ export default function Academics() {
   const [loading, setLoading] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
-  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal'));
+  const isAdmin = useAuthStore(s => s.hasRole('school_admin', 'super_admin', 'principal', 'exam_controller'));
   const TABS = isAdmin ? ADMIN_TABS : TEACHER_TABS;
 
   // Shared data
@@ -56,7 +56,7 @@ export default function Academics() {
       {isAdmin && tab === 4 && <SubjectsTab subjects={subjects} setSubjects={setSubjects} showSnack={showSnack} />}
       {isAdmin && tab === 5 && <TimetableTab classes={classes} subjects={subjects} showSnack={showSnack} />}
       {isAdmin && tab === 6 && <GradingTab gradingSystems={gradingSystems} setGradingSystems={setGradingSystems} showSnack={showSnack} />}
-      {isAdmin && tab === 7 && <HallsTab showSnack={showSnack} />}
+      {tab === 7 && <HallsTab classes={classes} showSnack={showSnack} />}
       {isAdmin && tab === 8 && <ClassTeachersTab classes={classes} showSnack={showSnack} />}
       {(!isAdmin ? tab === 1 : tab === 9) && <SyllabusTab classes={classes} subjects={subjects} academicYears={academicYears} showSnack={showSnack} />}
       {(!isAdmin ? tab === 2 : tab === 10) && <HomeworkTab classes={classes} subjects={subjects} showSnack={showSnack} />}
@@ -90,6 +90,8 @@ function DashboardTab({ showSnack }) {
     { label: 'Upcoming', value: stats.upcoming, icon: <Schedule />, color: '#ed6c02' },
     { label: 'Ongoing', value: stats.ongoing, icon: <Assignment />, color: '#2e7d32' },
     { label: 'Completed', value: stats.completed, icon: <CheckCircle />, color: '#9c27b0' },
+    { label: 'Postponed', value: stats.postponed, icon: <Schedule />, color: '#0ea5e9' },
+    { label: 'Cancelled', value: stats.cancelled, icon: <Cancel />, color: '#ef4444' },
     { label: 'Results Published', value: stats.results_published, icon: <BarChart />, color: '#0288d1' },
     { label: 'Subjects', value: stats.total_subjects, icon: <School />, color: '#d32f2f' },
     { label: 'Exam Halls', value: stats.total_halls, icon: <MeetingRoom />, color: '#7b1fa2' },
@@ -128,7 +130,7 @@ function DashboardTab({ showSnack }) {
                   <TableCell>{e.exam_type?.name || '-'}</TableCell>
                   <TableCell>{e.start_date || '-'}</TableCell>
                   <TableCell>{e.end_date || '-'}</TableCell>
-                  <TableCell><Chip label={e.status} size="small" color={e.status === 'completed' ? 'success' : e.status === 'ongoing' ? 'warning' : 'info'} /></TableCell>
+                  <TableCell><Chip label={e.status} size="small" color={e.status === 'completed' ? 'success' : e.status === 'ongoing' ? 'warning' : e.status === 'cancelled' ? 'error' : 'default'} /></TableCell>
                 </TableRow>
               ))}
               {!data.recent_exams?.length && <TableRow><TableCell colSpan={5} align="center">No exams yet</TableCell></TableRow>}
@@ -153,6 +155,8 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
   const [selectedExam, setSelectedExam] = useState(null);
   const [openSchedule, setOpenSchedule] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ class_id: '', subject_id: '', exam_date: '', start_time: '', end_time: '', max_marks: '', passing_marks: '', duration_minutes: '' });
+  const [postponeScheduleId, setPostponeScheduleId] = useState(null);
+  const [schedulePostponeDate, setSchedulePostponeDate] = useState('');
 
   const loadExams = useCallback(() => {
     const params = { page: page + 1, per_page: 20 };
@@ -204,6 +208,23 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
     academicsAPI.deleteSchedule(id).then(() => { showSnack('Deleted'); viewExam(selectedExam); }).catch(() => showSnack('Failed', 'error'));
   };
 
+  const postponeSchedule = () => {
+    if (!postponeScheduleId || !schedulePostponeDate) return;
+    academicsAPI.postponeSchedule(postponeScheduleId, { new_date: schedulePostponeDate }).then(() => {
+      showSnack('Schedule postponed');
+      setPostponeScheduleId(null);
+      setSchedulePostponeDate('');
+      viewExam(selectedExam);
+    }).catch(() => showSnack('Failed', 'error'));
+  };
+
+  const resetPostpone = (scheduleId) => {
+    academicsAPI.resetPostponeSchedule(scheduleId).then(() => {
+      showSnack('Postpone reset');
+      viewExam(selectedExam);
+    }).catch(() => showSnack('Failed', 'error'));
+  };
+
   const updateStatus = (examId, status) => {
     academicsAPI.updateExamStatus(examId, { status }).then(() => { showSnack('Status updated'); loadExams(); if (selectedExam) viewExam(selectedExam); }).catch(() => showSnack('Failed', 'error'));
   };
@@ -220,6 +241,7 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
                 <MenuItem value="upcoming">Upcoming</MenuItem>
                 <MenuItem value="ongoing">Ongoing</MenuItem>
                 <MenuItem value="completed">Completed</MenuItem>
+                <MenuItem value="cancelled">Cancelled</MenuItem>
                 <MenuItem value="results_published">Published</MenuItem>
               </Select>
             </FormControl>
@@ -239,7 +261,7 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
                     <TableCell>{e.academic_year || '-'}</TableCell>
                     <TableCell>{e.start_date || '-'} → {e.end_date || '-'}</TableCell>
                     <TableCell><Chip label={e.schedule_count} size="small" /></TableCell>
-                    <TableCell><Chip label={e.status} size="small" color={e.status === 'completed' ? 'success' : e.status === 'ongoing' ? 'warning' : e.status === 'results_published' ? 'primary' : 'default'} /></TableCell>
+                    <TableCell><Chip label={e.status} size="small" color={e.status === 'completed' ? 'success' : e.status === 'ongoing' ? 'warning' : e.status === 'results_published' ? 'primary' : e.status === 'cancelled' ? 'error' : 'default'} /></TableCell>
                     <TableCell>
                       <IconButton size="small" onClick={() => viewExam(e)}><Visibility fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => editExam(e)}><Edit fontSize="small" /></IconButton>
@@ -265,6 +287,7 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
               </Box>
               <Box display="flex" gap={1}>
                 {selectedExam.status === 'upcoming' && <Button variant="outlined" color="warning" onClick={() => updateStatus(selectedExam.id, 'ongoing')}>Start Exam</Button>}
+                {selectedExam.status === 'upcoming' && <Button variant="outlined" color="error" onClick={() => updateStatus(selectedExam.id, 'cancelled')}>Cancel</Button>}
                 {selectedExam.status === 'ongoing' && <Button variant="outlined" color="success" onClick={() => updateStatus(selectedExam.id, 'completed')}>Complete</Button>}
                 {selectedExam.status === 'completed' && <Button variant="outlined" color="primary" onClick={() => updateStatus(selectedExam.id, 'results_published')}>Publish Results</Button>}
               </Box>
@@ -273,7 +296,7 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
               <Grid item xs={6} sm={3}><Typography variant="body2" color="text.secondary">Type</Typography><Typography>{selectedExam.exam_type?.name || '-'}</Typography></Grid>
               <Grid item xs={6} sm={3}><Typography variant="body2" color="text.secondary">Academic Year</Typography><Typography>{selectedExam.academic_year || '-'}</Typography></Grid>
               <Grid item xs={6} sm={3}><Typography variant="body2" color="text.secondary">Start Date</Typography><Typography>{selectedExam.start_date || '-'}</Typography></Grid>
-              <Grid item xs={6} sm={3}><Typography variant="body2" color="text.secondary">Status</Typography><Chip label={selectedExam.status} color="primary" size="small" /></Grid>
+              <Grid item xs={6} sm={3}><Typography variant="body2" color="text.secondary">Status</Typography><Chip label={selectedExam.status} color={selectedExam.status === 'cancelled' ? 'error' : 'primary'} size="small" /></Grid>
             </Grid>
           </Paper>
 
@@ -292,12 +315,21 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
                     <TableRow key={s.id}>
                       <TableCell><strong>{s.subject?.name}</strong></TableCell>
                       <TableCell>{s.class_name}</TableCell>
-                      <TableCell>{s.exam_date}</TableCell>
+                      <TableCell>
+                        {s.exam_date}
+                        {s.postponed_to && <><br /><Chip label={'Rescheduled → ' + s.postponed_to} size="small" color="info" variant="outlined" icon={<CalendarMonth fontSize="small" />} /></>}
+                      </TableCell>
                       <TableCell>{s.start_time || '-'} - {s.end_time || '-'}</TableCell>
                       <TableCell>{s.max_marks}</TableCell>
                       <TableCell>{s.passing_marks || '-'}</TableCell>
                       <TableCell>{s.is_marks_locked ? <Lock color="error" fontSize="small" /> : <LockOpen color="success" fontSize="small" />}</TableCell>
-                      <TableCell><IconButton size="small" color="error" onClick={() => deleteSchedule(s.id)}><Delete fontSize="small" /></IconButton></TableCell>
+                      <TableCell>
+                        {!s.postponed_to
+                          ? <Tooltip title="Postpone"><IconButton size="small" onClick={() => { setPostponeScheduleId(s.id); setSchedulePostponeDate(''); }}><CalendarMonth fontSize="small" /></IconButton></Tooltip>
+                          : <Tooltip title="Reset postpone"><IconButton size="small" onClick={() => resetPostpone(s.id)}><CalendarMonth fontSize="small" color="info" /></IconButton></Tooltip>
+                        }
+                        <IconButton size="small" color="error" onClick={() => deleteSchedule(s.id)}><Delete fontSize="small" /></IconButton>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!selectedExam.schedules?.length && <TableRow><TableCell colSpan={8} align="center">No schedules</TableCell></TableRow>}
@@ -375,6 +407,21 @@ function ExamsTab({ classes, subjects, examTypes, gradingSystems, academicYears,
           </Grid>
         </DialogContent>
         <DialogActions><Button onClick={() => setOpenSchedule(false)}>Cancel</Button><Button variant="contained" onClick={addSchedule}>Add</Button></DialogActions>
+      </Dialog>
+
+      {/* Per-Schedule Postpone Dialog */}
+      <Dialog open={!!postponeScheduleId} onClose={() => setPostponeScheduleId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Postpone Exam Paper</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>Enter the new date for this exam paper</Typography>
+          <TextField fullWidth type="date" label="New Date" value={schedulePostponeDate}
+            onChange={e => setSchedulePostponeDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPostponeScheduleId(null)}>Cancel</Button>
+          <Button variant="contained" color="info" disabled={!schedulePostponeDate}
+            onClick={postponeSchedule}>Postpone</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
@@ -1030,17 +1077,18 @@ function GradingTab({ gradingSystems, setGradingSystems, showSnack }) {
 // ============================================================
 // HALLS TAB
 // ============================================================
-function HallsTab({ showSnack }) {
+function HallsTab({ classes, showSnack }) {
   const [halls, setHalls] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
-  const [form, setForm] = useState({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false });
+  const [form, setForm] = useState({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' });
   const [editing, setEditing] = useState(null);
 
   const reload = () => academicsAPI.listExamHalls().then(r => setHalls(r.data.data || [])).catch(() => {});
   useEffect(() => { reload(); }, []);
 
   const save = () => {
-    const fn = editing ? academicsAPI.updateExamHall(editing.id, form) : academicsAPI.createExamHall(form);
+    const data = { ...form, assigned_class_id: form.assigned_class_id ? parseInt(form.assigned_class_id) : null };
+    const fn = editing ? academicsAPI.updateExamHall(editing.id, data) : academicsAPI.createExamHall(data);
     fn.then(() => { showSnack(editing ? 'Updated' : 'Created'); setOpenDialog(false); setEditing(null); reload(); }).catch(() => showSnack('Failed', 'error'));
   };
 
@@ -1051,14 +1099,14 @@ function HallsTab({ showSnack }) {
 
   const edit = (h) => {
     setEditing(h);
-    setForm({ name: h.name, building: h.building || '', floor: h.floor || '', capacity: h.capacity, rows: h.rows || '', columns: h.columns || '', has_cctv: h.has_cctv || false });
+    setForm({ name: h.name, building: h.building || '', floor: h.floor || '', capacity: h.capacity, rows: h.rows || '', columns: h.columns || '', has_cctv: h.has_cctv || false, assigned_class_id: h.assigned_class_id || '' });
     setOpenDialog(true);
   };
 
   return (
     <Box>
       <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setForm({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false }); setOpenDialog(true); }}>Add Hall</Button>
+        <Button variant="contained" startIcon={<Add />} onClick={() => { setEditing(null); setForm({ name: '', building: '', floor: '', capacity: '', rows: '', columns: '', has_cctv: false, assigned_class_id: '' }); setOpenDialog(true); }}>Add Room</Button>
       </Box>
 
       <Grid container spacing={2}>
@@ -1081,6 +1129,7 @@ function HallsTab({ showSnack }) {
                 <Typography variant="body2"><strong>Floor:</strong> {h.floor || '-'}</Typography>
                 <Typography variant="body2"><strong>Capacity:</strong> {h.capacity} students</Typography>
                 {h.rows && <Typography variant="body2"><strong>Layout:</strong> {h.rows} × {h.columns} seats</Typography>}
+                {h.assigned_class_name && <Typography variant="body2"><strong>Assigned Class:</strong> {h.assigned_class_name}</Typography>}
                 <Box mt={1}>
                   {h.has_cctv && <Chip label="CCTV" size="small" color="success" icon={<CheckCircle />} />}
                   <Chip label={h.is_active !== false ? 'Active' : 'Inactive'} size="small" sx={{ ml: 0.5 }} color={h.is_active !== false ? 'primary' : 'default'} />
@@ -1091,19 +1140,26 @@ function HallsTab({ showSnack }) {
         ))}
       </Grid>
 
-      {!halls.length && <Paper sx={{ p: 3, textAlign: 'center' }}><Typography color="text.secondary">No exam halls</Typography></Paper>}
+      {!halls.length && <Paper sx={{ p: 3, textAlign: 'center' }}><Typography color="text.secondary">No rooms created yet</Typography></Paper>}
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editing ? 'Edit Hall' : 'Add Exam Hall'}</DialogTitle>
+        <DialogTitle>{editing ? 'Edit Room' : 'Add Room'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6}><TextField fullWidth label="Hall Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Room Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Building" value={form.building} onChange={e => setForm({ ...form, building: e.target.value })} /></Grid>
             <Grid item xs={6} sm={4}><TextField fullWidth label="Floor" value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} /></Grid>
             <Grid item xs={6} sm={4}><TextField fullWidth type="number" label="Capacity" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} required /></Grid>
             <Grid item xs={12} sm={4}><FormControlLabel control={<Switch checked={form.has_cctv} onChange={e => setForm({ ...form, has_cctv: e.target.checked })} />} label="CCTV" /></Grid>
             <Grid item xs={6}><TextField fullWidth type="number" label="Rows" value={form.rows} onChange={e => setForm({ ...form, rows: e.target.value })} /></Grid>
             <Grid item xs={6}><TextField fullWidth type="number" label="Columns" value={form.columns} onChange={e => setForm({ ...form, columns: e.target.value })} /></Grid>
+            <Grid item xs={12}>
+              <TextField select fullWidth label="Assign to Class (normal days)" value={form.assigned_class_id}
+                onChange={e => setForm({ ...form, assigned_class_id: e.target.value })}>
+                <MenuItem value="">— Not assigned —</MenuItem>
+                {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              </TextField>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions><Button onClick={() => setOpenDialog(false)}>Cancel</Button><Button variant="contained" onClick={save}>{editing ? 'Update' : 'Create'}</Button></DialogActions>

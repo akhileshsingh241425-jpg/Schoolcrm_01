@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, g
 from app import db
 from app.models.lead import Lead, LeadSource, LeadFollowup, LeadActivity, Campaign
@@ -56,7 +57,17 @@ def get_lead(lead_id):
 @validate({'student_name': {'required': True}, 'phone': {'required': True}})
 def create_lead():
     data = g.get('validated_data') or request.get_json()
-    
+
+    phone = data.get('phone')
+    if phone and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    alt_phone = data.get('alternate_phone')
+    if alt_phone and not re.match(r'^\d+$', str(alt_phone)):
+        return error_response('Alternate phone must contain only digits', 400)
+    email = data.get('email')
+    if email and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+
     lead = Lead(
         school_id=g.school_id,
         student_name=data['student_name'],
@@ -94,7 +105,17 @@ def create_lead():
 def update_lead(lead_id):
     lead = Lead.query.filter_by(id=lead_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
-    
+
+    phone = data.get('phone')
+    if phone is not None and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    alt_phone = data.get('alternate_phone')
+    if alt_phone is not None and not re.match(r'^\d+$', str(alt_phone)):
+        return error_response('Alternate phone must contain only digits', 400)
+    email = data.get('email')
+    if email is not None and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+
     old_status = lead.status
     
     updatable = ['student_name', 'parent_name', 'email', 'phone', 'alternate_phone',

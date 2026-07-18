@@ -13,7 +13,7 @@ import {
   PersonAdd, FileUpload, FileDownload, MoreVert, School, EventSeat, Assignment,
   Description, ExpandMore, Refresh, TrendingUp, People, HourglassEmpty,
   ThumbDown, LocationOn, Phone, Email, CalendarMonth, Upload, Verified,
-  Close, ArrowForward, Print, Timeline
+  Close, ArrowForward, Print, Timeline, Payment
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { admissionsAPI, studentsAPI } from '../../services/api';
@@ -62,10 +62,11 @@ const initialForm = {
   mother_name: '', mother_phone: '', mother_email: '', mother_occupation: '',
   guardian_name: '', guardian_phone: '', guardian_relation: '',
   phone: '', email: '', emergency_contact: '',
-  class_applied: '', academic_year_id: '', previous_school: '', previous_class: '', previous_percentage: '', tc_number: '',
+  class_applied: '', section_applied: '', academic_year_id: '', previous_school: '', previous_class: '', previous_percentage: '', tc_number: '',
   has_sibling: false, sibling_admission_no: '', sibling_name: '',
   transport_required: false, pickup_address: '', medical_conditions: '', allergies: '', disability: '',
   application_source: 'walk_in', priority: 'normal', remarks: '',
+  admission_fee_amount: '', tuition_fee_yearly: '', password: '',
 };
 
 export default function Admissions() {
@@ -96,7 +97,7 @@ export default function Admissions() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [openEnroll, setOpenEnroll] = useState(null);
-  const [enrollForm, setEnrollForm] = useState({ admission_no: '', roll_no: '', section_id: '', password: '' });
+  const [enrollForm, setEnrollForm] = useState({ roll_no: '', section_id: '', password: '', admission_no: '', admission_number: '', enrollment_no: '' });
   const [sections, setSections] = useState([]);
   const [loginResult, setLoginResult] = useState(null);
 
@@ -130,6 +131,15 @@ export default function Admissions() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuAdmission, setMenuAdmission] = useState(null);
 
+  // Stored password from create form (used during enroll)
+  const [tempPassword, setTempPassword] = useState('');
+  // Pay Fee dialog
+  const [openPayFee, setOpenPayFee] = useState(null);
+  const [payFeeForm, setPayFeeForm] = useState({ amount: '', payment_mode: 'cash', receipt_no: '' });
+  // Pay Tuition dialog
+  const [openPayTuition, setOpenPayTuition] = useState(null);
+  const [tuitionForm, setTuitionForm] = useState({ amount: '', payment_mode: 'cash', month: new Date().getMonth() + 1, year: new Date().getFullYear(), receipt_no: '' });
+
   // Settings
   const [settings, setSettings] = useState(null);
   const [openSettings, setOpenSettings] = useState(false);
@@ -158,6 +168,17 @@ export default function Admissions() {
     studentsAPI.listClasses().then(res => setClasses(res.data.data || [])).catch(() => {});
     studentsAPI.listAcademicYears().then(res => setAcademicYears(res.data.data || [])).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (form.class_applied) {
+      studentsAPI.listSections(form.class_applied).then(r => {
+        const data = r.data?.data || r.data || [];
+        setSections(Array.isArray(data) ? data : []);
+      }).catch(() => setSections([]));
+    } else {
+      setSections([]);
+    }
+  }, [form.class_applied]);
 
   const fetchDashboard = () => {
     admissionsAPI.getDashboard().then(res => setDashboard(res.data.data)).catch(() => {});
@@ -190,10 +211,25 @@ export default function Admissions() {
       email: ['email'],
       phone: ['phone'],
     });
-    if (Object.keys(errs).length) { setError?.(Object.values(errs)[0]) || alert(Object.values(errs)[0]); return; }
+    if (Object.keys(errs).length) { showSnack(Object.values(errs)[0], 'error'); return; }
+    if (!form.student_name) { showSnack('Student name is required', 'error'); return; }
+    if (!form.address) { showSnack('Address is required', 'error'); return; }
+    if (!form.city) { showSnack('City is required', 'error'); return; }
+    if (!form.date_of_birth) { showSnack('Date of birth is required', 'error'); return; }
+    if (!form.gender) { showSnack('Gender is required', 'error'); return; }
+    if (!form.father_name) { showSnack('Father name is required', 'error'); return; }
+    if (!form.father_phone) { showSnack('Father phone is required', 'error'); return; }
+    if (!form.mother_name) { showSnack('Mother name is required', 'error'); return; }
+    if (!form.mother_phone) { showSnack('Mother phone is required', 'error'); return; }
+    if (!form.phone) { showSnack('Primary phone is required', 'error'); return; }
+    if (!form.class_applied) { showSnack('Class applied is required', 'error'); return; }
+    if (!form.academic_year_id) { showSnack('Academic year is required', 'error'); return; }
     const api = editingId ? admissionsAPI.update(editingId, form) : admissionsAPI.create(form);
     api.then(res => {
-      showSnack(res.data.message);
+      const app = res.data?.data;
+      const appNo = app?.application_no || app?.admission_no || '';
+      if (form.password) setTempPassword(form.password);
+      showSnack(appNo ? `${res.data.message} — App No: ${appNo}` : res.data.message);
       setOpenForm(false);
       setEditingId(null);
       setForm({ ...initialForm });
@@ -217,7 +253,7 @@ export default function Admissions() {
       guardian_name: admission.guardian_name || '', guardian_phone: admission.guardian_phone || '',
       guardian_relation: admission.guardian_relation || '',
       phone: admission.phone || '', email: admission.email || '', emergency_contact: admission.emergency_contact || '',
-      class_applied: admission.class_applied_id || '', academic_year_id: admission.academic_year_id || '',
+      class_applied: admission.class_applied_id || '', section_applied: admission.section_applied_id || '', academic_year_id: admission.academic_year_id || '',
       previous_school: admission.previous_school || '', previous_class: admission.previous_class || '',
       previous_percentage: admission.previous_percentage || '', tc_number: admission.tc_number || '',
       has_sibling: admission.has_sibling || false, sibling_admission_no: admission.sibling_admission_no || '',
@@ -227,6 +263,7 @@ export default function Admissions() {
       disability: admission.disability || '',
       application_source: admission.application_source || 'walk_in', priority: admission.priority || 'normal',
       remarks: admission.remarks || '',
+      admission_fee_amount: admission.admission_fee_amount || '', tuition_fee_yearly: admission.tuition_fee_yearly || '', password: '',
     });
     setEditingId(admission.id);
     setActiveStep(0);
@@ -252,15 +289,36 @@ export default function Admissions() {
   };
 
   const handleEnroll = () => {
+    if (!enrollForm.admission_no) { showSnack('Admission ID is required', 'error'); return; }
+    if (!enrollForm.admission_number) { showSnack('Admission No is required', 'error'); return; }
+    if (!enrollForm.enrollment_no) { showSnack('Enrollment No is required', 'error'); return; }
+    if (!enrollForm.password || enrollForm.password.length < 8) { showSnack('Password is required (min 8 characters)', 'error'); return; }
     admissionsAPI.enroll(openEnroll, enrollForm)
       .then(res => {
         setLoginResult(res.data?.data?.login || null);
         showSnack('Student enrolled successfully!');
         setOpenEnroll(null);
-        setEnrollForm({ admission_no: '', roll_no: '', section_id: '', password: '' });
+        setEnrollForm({ roll_no: '', section_id: '', password: '', admission_no: '', admission_number: '', enrollment_no: '' });
         fetchAdmissions();
       })
       .catch(e => showSnack(e.response?.data?.message || 'Enrollment failed', 'error'));
+  };
+
+  const handlePayFee = () => {
+    if (!payFeeForm.amount || payFeeForm.amount <= 0) { showSnack('Enter a valid amount', 'error'); return; }
+    if (!payFeeForm.payment_mode) { showSnack('Select payment mode', 'error'); return; }
+    admissionsAPI.payAdmissionFee(openPayFee, payFeeForm)
+      .then(res => { showSnack(res.data.message); setOpenPayFee(null); fetchAdmissions(); })
+      .catch(e => showSnack(e.response?.data?.message || 'Fee recording failed', 'error'));
+  };
+
+  const handlePayTuition = () => {
+    if (!tuitionForm.amount || tuitionForm.amount <= 0) { showSnack('Enter a valid amount', 'error'); return; }
+    if (!tuitionForm.month) { showSnack('Select month', 'error'); return; }
+    if (!tuitionForm.year) { showSnack('Select year', 'error'); return; }
+    admissionsAPI.payTuitionFee(openPayTuition, tuitionForm)
+      .then(res => { showSnack(res.data.message); setOpenPayTuition(null); fetchAdmissions(); })
+      .catch(e => showSnack(e.response?.data?.message || 'Tuition payment failed', 'error'));
   };
 
   const handleDocUpload = (e) => {
@@ -343,10 +401,10 @@ export default function Admissions() {
       case 0: return (
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6}><TextField fullWidth required label="Student Name" value={form.student_name} onChange={e => f('student_name', e.target.value)} /></Grid>
-          <Grid item xs={6} sm={3}><TextField fullWidth type="date" label="Date of Birth" value={form.date_of_birth} onChange={e => f('date_of_birth', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
+          <Grid item xs={6} sm={3}><TextField fullWidth required type="date" label="Date of Birth" value={form.date_of_birth} onChange={e => f('date_of_birth', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
           <Grid item xs={6} sm={3}>
-            <FormControl fullWidth><InputLabel>Gender</InputLabel>
-              <Select value={form.gender} label="Gender" onChange={e => f('gender', e.target.value)}>
+            <FormControl fullWidth required><InputLabel>Gender *</InputLabel>
+              <Select value={form.gender} label="Gender *" onChange={e => f('gender', e.target.value)}>
                 <MenuItem value="male">Male</MenuItem><MenuItem value="female">Female</MenuItem><MenuItem value="other">Other</MenuItem>
               </Select></FormControl>
           </Grid>
@@ -359,8 +417,8 @@ export default function Admissions() {
               </Select></FormControl>
           </Grid>
           <Grid item xs={6} sm={3}><TextField fullWidth label="Aadhaar No" value={form.aadhar_no} onChange={e => f('aadhar_no', e.target.value)} inputProps={{ maxLength: 12 }} /></Grid>
-          <Grid item xs={12}><TextField fullWidth label="Address" multiline rows={2} value={form.address} onChange={e => f('address', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="City" value={form.city} onChange={e => f('city', e.target.value)} /></Grid>
+          <Grid item xs={12}><TextField fullWidth required label="Address" multiline rows={2} value={form.address} onChange={e => f('address', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="City" value={form.city} onChange={e => f('city', e.target.value)} /></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="State" value={form.state} onChange={e => f('state', e.target.value)} /></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="Pincode" value={form.pincode} onChange={e => f('pincode', e.target.value)} /></Grid>
         </Grid>
@@ -368,37 +426,44 @@ export default function Admissions() {
       case 1: return (
         <Grid container spacing={2}>
           <Grid item xs={12}><Typography variant="subtitle2" color="primary">Father's Details</Typography></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Father's Name" value={form.father_name} onChange={e => f('father_name', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Father's Phone" value={form.father_phone} onChange={e => f('father_phone', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Father's Email" value={form.father_email} onChange={e => f('father_email', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="Father's Name" value={form.father_name} onChange={e => f('father_name', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="Father's Phone" value={form.father_phone} onChange={e => f('father_phone', e.target.value.replace(/\D/g, ''))} error={form.father_phone.length > 0 && form.father_phone.length < 10} helperText={form.father_phone.length > 0 && form.father_phone.length < 10 ? 'Minimum 10 digits' : ''} inputProps={{ maxLength: 15 }} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Father's Email" value={form.father_email} onChange={e => f('father_email', e.target.value)} error={form.father_email.length > 0 && !form.father_email.includes('@')} helperText={form.father_email.length > 0 && !form.father_email.includes('@') ? 'Invalid email' : ''} /></Grid>
           <Grid item xs={6} sm={4}><TextField fullWidth label="Occupation" value={form.father_occupation} onChange={e => f('father_occupation', e.target.value)} /></Grid>
-          <Grid item xs={6} sm={4}><TextField fullWidth label="Annual Income" value={form.father_income} onChange={e => f('father_income', e.target.value)} /></Grid>
+          <Grid item xs={6} sm={4}><TextField fullWidth label="Annual Income" type="number" value={form.father_income} onChange={e => f('father_income', e.target.value)} /></Grid>
           <Grid item xs={12}><Divider /><Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Mother's Details</Typography></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Mother's Name" value={form.mother_name} onChange={e => f('mother_name', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Mother's Phone" value={form.mother_phone} onChange={e => f('mother_phone', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Mother's Email" value={form.mother_email} onChange={e => f('mother_email', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="Mother's Name" value={form.mother_name} onChange={e => f('mother_name', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="Mother's Phone" value={form.mother_phone} onChange={e => f('mother_phone', e.target.value.replace(/\D/g, ''))} error={form.mother_phone.length > 0 && form.mother_phone.length < 10} helperText={form.mother_phone.length > 0 && form.mother_phone.length < 10 ? 'Minimum 10 digits' : ''} inputProps={{ maxLength: 15 }} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Mother's Email" value={form.mother_email} onChange={e => f('mother_email', e.target.value)} error={form.mother_email.length > 0 && !form.mother_email.includes('@')} helperText={form.mother_email.length > 0 && !form.mother_email.includes('@') ? 'Invalid email' : ''} /></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Occupation" value={form.mother_occupation} onChange={e => f('mother_occupation', e.target.value)} /></Grid>
           <Grid item xs={12}><Divider /><Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Guardian (if applicable)</Typography></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Guardian Name" value={form.guardian_name} onChange={e => f('guardian_name', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Guardian Phone" value={form.guardian_phone} onChange={e => f('guardian_phone', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Guardian Phone" value={form.guardian_phone} onChange={e => f('guardian_phone', e.target.value.replace(/\D/g, ''))} inputProps={{ maxLength: 15 }} /></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Relation" value={form.guardian_relation} onChange={e => f('guardian_relation', e.target.value)} /></Grid>
           <Grid item xs={12}><Divider /><Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Contact</Typography></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Primary Phone" value={form.phone} onChange={e => f('phone', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Primary Email" value={form.email} onChange={e => f('email', e.target.value)} /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Emergency Contact" value={form.emergency_contact} onChange={e => f('emergency_contact', e.target.value)} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth required label="Primary Phone" value={form.phone} onChange={e => f('phone', e.target.value.replace(/\D/g, ''))} error={form.phone.length > 0 && form.phone.length < 10} helperText={form.phone.length > 0 && form.phone.length < 10 ? 'Minimum 10 digits' : ''} inputProps={{ maxLength: 15 }} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Primary Email" value={form.email} onChange={e => f('email', e.target.value)} error={form.email.length > 0 && !form.email.includes('@')} helperText={form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''} /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth label="Emergency Contact" value={form.emergency_contact} onChange={e => f('emergency_contact', e.target.value.replace(/\D/g, ''))} inputProps={{ maxLength: 15 }} /></Grid>
         </Grid>
       );
       case 2: return (
         <Grid container spacing={2}>
           <Grid item xs={6}>
-            <FormControl fullWidth><InputLabel>Class Applied For *</InputLabel>
-              <Select value={form.class_applied} label="Class Applied For *" onChange={e => f('class_applied', e.target.value)}>
+            <FormControl fullWidth required><InputLabel>Class Applied For *</InputLabel>
+              <Select value={form.class_applied} label="Class Applied For *" onChange={e => { f('class_applied', e.target.value); f('section_applied', ''); }}>
                 {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </Select></FormControl>
           </Grid>
+          <Grid item xs={6}>
+            <FormControl fullWidth><InputLabel>Section</InputLabel>
+              <Select value={form.section_applied} label="Section" onChange={e => f('section_applied', e.target.value)}>
+                <MenuItem value=""><em>None</em></MenuItem>
+                {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              </Select></FormControl>
+          </Grid>
           <Grid item xs={12} sm={6}>
-            <FormControl fullWidth><InputLabel>Academic Year</InputLabel>
-              <Select value={form.academic_year_id} label="Academic Year" onChange={e => f('academic_year_id', e.target.value)}>
+            <FormControl fullWidth required><InputLabel>Academic Year *</InputLabel>
+              <Select value={form.academic_year_id} label="Academic Year *" onChange={e => f('academic_year_id', e.target.value)}>
                 {academicYears.map(y => <MenuItem key={y.id} value={y.id}>{y.name}</MenuItem>)}
               </Select></FormControl>
           </Grid>
@@ -438,6 +503,10 @@ export default function Admissions() {
           <Grid item xs={12} sm={4}><TextField fullWidth label="Medical Conditions" multiline rows={2} value={form.medical_conditions} onChange={e => f('medical_conditions', e.target.value)} /></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Allergies" multiline rows={2} value={form.allergies} onChange={e => f('allergies', e.target.value)} /></Grid>
           <Grid item xs={12} sm={4}><TextField fullWidth label="Disability (if any)" value={form.disability} onChange={e => f('disability', e.target.value)} /></Grid>
+          <Grid item xs={12}><Divider /><Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Fee & Login</Typography></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth type="number" label="Admission Fee (one-time)" value={form.admission_fee_amount} onChange={e => f('admission_fee_amount', e.target.value)} helperText="Leave blank if no fee" /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth type="number" label="Tuition Fee (yearly)" value={form.tuition_fee_yearly} onChange={e => f('tuition_fee_yearly', e.target.value)} helperText="Yearly tuition amount" /></Grid>
+          <Grid item xs={12} sm={4}><TextField fullWidth type="password" label="Student Login Password" value={form.password} onChange={e => f('password', e.target.value)} helperText="Min 8 chars — student portal login" /></Grid>
           <Grid item xs={12}><Divider /></Grid>
           <Grid item xs={12}><TextField fullWidth label="Remarks / Notes" multiline rows={3} value={form.remarks} onChange={e => f('remarks', e.target.value)} /></Grid>
         </Grid>
@@ -553,9 +622,19 @@ export default function Admissions() {
         <MenuItem onClick={() => { setStatusForm({ status: '', remarks: '', rejection_reason: '' }); setOpenStatusDialog(menuAdmission?.id); setAnchorEl(null); }}>
           <ListItemIcon><ArrowForward fontSize="small" /></ListItemIcon><ListItemText>Change Status</ListItemText>
         </MenuItem>
-        {menuAdmission?.status === 'approved' && (
-          <MenuItem onClick={() => { setOpenEnroll(menuAdmission?.id); loadSections(menuAdmission?.class_applied_id); setAnchorEl(null); }}>
+        {menuAdmission?.admission_fee_amount > 0 && !menuAdmission?.admission_fee_paid && (
+        <MenuItem onClick={() => { setPayFeeForm({ amount: menuAdmission.admission_fee_amount, payment_mode: 'cash', receipt_no: '' }); setOpenPayFee(menuAdmission?.id); setAnchorEl(null); }}>
+          <ListItemIcon><Payment fontSize="small" /></ListItemIcon><ListItemText>Collect Fee</ListItemText>
+        </MenuItem>
+        )}
+          {menuAdmission?.status === 'approved' && (
+          <MenuItem onClick={() => { setEnrollForm({ roll_no: '', section_id: '', password: tempPassword, admission_no: '' }); setOpenEnroll(menuAdmission?.id); loadSections(menuAdmission?.class_applied_id); setAnchorEl(null); }}>
             <ListItemIcon><School fontSize="small" /></ListItemIcon><ListItemText>Enroll Student</ListItemText>
+          </MenuItem>
+        )}
+        {menuAdmission?.status === 'enrolled' && menuAdmission?.tuition_fee_yearly > 0 && (
+          <MenuItem onClick={() => { setTuitionForm(p => ({ ...p, amount: menuAdmission.tuition_fee_yearly / 12 })); setOpenPayTuition(menuAdmission?.id); setAnchorEl(null); }}>
+            <ListItemIcon><Payment fontSize="small" /></ListItemIcon><ListItemText>Pay Monthly Tuition</ListItemText>
           </MenuItem>
         )}
         <Divider />
@@ -835,6 +914,12 @@ export default function Admissions() {
                   <Grid item xs={6}><Typography variant="caption" color="text.secondary">Source</Typography><Typography sx={{ textTransform: 'capitalize' }}>{(d.application_source || '').replace('_', ' ')}</Typography></Grid>
                   <Grid item xs={6}><Typography variant="caption" color="text.secondary">Priority</Typography><Typography sx={{ textTransform: 'capitalize' }}>{d.priority}</Typography></Grid>
                   {d.remarks && <Grid item xs={12}><Typography variant="caption" color="text.secondary">Remarks</Typography><Typography>{d.remarks}</Typography></Grid>}
+                  {d.tuition_fee_yearly > 0 && (
+                    <Grid item xs={12}><Divider sx={{ my: 1 }} /><Typography variant="subtitle2" color="primary">Fee Details</Typography></Grid>
+                  )}
+                  {d.tuition_fee_yearly > 0 && <Grid item xs={4}><Typography variant="caption" color="text.secondary">Yearly Tuition</Typography><Typography fontWeight="bold">₹{d.tuition_fee_yearly}</Typography></Grid>}
+                  {d.tuition_fee_paid > 0 && <Grid item xs={4}><Typography variant="caption" color="text.secondary">Tuition Paid</Typography><Typography fontWeight="bold" color="success.main">₹{d.tuition_fee_paid}</Typography></Grid>}
+                  {d.tuition_fee_yearly > 0 && <Grid item xs={4}><Typography variant="caption" color="text.secondary">Remaining</Typography><Typography fontWeight="bold" color="error.main">₹{Math.max(0, (d.tuition_fee_yearly || 0) - (d.tuition_fee_paid || 0))}</Typography></Grid>}
                 </Grid>
               )}
 
@@ -895,8 +980,16 @@ export default function Admissions() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { handleEdit(d); setOpenDetail(null); }} startIcon={<Edit />}>Edit</Button>
+          {d.admission_fee_amount > 0 && !d.admission_fee_paid && (
+            <Button variant="contained" color="warning" startIcon={<Payment />}
+              onClick={() => { setPayFeeForm({ amount: d.admission_fee_amount, payment_mode: 'cash', receipt_no: '' }); setOpenPayFee(d.id); setOpenDetail(null); }}>Collect Fee</Button>
+          )}
+          {d.status === 'enrolled' && d.tuition_fee_yearly > 0 && (
+            <Button variant="contained" color="secondary" startIcon={<Payment />}
+              onClick={() => { setTuitionForm(p => ({ ...p, amount: d.tuition_fee_yearly / 12 })); setOpenPayTuition(d.id); setOpenDetail(null); }}>Pay Tuition</Button>
+          )}
           {d.status === 'approved' && <Button variant="contained" color="success" startIcon={<School />}
-            onClick={() => { setOpenEnroll(d.id); loadSections(d.class_applied_id); setOpenDetail(null); }}>Enroll</Button>}
+            onClick={() => { setEnrollForm({ roll_no: '', section_id: '', password: tempPassword, admission_no: '' }); setOpenEnroll(d.id); loadSections(d.class_applied_id); setOpenDetail(null); }}>Enroll</Button>}
           <Button onClick={() => { setOpenDetail(null); setDetailData(null); }}>Close</Button>
         </DialogActions>
       </Dialog>
@@ -950,7 +1043,12 @@ export default function Admissions() {
         <DialogTitle>Enroll Student</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6}><TextField fullWidth label="Admission Number *" value={enrollForm.admission_no} onChange={e => setEnrollForm(p => ({ ...p, admission_no: e.target.value }))} /></Grid>
+            <Grid item xs={12}>
+              <Alert severity="info">Admission ID will be used as the Login ID for the student.</Alert>
+            </Grid>
+            <Grid item xs={6}><TextField fullWidth required label="Admission ID (Login ID)" value={enrollForm.admission_no} onChange={e => setEnrollForm(p => ({ ...p, admission_no: e.target.value }))} /></Grid>
+            <Grid item xs={6}><TextField fullWidth required type="number" label="Admission No" value={enrollForm.admission_number} onChange={e => setEnrollForm(p => ({ ...p, admission_number: e.target.value }))} /></Grid>
+            <Grid item xs={6}><TextField fullWidth required type="number" label="Enrollment No" value={enrollForm.enrollment_no} onChange={e => setEnrollForm(p => ({ ...p, enrollment_no: e.target.value }))} /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Roll Number" value={enrollForm.roll_no} onChange={e => setEnrollForm(p => ({ ...p, roll_no: e.target.value }))} /></Grid>
             <Grid item xs={6}>
               <FormControl fullWidth><InputLabel>Section</InputLabel>
@@ -958,26 +1056,80 @@ export default function Admissions() {
                   {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
                 </Select></FormControl>
             </Grid>
-            <Grid item xs={6}><TextField fullWidth label="Login Password (optional)" type="text" placeholder="Default: Student@123" value={enrollForm.password} onChange={e => setEnrollForm(p => ({ ...p, password: e.target.value }))} /></Grid>
+            <Grid item xs={6}><TextField fullWidth required label="Login Password" type="password" value={enrollForm.password} onChange={e => setEnrollForm(p => ({ ...p, password: e.target.value }))} helperText="Minimum 8 characters" /></Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setOpenEnroll(null); setEnrollForm({ admission_no: '', roll_no: '', section_id: '', password: '' }); }}>Cancel</Button>
+          <Button onClick={() => { setOpenEnroll(null); setEnrollForm({ roll_no: '', section_id: '', password: '', admission_no: '', admission_number: '', enrollment_no: '' }); }}>Cancel</Button>
           <Button variant="contained" color="success" onClick={handleEnroll} startIcon={<School />}>Enroll</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== PAY FEE DIALOG ========== */}
+      <Dialog open={!!openPayFee} onClose={() => setOpenPayFee(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Collect Admission Fee</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={6}><TextField fullWidth required type="number" label="Amount" value={payFeeForm.amount} onChange={e => setPayFeeForm(p => ({ ...p, amount: e.target.value }))} /></Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth required><InputLabel>Payment Mode</InputLabel>
+                <Select value={payFeeForm.payment_mode} label="Payment Mode" onChange={e => setPayFeeForm(p => ({ ...p, payment_mode: e.target.value }))}>
+                  <MenuItem value="cash">Cash</MenuItem><MenuItem value="online">Online</MenuItem><MenuItem value="cheque">Cheque</MenuItem>
+                  <MenuItem value="bank_transfer">Bank Transfer</MenuItem><MenuItem value="upi">UPI</MenuItem><MenuItem value="dd">Demand Draft</MenuItem>
+                </Select></FormControl>
+            </Grid>
+            <Grid item xs={12}><TextField fullWidth label="Receipt No (optional)" value={payFeeForm.receipt_no} onChange={e => setPayFeeForm(p => ({ ...p, receipt_no: e.target.value }))} /></Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenPayFee(null)}>Cancel</Button>
+          <Button variant="contained" color="success" onClick={handlePayFee} startIcon={<Payment />}>Record Payment</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== PAY TUITION DIALOG ========== */}
+      <Dialog open={!!openPayTuition} onClose={() => setOpenPayTuition(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Pay Monthly Tuition Fee</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={6}><TextField fullWidth required type="number" label="Amount" value={tuitionForm.amount} onChange={e => setTuitionForm(p => ({ ...p, amount: e.target.value }))} /></Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth required><InputLabel>Payment Mode</InputLabel>
+                <Select value={tuitionForm.payment_mode} label="Payment Mode" onChange={e => setTuitionForm(p => ({ ...p, payment_mode: e.target.value }))}>
+                  <MenuItem value="cash">Cash</MenuItem><MenuItem value="online">Online</MenuItem><MenuItem value="cheque">Cheque</MenuItem>
+                  <MenuItem value="bank_transfer">Bank Transfer</MenuItem><MenuItem value="upi">UPI</MenuItem><MenuItem value="dd">Demand Draft</MenuItem>
+                </Select></FormControl>
+            </Grid>
+            <Grid item xs={4}><TextField fullWidth required type="number" label="Month (1-12)" value={tuitionForm.month} onChange={e => setTuitionForm(p => ({ ...p, month: parseInt(e.target.value) || 1 }))} inputProps={{ min: 1, max: 12 }} /></Grid>
+            <Grid item xs={4}><TextField fullWidth required type="number" label="Year" value={tuitionForm.year} onChange={e => setTuitionForm(p => ({ ...p, year: parseInt(e.target.value) || new Date().getFullYear() }))} /></Grid>
+            <Grid item xs={4}><TextField fullWidth label="Receipt No (optional)" value={tuitionForm.receipt_no} onChange={e => setTuitionForm(p => ({ ...p, receipt_no: e.target.value }))} /></Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenPayTuition(null)}>Cancel</Button>
+          <Button variant="contained" color="success" onClick={handlePayTuition} startIcon={<Payment />}>Record Payment</Button>
         </DialogActions>
       </Dialog>
 
       {/* ========== LOGIN CREDENTIALS DIALOG ========== */}
       <Dialog open={!!loginResult} onClose={() => setLoginResult(null)} maxWidth="xs">
-        <DialogTitle sx={{ bgcolor: 'success.main', color: 'white' }}>Login Credentials Created</DialogTitle>
+        <DialogTitle sx={{ bgcolor: 'success.main', color: 'white' }}>Student Enrolled Successfully</DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
-          <Alert severity="success" sx={{ mb: 2 }}>Student enrolled & login created successfully!</Alert>
-          <Typography variant="subtitle2">Username / Login ID:</Typography>
+          <Alert severity="success" sx={{ mb: 2 }}>Student enrolled & login created!</Alert>
+          {loginResult?.admission_id && (
+            <><Typography variant="subtitle2">Admission ID:</Typography>
+            <Typography variant="h6" gutterBottom><b>{loginResult.admission_id}</b></Typography></>
+          )}
+          {loginResult?.enrollment_id && (
+            <><Typography variant="subtitle2" sx={{ mt: 1 }}>Enrollment ID:</Typography>
+            <Typography variant="h6" gutterBottom><b>{loginResult.enrollment_id}</b></Typography></>
+          )}
+          <Typography variant="subtitle2" sx={{ mt: 1 }}>Login ID (Username):</Typography>
           <Typography variant="h6" gutterBottom><b>{loginResult?.username}</b></Typography>
           <Typography variant="subtitle2" sx={{ mt: 1 }}>Password:</Typography>
           <Typography variant="h6" gutterBottom><b>{loginResult?.password}</b></Typography>
           <Alert severity="info" sx={{ mt: 2, fontSize: '0.85rem' }}>
-            Share these credentials with the student. They can login at the student portal.
+            Admission ID is the Login ID. Share these credentials with the student.
           </Alert>
         </DialogContent>
         <DialogActions>

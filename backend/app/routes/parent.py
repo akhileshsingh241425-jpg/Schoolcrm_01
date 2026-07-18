@@ -13,7 +13,8 @@ from app.models.fee import FeeInstallment, FeePayment
 from app.models.academic import ExamResult, ExamSchedule, Exam, ReportCard, Homework, Timetable
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, validate
+from app.utils.helpers import success_response, error_response, paginate, validate, working_records
+import re
 from sqlalchemy.orm import joinedload
 
 parent_bp = Blueprint('parent', __name__)
@@ -36,6 +37,15 @@ def list_profiles():
 @validate({'name': {'required': True}})
 def create_profile():
     data = g.get('validated_data') or request.get_json()
+
+    # ---- validation ----
+    phone_val = data.get('phone')
+    if phone_val and not re.match(r'^\d+$', phone_val):
+        return error_response('Phone must contain only digits')
+    email_val = data.get('email')
+    if email_val and '@' not in email_val:
+        return error_response('Email must contain @')
+
     profile = ParentProfile(
         school_id=g.school_id,
         user_id=data.get('user_id'),
@@ -72,6 +82,17 @@ def get_profile(profile_id):
 def update_profile(profile_id):
     profile = ParentProfile.query.filter_by(id=profile_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
+
+    # ---- validation ----
+    if 'phone' in data:
+        pv = data['phone']
+        if pv and not re.match(r'^\d+$', pv):
+            return error_response('Phone must contain only digits')
+    if 'email' in data:
+        ev = data['email']
+        if ev and '@' not in ev:
+            return error_response('Email must contain @')
+
     for field in ['name', 'phone', 'email', 'address', 'occupation', 'preferred_language', 'photo_url']:
         if field in data:
             setattr(profile, field, data[field])
@@ -711,7 +732,7 @@ def delete_pickup_auth(auth_id):
 @school_required
 def get_child_overview(student_id):
     """Get comprehensive overview of a student for parent portal"""
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
 
     # If parent role, verify this is their child
     if g.current_user.role and g.current_user.has_role('parent'):
@@ -750,6 +771,7 @@ def get_child_overview(student_id):
     att_records = StudentAttendance.query.filter_by(
         student_id=student_id, school_id=g.school_id
     ).filter(StudentAttendance.period.is_(None)).order_by(StudentAttendance.date.desc()).all()
+    att_records = working_records(att_records, g.school_id, context='student')
 
     total_att = len(att_records)
     present_count = sum(1 for r in att_records if r.status in ('present', 'late'))
@@ -976,7 +998,7 @@ def list_my_children():
         if not student_ids:
             return success_response([])
         query = Student.query.filter(
-            Student.id.in_(student_ids),
+            Student.admission_no.in_(student_ids),
             Student.school_id == g.school_id,
             Student.status == 'active'
         )
@@ -999,14 +1021,14 @@ def list_my_children():
     result = []
     for s in students:
         item = {
-            'id': s.id, 'name': f"{s.first_name} {s.last_name or ''}".strip(),
+            'id': s.admission_no, 'name': f"{s.first_name} {s.last_name or ''}".strip(),
             'admission_no': s.admission_no, 'roll_no': s.roll_no,
             'photo_url': s.photo_url,
             'class_name': s.current_class.name if s.current_class else None,
             'section_name': s.current_section.name if s.current_section else None,
             'gender': s.gender
         }
-        parents = ParentDetail.query.filter_by(student_id=s.id, school_id=g.school_id).all()
+        parents = ParentDetail.query.filter_by(student_id=s.admission_no, school_id=g.school_id).all()
         item['parents'] = [{'name': p.name, 'relation': p.relation, 'phone': p.phone} for p in parents]
         result.append(item)
 

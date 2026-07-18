@@ -1,3 +1,4 @@
+import json
 from flask import Blueprint, request, g, send_file
 from app import db
 from app.models.academic import (
@@ -9,7 +10,7 @@ from app.models.academic import (
     ReportCard, ExamIncident,
     Syllabus, SyllabusProgress, LessonPlan,
     Homework, HomeworkSubmission, StudyMaterial,
-    AcademicCalendar, TeacherSubject,
+    AcademicCalendar, CalendarEventClass, TeacherSubject,
     ElectiveGroup, ElectiveSubject, StudentElective, StudentSubjectEnrollment
 )
 from app.models.student import Student, Class, Section, AcademicYear
@@ -218,7 +219,7 @@ def get_timetable():
 @role_required('school_admin', 'academic_controller')
 @validate({
     'class_id': {'type': int, 'message': 'Class ID is required'},
-    'section_id': {'type': int, 'message': 'Section ID is required'},
+    'section_id': {'type': int},
     'subject_id': {'type': int, 'message': 'Subject ID is required'},
     'day_of_week': {'required': True, 'message': 'Day of week is required'},
     'start_time': {'required': True, 'message': 'Start time is required'},
@@ -226,10 +227,20 @@ def get_timetable():
 })
 def create_timetable_entry():
     data = g.get('validated_data') or request.get_json()
+    section_id = data.get('section_id')
+    if not section_id:
+        first = Section.query.filter_by(school_id=g.school_id, class_id=data['class_id']).first()
+        if first:
+            section_id = first.id
+        else:
+            sec = Section(school_id=g.school_id, class_id=data['class_id'], name='A')
+            db.session.add(sec)
+            db.session.flush()
+            section_id = sec.id
     entry = Timetable(
         school_id=g.school_id,
         class_id=data['class_id'],
-        section_id=data['section_id'],
+        section_id=section_id,
         subject_id=data['subject_id'],
         teacher_id=data.get('teacher_id'),
         day_of_week=data['day_of_week'],
@@ -275,10 +286,20 @@ def bulk_create_timetable():
     entries = data.get('entries', [])
     created = []
     for e in entries:
+        sec_id = e.get('section_id')
+        if not sec_id:
+            first = Section.query.filter_by(school_id=g.school_id, class_id=e['class_id']).first()
+            if first:
+                sec_id = first.id
+            else:
+                sec = Section(school_id=g.school_id, class_id=e['class_id'], name='A')
+                db.session.add(sec)
+                db.session.flush()
+                sec_id = sec.id
         entry = Timetable(
             school_id=g.school_id,
             class_id=e['class_id'],
-            section_id=e['section_id'],
+            section_id=sec_id,
             subject_id=e['subject_id'],
             teacher_id=e.get('teacher_id'),
             day_of_week=e['day_of_week'],
@@ -323,23 +344,33 @@ def auto_generate_timetable():
     break_after_period = data.get('break_after_period', 4)  # lunch break after 4th period
     break_duration = data.get('break_duration', 30)  # minutes
 
-    if not class_id or not section_id:
-        return error_response('class_id and section_id are required')
+    if not class_id:
+        return error_response('class_id is required')
+
+    # Default to first section / auto-create Section A
+    if not section_id:
+        first_sec = Section.query.filter_by(school_id=g.school_id, class_id=class_id).first()
+        if first_sec:
+            section_id = first_sec.id
+        else:
+            sec = Section(school_id=g.school_id, class_id=class_id, name='A')
+            db.session.add(sec)
+            db.session.flush()
+            section_id = sec.id
 
     # Get all teacher-subject allocations for this class/section
-    allocations = TeacherSubject.query.filter_by(
-        school_id=g.school_id,
-        class_id=class_id,
-        section_id=section_id,
-        status='active'
-    ).all()
+    if section_id:
+        allocations = TeacherSubject.query.filter_by(
+            school_id=g.school_id, class_id=class_id, section_id=section_id, status='active'
+        ).all()
+    else:
+        allocations = TeacherSubject.query.filter_by(
+            school_id=g.school_id, class_id=class_id, status='active'
+        ).all()
 
     # Also check allocations without section (applies to all sections of the class)
     allocations_no_section = TeacherSubject.query.filter_by(
-        school_id=g.school_id,
-        class_id=class_id,
-        section_id=None,
-        status='active'
+        school_id=g.school_id, class_id=class_id, section_id=None, status='active'
     ).all()
 
     all_allocations = allocations + allocations_no_section
@@ -620,7 +651,7 @@ def list_exam_types():
 
 
 @academics_bp.route('/exam-types', methods=['POST'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'name': {'required': True, 'message': 'Exam type name is required'},
 })
@@ -640,7 +671,7 @@ def create_exam_type():
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['PUT'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({})
 def update_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
@@ -653,7 +684,7 @@ def update_exam_type(et_id):
 
 
 @academics_bp.route('/exam-types/<int:et_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 def delete_exam_type(et_id):
     et = ExamType.query.filter_by(id=et_id, school_id=g.school_id).first_or_404()
     db.session.delete(et)
@@ -807,6 +838,20 @@ def calculate_grade(gs_id):
 @academics_bp.route('/exams', methods=['GET'])
 @school_required
 def list_exams():
+    # Auto-complete: exams past their end_date and still 'upcoming' → 'completed'
+    from datetime import date
+    today = date.today()
+    expired = Exam.query.filter(
+        Exam.school_id == g.school_id,
+        Exam.status == 'upcoming',
+        Exam.end_date != None,
+        Exam.end_date < today
+    ).all()
+    for ex in expired:
+        ex.status = 'completed'
+    if expired:
+        db.session.commit()
+
     query = Exam.query.filter_by(school_id=g.school_id)
     status = request.args.get('status')
     academic_year_id = request.args.get('academic_year_id', type=int)
@@ -842,11 +887,10 @@ def get_exam(exam_id):
 
 
 @academics_bp.route('/exams', methods=['POST'])
-@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'teacher', 'exam_controller')
 @validate({
     'name': {'required': True, 'message': 'Exam name is required'},
     'exam_type_id': {'type': int, 'message': 'Exam type is required'},
-    'academic_year_id': {'type': int},
 })
 def create_exam():
     data = g.get('validated_data') or request.get_json()
@@ -869,7 +913,7 @@ def create_exam():
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'teacher', 'exam_controller')
 @validate({})
 def update_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
@@ -883,7 +927,7 @@ def update_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 def delete_exam(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     db.session.delete(exam)
@@ -892,14 +936,19 @@ def delete_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/status', methods=['PUT'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller', 'teacher', 'principal')
 @validate({
-    'status': {'required': True, 'message': 'Status is required'},
+    'status': {
+        'required': True,
+        'allowed': ['upcoming', 'ongoing', 'completed', 'cancelled', 'results_published'],
+        'message': 'Status is required',
+    },
 })
 def update_exam_status(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
-    exam.status = data['status']
+    new_status = data['status']
+    exam.status = new_status
     db.session.commit()
     return success_response(exam.to_dict(), 'Status updated')
 
@@ -920,7 +969,7 @@ def list_exam_schedules(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules', methods=['POST'])
-@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'teacher', 'exam_controller')
 @validate({
     'class_id': {'type': int, 'message': 'Class ID is required'},
     'subject_id': {'type': int, 'message': 'Subject ID is required'},
@@ -950,7 +999,7 @@ def add_exam_schedule(exam_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['PUT'])
-@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'teacher', 'exam_controller')
 @validate({})
 def update_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
@@ -964,7 +1013,7 @@ def update_exam_schedule(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 def delete_exam_schedule(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
     db.session.delete(schedule)
@@ -972,8 +1021,31 @@ def delete_exam_schedule(schedule_id):
     return success_response(message='Deleted')
 
 
+@academics_bp.route('/exams/schedules/<int:schedule_id>/postpone', methods=['PUT'])
+@role_required('school_admin', 'exam_controller', 'teacher', 'principal')
+@validate({
+    'new_date': {'required': True, 'regex': r'\d{4}-\d{2}-\d{2}', 'message': 'New exam date is required (YYYY-MM-DD)'},
+})
+def postpone_exam_schedule(schedule_id):
+    schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
+    data = g.get('validated_data') or request.get_json()
+    from datetime import datetime as dt
+    schedule.postponed_to = dt.strptime(data['new_date'], '%Y-%m-%d').date()
+    db.session.commit()
+    return success_response(schedule.to_dict(), 'Schedule postponed')
+
+
+@academics_bp.route('/exams/schedules/<int:schedule_id>/postpone', methods=['DELETE'])
+@role_required('school_admin', 'exam_controller')
+def reset_postpone_exam_schedule(schedule_id):
+    schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
+    schedule.postponed_to = None
+    db.session.commit()
+    return success_response(schedule.to_dict(), 'Postpone reset')
+
+
 @academics_bp.route('/exams/<int:exam_id>/schedules/bulk', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({})
 def bulk_add_schedules(exam_id):
     data = g.get('validated_data') or request.get_json()
@@ -1012,7 +1084,7 @@ def list_exam_groups():
 
 
 @academics_bp.route('/exam-groups', methods=['POST'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'name': {'required': True, 'message': 'Exam group name is required'},
 })
@@ -1039,7 +1111,7 @@ def create_exam_group():
 
 
 @academics_bp.route('/exam-groups/<int:group_id>', methods=['PUT'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({})
 def update_exam_group(group_id):
     group = ExamGroup.query.filter_by(id=group_id, school_id=g.school_id).first_or_404()
@@ -1054,7 +1126,7 @@ def update_exam_group(group_id):
 
 
 @academics_bp.route('/exam-groups/<int:group_id>/exams', methods=['POST'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'exam_id': {'type': int, 'message': 'Exam ID is required'},
 })
@@ -1071,7 +1143,7 @@ def add_exam_to_group(group_id):
 
 
 @academics_bp.route('/exam-groups/mappings/<int:mapping_id>', methods=['DELETE'])
-@role_required('school_admin', 'academic_controller', 'exam_controller')
+@role_required('school_admin', 'exam_controller')
 def remove_exam_from_group(mapping_id):
     mapping = ExamGroupMapping.query.get_or_404(mapping_id)
     db.session.delete(mapping)
@@ -1107,6 +1179,7 @@ def create_exam_hall():
         rows=data.get('rows'),
         columns=data.get('columns'),
         has_cctv=data.get('has_cctv', False),
+        assigned_class_id=data.get('assigned_class_id'),
     )
     db.session.add(hall)
     db.session.commit()
@@ -1119,7 +1192,7 @@ def create_exam_hall():
 def update_exam_hall(hall_id):
     hall = ExamHall.query.filter_by(id=hall_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
-    for field in ['name', 'building', 'floor', 'capacity', 'rows', 'columns', 'has_cctv', 'is_active']:
+    for field in ['name', 'building', 'floor', 'capacity', 'rows', 'columns', 'has_cctv', 'is_active', 'assigned_class_id']:
         if field in data:
             setattr(hall, field, data[field])
     db.session.commit()
@@ -1149,7 +1222,7 @@ def get_seating(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/seating/auto', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 def auto_generate_seating(schedule_id):
     schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
 
@@ -1183,7 +1256,7 @@ def auto_generate_seating(schedule_id):
             school_id=g.school_id,
             exam_schedule_id=schedule_id,
             hall_id=current_hall.id,
-            student_id=student.id,
+            student_id=student.admission_no,
             seat_number=str(seat_no),
             row_number=row,
             column_number=col,
@@ -1215,7 +1288,7 @@ def list_invigilators(schedule_id):
 
 
 @academics_bp.route('/exams/schedules/<int:schedule_id>/invigilators', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'hall_id': {'type': int, 'message': 'Hall ID is required'},
     'staff_id': {'type': int, 'message': 'Staff ID is required'},
@@ -1235,7 +1308,7 @@ def assign_invigilator(schedule_id):
 
 
 @academics_bp.route('/exams/invigilators/<int:inv_id>', methods=['DELETE'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 def remove_invigilator(inv_id):
     inv = ExamInvigilator.query.filter_by(id=inv_id, school_id=g.school_id).first_or_404()
     db.session.delete(inv)
@@ -1248,7 +1321,7 @@ def remove_invigilator(inv_id):
 # ============================================================
 
 @academics_bp.route('/marks/entry', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller', 'teacher')
+@role_required('school_admin', 'exam_controller', 'teacher')
 @validate({
     'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
 })
@@ -1287,9 +1360,9 @@ def bulk_marks_entry():
 
     entries = data.get('entries', [])
 
-    # Validate marks using MarksEntryService
-    from app.services.marks_entry_service import MarksEntryService
-    is_valid, validation_errors = MarksEntryService.validate_marks_entry(entries, schedule)
+    # Validate marks
+    from app.services.marks_entry_service import validate_marks_entry, calculate_grade
+    is_valid, validation_errors = validate_marks_entry(entries, schedule)
     if not is_valid:
         return error_response({
             'message': 'Marks validation failed',
@@ -1319,15 +1392,13 @@ def bulk_marks_entry():
         percentage = None
         if marks is not None and schedule.max_marks and float(schedule.max_marks) > 0:
             exam = schedule.exam
-            grading_system_id = exam.grading_system_id if exam else None
-            grade_info = MarksEntryService.calculate_grade(
+            grade_info = calculate_grade(
                 marks_obtained=marks,
                 max_marks=schedule.max_marks,
-                grading_system_id=grading_system_id,
-                school_id=g.school_id
+                exam=exam
             )
             percentage = grade_info['percentage']
-            grade_name = grade_info['grade_name']
+            grade_name = grade_info['grade']
             grade_point = grade_info['grade_point']
 
         now = datetime.utcnow()
@@ -1408,7 +1479,7 @@ def get_marks_sheet():
     marks_data = []
     for student in students:
         student_marks = {
-            'student_id': student.id,
+            'student_id': student.admission_no,
             'student_name': f"{student.first_name} {student.last_name}",
             'admission_no': student.admission_no,
             'roll_no': student.roll_no,
@@ -1419,7 +1490,7 @@ def get_marks_sheet():
         for schedule in schedules:
             result = ExamResult.query.filter_by(
                 exam_schedule_id=schedule.id,
-                student_id=student.id,
+                student_id=student.admission_no,
                 school_id=g.school_id,
             ).first()
             subject_data = {
@@ -1457,7 +1528,7 @@ def get_marks_sheet():
 
 
 @academics_bp.route('/marks/lock', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
+@role_required('school_admin', 'exam_controller', 'principal')
 @validate({
     'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
 })
@@ -1471,7 +1542,7 @@ def lock_marks():
 
 
 @academics_bp.route('/marks/unlock', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller', 'principal')
+@role_required('school_admin', 'exam_controller', 'principal')
 @validate({
     'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
 })
@@ -1574,7 +1645,7 @@ def get_class_results():
         for schedule in schedules:
             result = ExamResult.query.filter_by(
                 exam_schedule_id=schedule.id,
-                student_id=student.id,
+                student_id=student.admission_no,
             ).first()
             max_m = float(schedule.max_marks) if schedule.max_marks else 0
             pass_m = float(schedule.passing_marks) if schedule.passing_marks else 0
@@ -1598,7 +1669,7 @@ def get_class_results():
 
         pct = round((total_obtained / total_max * 100), 2) if total_max > 0 else 0
         class_results.append({
-            'student_id': student.id,
+            'student_id': student.admission_no,
             'student_name': f"{student.first_name} {student.last_name}",
             'admission_no': student.admission_no,
             'total_obtained': total_obtained,
@@ -1746,7 +1817,7 @@ def get_toppers():
 # ============================================================
 
 @academics_bp.route('/admit-cards/generate', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'exam_id': {'type': int, 'message': 'Exam ID is required'},
 })
@@ -1760,7 +1831,7 @@ def generate_admit_cards():
     # Get students
     if student_ids:
         students = Student.query.filter(
-            Student.id.in_(student_ids),
+            Student.admission_no.in_(student_ids),
             Student.school_id == g.school_id,
             Student.status == 'active',
         ).all()
@@ -1775,14 +1846,14 @@ def generate_admit_cards():
     created = []
     for student in students:
         existing = ExamAdmitCard.query.filter_by(
-            exam_id=exam_id, student_id=student.id, school_id=g.school_id
+            exam_id=exam_id, student_id=student.admission_no, school_id=g.school_id
         ).first()
         if existing:
             continue
         card = ExamAdmitCard(
             school_id=g.school_id,
             exam_id=exam_id,
-            student_id=student.id,
+            student_id=student.admission_no,
             roll_number=student.admission_no,
             status='generated',
         )
@@ -1810,7 +1881,7 @@ def list_admit_cards():
 
 
 @academics_bp.route('/admit-cards/<int:card_id>/status', methods=['PUT'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'status': {'required': True, 'message': 'Status is required'},
 })
@@ -1829,7 +1900,7 @@ def update_admit_card_status(card_id):
 # ============================================================
 
 @academics_bp.route('/report-cards/generate', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'exam_id': {'type': int, 'message': 'Exam ID is required'},
     'class_id': {'type': int, 'message': 'Class ID is required'},
@@ -1861,7 +1932,7 @@ def generate_report_cards():
 
         for schedule in schedules:
             result = ExamResult.query.filter_by(
-                exam_schedule_id=schedule.id, student_id=student.id
+                exam_schedule_id=schedule.id, student_id=student.admission_no
             ).first()
             max_m = float(schedule.max_marks) if schedule.max_marks else 0
             pass_m = float(schedule.passing_marks) if schedule.passing_marks else 0
@@ -1907,7 +1978,7 @@ def generate_report_cards():
         student = score['student']
         # Upsert
         existing = ReportCard.query.filter_by(
-            exam_id=exam_id, student_id=student.id, school_id=g.school_id
+            exam_id=exam_id, student_id=student.admission_no, school_id=g.school_id
         ).first()
 
         if existing:
@@ -1924,7 +1995,7 @@ def generate_report_cards():
         else:
             rc = ReportCard(
                 school_id=g.school_id,
-                student_id=student.id,
+                student_id=student.admission_no,
                 exam_id=exam_id,
                 academic_year_id=academic_year_id or exam.academic_year_id,
                 class_id=class_id,
@@ -1993,7 +2064,7 @@ def get_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/<int:rc_id>', methods=['PUT'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({})
 def update_report_card(rc_id):
     rc = ReportCard.query.filter_by(id=rc_id, school_id=g.school_id).first_or_404()
@@ -2006,7 +2077,7 @@ def update_report_card(rc_id):
 
 
 @academics_bp.route('/report-cards/publish', methods=['POST'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({
     'exam_id': {'type': int, 'message': 'Exam ID is required'},
 })
@@ -2726,7 +2797,7 @@ def list_incidents():
 
 
 @academics_bp.route('/exam-incidents', methods=['POST'])
-@role_required('school_admin', 'teacher', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'teacher', 'exam_controller')
 @validate({
     'exam_schedule_id': {'type': int, 'message': 'Exam schedule ID is required'},
     'type': {'required': True, 'message': 'Incident type is required'},
@@ -2751,7 +2822,7 @@ def report_incident():
 
 
 @academics_bp.route('/exam-incidents/<int:incident_id>', methods=['PUT'])
-@role_required('school_admin', 'exam_controller', 'academic_controller')
+@role_required('school_admin', 'exam_controller')
 @validate({})
 def update_incident(incident_id):
     incident = ExamIncident.query.filter_by(id=incident_id, school_id=g.school_id).first_or_404()
@@ -2798,6 +2869,11 @@ def exam_dashboard():
     ongoing = base_exam.filter(Exam.status == 'ongoing').count()
     completed = base_exam.filter(Exam.status == 'completed').count()
     results_published = base_exam.filter(Exam.status == 'results_published').count()
+    postponed = ExamSchedule.query.filter(
+        ExamSchedule.school_id == g.school_id,
+        ExamSchedule.postponed_to != None
+    ).count()
+    cancelled = base_exam.filter(Exam.status == 'cancelled').count()
 
     total_subjects = Subject.query.filter_by(school_id=g.school_id, is_active=True).count()
     total_halls = ExamHall.query.filter_by(school_id=g.school_id, is_active=True).count()
@@ -2814,6 +2890,8 @@ def exam_dashboard():
             'ongoing': ongoing,
             'completed': completed,
             'results_published': results_published,
+            'postponed': postponed,
+            'cancelled': cancelled,
             'total_subjects': total_subjects,
             'total_halls': total_halls,
             'total_report_cards': total_report_cards,
@@ -2858,27 +2936,113 @@ def get_syllabus():
             query = query.filter(Syllabus.subject_id.in_(scope['subject_ids']))
 
     syllabus = query.order_by(Syllabus.class_id, Syllabus.subject_id, Syllabus.chapter_number).all()
-    return success_response([s.to_dict() for s in syllabus])
+
+    # Deduplicate: keep one record per (class_id, subject_id, chapter_number)
+    # For book entries (chapter_number is null), keep one per (class_id, subject_id, book_name)
+    seen = {}
+    deduped = []
+    for s in syllabus:
+        if s.chapter_number is not None:
+            key = (s.class_id, s.subject_id, s.chapter_number)
+        else:
+            key = (s.class_id, s.subject_id, None, s.book_name)
+        if key not in seen:
+            seen[key] = True
+            deduped.append(s)
+
+    # Collect unique (class_id, subject_id) pairs and fetch teacher assignments
+    # Priority: TeacherSubject (subject-level) > Section class_teacher (section-level)
+    cs_pairs = set((s.class_id, s.subject_id) for s in deduped)
+    teacher_map = {}
+    class_ids_needed = set(cls_id for cls_id, _ in cs_pairs)
+    section_teacher_map = {}
+    if class_ids_needed:
+        sections = Section.query.filter(
+            Section.school_id == g.school_id,
+            Section.class_id.in_(class_ids_needed),
+            Section.class_teacher_id.isnot(None)
+        ).all()
+        for sec in sections:
+            if sec.class_teacher:
+                section_teacher_map[sec.class_id] = f"{sec.class_teacher.first_name} {sec.class_teacher.last_name or ''}".strip()
+
+    if cs_pairs:
+        for cls_id, sub_id in cs_pairs:
+            ts = TeacherSubject.query.filter_by(
+                school_id=g.school_id, class_id=cls_id, subject_id=sub_id, status='active'
+            ).first()
+            if ts and ts.teacher:
+                teacher_map[(cls_id, sub_id)] = f"{ts.teacher.first_name} {ts.teacher.last_name or ''}".strip()
+            elif cls_id in section_teacher_map:
+                teacher_map[(cls_id, sub_id)] = section_teacher_map[cls_id]
+
+    result = []
+    for s in deduped:
+        d = s.to_dict()
+        d['teacher_name'] = teacher_map.get((s.class_id, s.subject_id))
+        result.append(d)
+    return success_response(result)
 
 
 @academics_bp.route('/syllabus', methods=['POST'])
-@role_required('school_admin', 'academic_controller')
+@role_required('school_admin', 'teacher')
 @validate({
     'class_id': {'type': int, 'message': 'Class ID is required'},
     'subject_id': {'type': int, 'message': 'Subject ID is required'},
-    'chapter_number': {'type': int, 'message': 'Chapter number is required'},
-    'chapter_name': {'required': True, 'message': 'Chapter name is required'},
 })
 def create_syllabus():
     """Create a syllabus chapter"""
     data = g.get('validated_data') or request.get_json()
+
+    # If teacher, verify they teach this class+subject
+    if g.current_user.has_role('teacher'):
+        scope = get_teacher_scope()
+        if scope and scope.get('no_access'):
+            return error_response('You do not have access to this class/subject', 403)
+        if scope:
+            if data.get('class_id') and int(data['class_id']) not in (scope.get('class_ids') or []):
+                return error_response('You are not assigned to this class', 403)
+            if data.get('subject_id') and int(data['subject_id']) not in (scope.get('subject_ids') or []):
+                return error_response('You are not assigned to this subject', 403)
+
+    # Prevent duplicates: check existing record with same school, class, subject, chapter_no (or book_name for books)
+    existing = None
+    if data.get('chapter_number'):
+        existing = Syllabus.query.filter_by(
+            school_id=g.school_id,
+            class_id=data['class_id'],
+            subject_id=data['subject_id'],
+            chapter_number=data['chapter_number'],
+        ).first()
+    elif data.get('book_name'):
+        existing = Syllabus.query.filter_by(
+            school_id=g.school_id,
+            class_id=data['class_id'],
+            subject_id=data['subject_id'],
+            book_name=data['book_name'],
+            chapter_number=None,
+        ).first()
+
+    if existing:
+        # Update existing record instead of creating duplicate
+        for field in ('book_name', 'total_chapters', 'chapter_name', 'chapter_added_date', 'topics',
+                       'learning_objectives', 'estimated_hours', 'term', 'display_order', 'resources'):
+            if field in data:
+                setattr(existing, field, data[field])
+        existing.updated_at = datetime.utcnow()
+        db.session.commit()
+        return success_response(existing.to_dict())
+
     syllabus = Syllabus(
         school_id=g.school_id,
         class_id=data['class_id'],
         subject_id=data['subject_id'],
         academic_year_id=data.get('academic_year_id'),
-        chapter_number=data['chapter_number'],
-        chapter_name=data['chapter_name'],
+        book_name=data.get('book_name'),
+        total_chapters=data.get('total_chapters'),
+        chapter_number=data.get('chapter_number'),
+        chapter_name=data.get('chapter_name'),
+        chapter_added_date=data.get('chapter_added_date'),
         topics=data.get('topics'),
         learning_objectives=data.get('learning_objectives'),
         estimated_hours=data.get('estimated_hours'),
@@ -2936,13 +3100,13 @@ def delete_syllabus(syllabus_id):
 
 
 @academics_bp.route('/syllabus/<int:syllabus_id>/progress', methods=['POST'])
-@role_required('school_admin', 'academic_controller')
+@role_required('school_admin', 'teacher')
 @validate({
-    'date': {'required': True, 'message': 'Date is required'},
-    'topics_covered': {'required': True, 'message': 'Topics covered is required'},
+    'chapter_number': {'required': True, 'type': int, 'message': 'Chapter number is required'},
+    'chapter_name': {'required': True, 'message': 'Chapter name is required'},
 })
 def add_syllabus_progress(syllabus_id):
-    """Log daily syllabus progress"""
+    """Log syllabus chapter progress — always creates new record"""
     syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
     if not syllabus:
         return error_response('Syllabus not found', 404)
@@ -2952,8 +3116,10 @@ def add_syllabus_progress(syllabus_id):
         school_id=g.school_id,
         syllabus_id=syllabus_id,
         teacher_id=data.get('teacher_id'),
-        date=data['date'],
-        topics_covered=data['topics_covered'],
+        chapter_number=data['chapter_number'],
+        chapter_name=data['chapter_name'],
+        date=data.get('date', date.today().isoformat()),
+        topics_covered=data.get('topics_covered', ''),
         hours_spent=data.get('hours_spent'),
         percentage_covered=data.get('percentage_covered'),
         teaching_method=data.get('teaching_method', 'lecture'),
@@ -2961,7 +3127,7 @@ def add_syllabus_progress(syllabus_id):
     )
     db.session.add(progress)
 
-    # Update syllabus completion
+    # Update syllabus completion from cumulative progress
     if data.get('percentage_covered'):
         total = db.session.query(func.sum(SyllabusProgress.percentage_covered)).filter_by(syllabus_id=syllabus_id).scalar() or 0
         syllabus.completion_percentage = min(total, 100)
@@ -2972,6 +3138,97 @@ def add_syllabus_progress(syllabus_id):
 
     db.session.commit()
     return success_response(progress.to_dict(), 201)
+
+
+@academics_bp.route('/syllabus/progress/add', methods=['POST'])
+@role_required('school_admin', 'teacher')
+def add_syllabus_progress_direct():
+    """Add progress directly for a subject. Finds or creates chapter."""
+    data = request.get_json(silent=True) or {}
+    class_id = data.get('class_id')
+    subject_id = data.get('subject_id')
+    chapter_number = data.get('chapter_number')
+    chapter_name = data.get('chapter_name')
+    topics_covered = data.get('topics_covered', '')
+    percentage_covered = data.get('percentage_covered')
+
+    if not all([class_id, subject_id, chapter_number, chapter_name]):
+        return error_response('class_id, subject_id, chapter_number, chapter_name are required')
+
+    try:
+        progress_date = datetime.strptime(data['date'], '%Y-%m-%d').date() if data.get('date') else date.today()
+    except (ValueError, TypeError):
+        return error_response('Invalid date format. Use YYYY-MM-DD')
+
+    if g.current_user.has_role('teacher'):
+        scope = get_teacher_scope()
+        if scope and scope.get('no_access'):
+            return error_response('You do not have access to this class/subject', 403)
+        if scope:
+            if int(class_id) not in (scope.get('class_ids') or []):
+                return error_response('You are not assigned to this class', 403)
+            if int(subject_id) not in (scope.get('subject_ids') or []):
+                return error_response('You are not assigned to this subject', 403)
+
+    syllabus = Syllabus.query.filter_by(
+        school_id=g.school_id, class_id=class_id, subject_id=subject_id,
+        chapter_number=chapter_number
+    ).first()
+
+    if not syllabus:
+        syllabus = Syllabus(
+            school_id=g.school_id, class_id=class_id, subject_id=subject_id,
+            chapter_number=chapter_number, chapter_name=chapter_name,
+            topics=topics_covered, status='in_progress', created_by=g.current_user.id
+        )
+        db.session.add(syllabus)
+        db.session.flush()
+
+    staff = None
+    if g.current_user.has_role('teacher'):
+        staff = Staff.query.filter_by(user_id=g.current_user.id, school_id=g.school_id).first()
+
+    progress = SyllabusProgress(
+        school_id=g.school_id, syllabus_id=syllabus.id,
+        teacher_id=staff.id if staff else None,
+        chapter_number=chapter_number, chapter_name=chapter_name,
+        date=progress_date, topics_covered=topics_covered,
+        percentage_covered=percentage_covered,
+    )
+    db.session.add(progress)
+
+    total = db.session.query(func.sum(SyllabusProgress.percentage_covered)).filter_by(syllabus_id=syllabus.id).scalar() or 0
+    syllabus.completion_percentage = min(total, 100)
+    syllabus.status = 'completed' if syllabus.completion_percentage >= 100 else 'in_progress'
+
+    db.session.commit()
+    return success_response(progress.to_dict(), 'Progress added')
+
+
+@academics_bp.route('/syllabus/<int:syllabus_id>/exam-setting', methods=['PUT'])
+@role_required('school_admin', 'teacher')
+def update_syllabus_exam_setting(syllabus_id):
+    """Teacher marks chapter exam inclusion and weightage"""
+    syllabus = Syllabus.query.filter_by(id=syllabus_id, school_id=g.school_id).first()
+    if not syllabus:
+        return error_response('Syllabus not found', 404)
+
+    data = request.get_json()
+    include_in_exam = data.get('include_in_exam', False)
+    exam_weightage = data.get('exam_weightage')
+    exam_topics = data.get('exam_topics')
+
+    existing = {}
+    if syllabus.learning_objectives:
+        try:
+            existing = json.loads(syllabus.learning_objectives) if isinstance(syllabus.learning_objectives, str) else syllabus.learning_objectives
+        except:
+            existing = {}
+    existing['exam'] = {'included': include_in_exam, 'weightage': exam_weightage, 'topics': exam_topics}
+    syllabus.learning_objectives = json.dumps(existing)
+
+    db.session.commit()
+    return success_response(syllabus.to_dict())
 
 
 @academics_bp.route('/syllabus-overview', methods=['GET'])
@@ -3458,10 +3715,11 @@ def get_calendar():
     if event_type:
         query = query.filter_by(event_type=event_type)
     if class_id:
-        # Show events for this class + events that apply to 'all'
+        matching_event_ids = [r.event_id for r in CalendarEventClass.query.filter_by(class_id=class_id).all()]
         query = query.filter(
             or_(
                 AcademicCalendar.class_id == class_id,
+                AcademicCalendar.id.in_(matching_event_ids),
                 AcademicCalendar.applies_to == 'all',
                 AcademicCalendar.applies_to == 'students'
             )
@@ -3486,7 +3744,7 @@ def get_calendar():
     'start_date': {'required': True, 'message': 'Start date is required'},
 })
 def create_calendar_event():
-    """Create calendar event"""
+    """Create calendar event — supports multiple classes via class_ids"""
     data = g.get('validated_data') or request.get_json()
     event = AcademicCalendar(
         school_id=g.school_id,
@@ -3508,6 +3766,18 @@ def create_calendar_event():
         created_by=g.current_user.id,
     )
     db.session.add(event)
+    db.session.flush()
+
+    class_ids = data.get('class_ids') or []
+    if not class_ids and data.get('class_id'):
+        class_ids = [data['class_id']]
+    if not class_ids and data.get('applies_to') == 'specific_class':
+        pass
+    for cid in class_ids:
+        db.session.add(CalendarEventClass(
+            school_id=g.school_id, event_id=event.id, class_id=cid
+        ))
+
     db.session.commit()
     return success_response(event.to_dict(), 201)
 
@@ -3516,7 +3786,7 @@ def create_calendar_event():
 @role_required('school_admin', 'academic_controller')
 @validate({})
 def update_calendar_event(event_id):
-    """Update calendar event"""
+    """Update calendar event — supports multiple classes via class_ids"""
     event = AcademicCalendar.query.filter_by(id=event_id, school_id=g.school_id).first()
     if not event:
         return error_response('Event not found', 404)
@@ -3527,6 +3797,17 @@ def update_calendar_event(event_id):
                   'color', 'is_recurring', 'recurrence_pattern', 'notify_parents']:
         if field in data:
             setattr(event, field, data[field])
+
+    if 'class_ids' in data:
+        CalendarEventClass.query.filter_by(event_id=event.id).delete()
+        class_ids = data['class_ids'] or []
+        if not class_ids and event.class_id:
+            class_ids = [event.class_id]
+        for cid in class_ids:
+            db.session.add(CalendarEventClass(
+                school_id=g.school_id, event_id=event.id, class_id=cid
+            ))
+
     db.session.commit()
     return success_response(event.to_dict())
 
@@ -3694,11 +3975,14 @@ def get_class_teachers():
     for sec in sections:
         sections_by_class.setdefault(sec.class_id, []).append(sec)
 
-    # Batch fetch staff
+    # Batch fetch staff (section-level + class-level)
     staff_ids = list(set(
-        [sec.class_teacher_id for sec in sections if sec.class_teacher_id] +
-        [sec.co_class_teacher_id for sec in sections if sec.co_class_teacher_id]
+        [sec.class_teacher_id for sec in sections] +
+        [sec.co_class_teacher_id for sec in sections] +
+        [cls.class_teacher_id for cls in classes] +
+        [cls.co_class_teacher_id for cls in classes]
     ))
+    staff_ids = [s for s in staff_ids if s]
     staff_map = {s.id: s for s in Staff.query.filter(Staff.id.in_(staff_ids)).all()} if staff_ids else {}
 
     # Batch fetch student counts per section
@@ -3707,7 +3991,7 @@ def get_class_teachers():
     if section_ids:
         counts = db.session.query(
             Student.current_section_id,
-            func.count(Student.id)
+            func.count(Student.admission_no)
         ).filter(
             Student.school_id == g.school_id,
             Student.status == 'active',
@@ -3720,31 +4004,36 @@ def get_class_teachers():
         class_sections = sections_by_class.get(cls.id, [])
         if class_sections:
             for sec in class_sections:
-                ct = staff_map.get(sec.class_teacher_id)
-                cct = staff_map.get(sec.co_class_teacher_id)
+                # Fall back to class-level teacher if section has none
+                ct_id = sec.class_teacher_id or cls.class_teacher_id
+                cct_id = sec.co_class_teacher_id or cls.co_class_teacher_id
+                ct = staff_map.get(ct_id)
+                cct = staff_map.get(cct_id)
                 result.append({
                     'section_id': sec.id,
                     'section_name': sec.name,
                     'class_id': sec.class_id,
                     'class_name': cls.name,
                     'capacity': sec.capacity,
-                    'class_teacher_id': sec.class_teacher_id,
+                    'class_teacher_id': ct_id,
                     'class_teacher': ct.to_dict() if ct else None,
-                    'co_class_teacher_id': sec.co_class_teacher_id,
+                    'co_class_teacher_id': cct_id,
                     'co_class_teacher': cct.to_dict() if cct else None,
                     'student_count': student_counts.get(sec.id, 0),
                 })
         else:
+            ct = staff_map.get(cls.class_teacher_id)
+            cct = staff_map.get(cls.co_class_teacher_id)
             result.append({
                 'section_id': None,
                 'section_name': None,
                 'class_id': cls.id,
                 'class_name': cls.name,
                 'capacity': None,
-                'class_teacher_id': None,
-                'class_teacher': None,
-                'co_class_teacher_id': None,
-                'co_class_teacher': None,
+                'class_teacher_id': cls.class_teacher_id,
+                'class_teacher': ct.to_dict() if ct else None,
+                'co_class_teacher_id': cls.co_class_teacher_id,
+                'co_class_teacher': cct.to_dict() if cct else None,
                 'student_count': 0,
             })
     return success_response(result)
@@ -3752,63 +4041,82 @@ def get_class_teachers():
 
 @academics_bp.route('/class-teachers/assign', methods=['POST'])
 @role_required('school_admin', 'academic_controller')
-@validate({
-    'section_id': {'type': int, 'message': 'Section ID is required'},
-})
 def assign_class_teacher():
     """Assign class teacher and/or co-class teacher to a section"""
-    data = g.get('validated_data') or request.get_json()
+    data = request.get_json(silent=True) or {}
     section_id = data.get('section_id')
-    if not section_id:
-        return error_response('section_id is required')
+    class_id = data.get('class_id')
 
-    section = Section.query.filter_by(id=section_id, school_id=g.school_id).first()
-    if not section:
-        return error_response('Section not found', 404)
+    section = None
+    cls = None
+    if section_id:
+        section = Section.query.filter_by(id=section_id, school_id=g.school_id).first()
+        if not section:
+            return error_response('Section not found', 404)
+    elif class_id:
+        cls = Class.query.filter_by(id=class_id, school_id=g.school_id).first()
+        if not cls:
+            return error_response('Class not found', 404)
+        sections = Section.query.filter_by(class_id=class_id, school_id=g.school_id).all()
+        if len(sections) > 1:
+            return error_response('Class has multiple sections. Please select a section.')
+        elif len(sections) == 1:
+            section = sections[0]
+    else:
+        return error_response('Either section_id or class_id is required')
 
-    class_teacher_id = data.get('class_teacher_id')
-    co_class_teacher_id = data.get('co_class_teacher_id')
+    class_teacher_id_val = data.get('class_teacher_id')
+    co_class_teacher_id_val = data.get('co_class_teacher_id')
 
-    # Validate: same teacher can't be both CT and Co-CT
-    ct = class_teacher_id if class_teacher_id is not None else section.class_teacher_id
-    cct = co_class_teacher_id if co_class_teacher_id is not None else section.co_class_teacher_id
+    cur_ct = section.class_teacher_id if section else cls.class_teacher_id
+    cur_cct = section.co_class_teacher_id if section else cls.co_class_teacher_id
+    ct = class_teacher_id_val if class_teacher_id_val is not None else cur_ct
+    cct = co_class_teacher_id_val if co_class_teacher_id_val is not None else cur_cct
     if ct and cct and ct == cct:
         return error_response('Class Teacher and Co-Class Teacher cannot be the same person')
 
-    # Validate staff belongs to same school
-    if class_teacher_id:
-        teacher = Staff.query.filter_by(id=class_teacher_id, school_id=g.school_id, status='active').first()
+    if class_teacher_id_val:
+        teacher = Staff.query.filter_by(id=class_teacher_id_val, school_id=g.school_id, status='active').first()
         if not teacher:
             return error_response('Class teacher not found or inactive')
-        # Enforce: one teacher can be class teacher of only ONE section
-        conflict = Section.query.filter(
-            Section.school_id == g.school_id,
-            Section.class_teacher_id == class_teacher_id,
-            Section.id != section_id
-        ).first()
-        if conflict:
-            conflict_cls = Class.query.get(conflict.class_id)
-            cname = f"{conflict_cls.name if conflict_cls else ''} - {conflict.name}".strip(' -')
-            return error_response(
-                f'This teacher is already the class teacher of {cname}. '
-                f'A teacher can be class teacher of only one section.'
-            )
-        section.class_teacher_id = class_teacher_id
+        conflict_sec = Section.query.filter(Section.school_id == g.school_id, Section.class_teacher_id == class_teacher_id_val, Section.id != (section.id if section else -1)).first()
+        conflict_cls = Class.query.filter(Class.school_id == g.school_id, Class.class_teacher_id == class_teacher_id_val, Class.id != class_id).first()
+        if conflict_sec or conflict_cls:
+            conflict = conflict_sec or conflict_cls
+            cname = ''
+            if conflict_sec:
+                c = Class.query.get(conflict_sec.class_id)
+                cname = f"{c.name if c else ''} - {conflict_sec.name}".strip(' -')
+            else:
+                cname = conflict_cls.name
+            return error_response(f'This teacher is already the class teacher of {cname}')
+        if section:
+            section.class_teacher_id = class_teacher_id_val
+        else:
+            cls.class_teacher_id = class_teacher_id_val
 
-    if co_class_teacher_id:
-        co_teacher = Staff.query.filter_by(id=co_class_teacher_id, school_id=g.school_id, status='active').first()
+    if co_class_teacher_id_val:
+        co_teacher = Staff.query.filter_by(id=co_class_teacher_id_val, school_id=g.school_id, status='active').first()
         if not co_teacher:
             return error_response('Co-class teacher not found or inactive')
-        section.co_class_teacher_id = co_class_teacher_id
+        if section:
+            section.co_class_teacher_id = co_class_teacher_id_val
+        else:
+            cls.co_class_teacher_id = co_class_teacher_id_val
 
-    # Allow clearing (set to null)
     if 'class_teacher_id' in data and data['class_teacher_id'] is None:
-        section.class_teacher_id = None
+        if section:
+            section.class_teacher_id = None
+        else:
+            cls.class_teacher_id = None
     if 'co_class_teacher_id' in data and data['co_class_teacher_id'] is None:
-        section.co_class_teacher_id = None
+        if section:
+            section.co_class_teacher_id = None
+        else:
+            cls.co_class_teacher_id = None
 
     db.session.commit()
-    return success_response(section.to_dict_full(), 'Class teacher assigned successfully')
+    return success_response(cls.to_dict() if cls else section.to_dict_full(), 'Class teacher assigned successfully')
 
 
 @academics_bp.route('/class-teachers/responsibilities', methods=['GET'])
@@ -3859,7 +4167,6 @@ def get_my_class():
             'student_count': Student.query.filter_by(school_id=g.school_id, current_class_id=sec.class_id, current_section_id=sec.id, status='active').count(),
             'responsibilities': CO_CLASS_TEACHER_RESPONSIBILITIES
         })
-
     return success_response(result)
 
 
@@ -3871,17 +4178,21 @@ def get_my_class():
 # ============================================================
 
 def _resolve_class_teacher_section():
-    """Return (staff, section) for the logged-in class teacher, or (staff, None)."""
+    """Return (staff, section) for the logged-in class teacher, or (staff, None).
+    Checks both class_teacher_id and co_class_teacher_id on Section."""
     staff = Staff.query.filter_by(school_id=g.school_id, user_id=g.user_id).first()
     if not staff:
         return None, None
-    section = Section.query.filter_by(school_id=g.school_id, class_teacher_id=staff.id).first()
+    section = Section.query.filter(
+        Section.school_id == g.school_id,
+        (Section.class_teacher_id == staff.id) | (Section.co_class_teacher_id == staff.id)
+    ).first()
     return staff, section
 
 
 @academics_bp.route('/class-teacher/roster', methods=['GET'])
 @school_required
-@role_required('teacher')
+@role_required('teacher', 'school_admin', 'principal')
 def class_teacher_roster():
     """Return the class teacher's section, its students, and available subjects,
     plus each student's current subject enrollments for the academic year."""
@@ -3928,11 +4239,11 @@ def class_teacher_roster():
         'academic_year_id': ay_id,
         'subjects': [s.to_dict() for s in subjects],
         'students': [{
-            'student_id': s.id,
+            'student_id': s.admission_no,
             'student_name': f"{s.first_name} {s.last_name or ''}".strip(),
             'admission_no': s.admission_no,
             'roll_no': s.roll_no,
-            'enrolled_subject_ids': enr_map.get(s.id, []),
+            'enrolled_subject_ids': enr_map.get(s.admission_no, []),
         } for s in students],
         'enrollment_ids': enr_id_map,
     })
@@ -3940,9 +4251,9 @@ def class_teacher_roster():
 
 @academics_bp.route('/class-teacher/enrollments', methods=['POST'])
 @school_required
-@role_required('teacher')
+@role_required('teacher', 'school_admin', 'principal')
 @validate({
-    'student_id': {'type': int, 'message': 'Student ID is required'},
+    'student_id': {'type': str, 'required': True, 'message': 'Student admission_no is required'},
 })
 def class_teacher_set_enrollments():
     """Set the subjects for a single student in the class teacher's section.
@@ -3964,7 +4275,7 @@ def class_teacher_set_enrollments():
 
     # Student must belong to this class teacher's section
     student = Student.query.filter_by(
-        id=student_id, school_id=g.school_id,
+        admission_no=student_id, school_id=g.school_id,
         current_class_id=section.class_id, current_section_id=section.id
     ).first()
     if not student:

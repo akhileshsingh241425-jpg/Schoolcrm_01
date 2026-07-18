@@ -614,7 +614,7 @@ export default function Health() {
             {F(recForm, setRecForm, 'Vision Right', 'vision_right')}
             {F(recForm, setRecForm, 'Dental Status', 'dental_status')}
             {F(recForm, setRecForm, 'Doctor Name', 'doctor_name')}
-            {F(recForm, setRecForm, 'Doctor Phone', 'doctor_phone')}
+            {F(recForm, setRecForm, 'Doctor Phone', 'doctor_phone', { onChange: e => setRecForm({ ...recForm, doctor_phone: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
             {F(recForm, setRecForm, 'Insurance Provider', 'insurance_provider')}
             {F(recForm, setRecForm, 'Policy No', 'insurance_policy_no')}
             {F(recForm, setRecForm, 'Insurance Expiry', 'insurance_expiry', { type: 'date', InputLabelProps: { shrink: true } })}
@@ -714,8 +714,8 @@ export default function Health() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {F(visForm, setVisForm, 'Visitor Name *', 'visitor_name')}
-            {F(visForm, setVisForm, 'Phone', 'visitor_phone')}
-            {F(visForm, setVisForm, 'Email', 'visitor_email')}
+            {F(visForm, setVisForm, 'Phone', 'visitor_phone', { onChange: e => setVisForm({ ...visForm, visitor_phone: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
+            {F(visForm, setVisForm, 'Email', 'visitor_email', { error: visForm.visitor_email.length > 0 && !visForm.visitor_email.includes('@'), helperText: visForm.visitor_email.length > 0 && !visForm.visitor_email.includes('@') ? 'Invalid email' : '' })}
             {Sel(visForm, setVisForm, 'ID Type', 'id_type', ['aadhar','voter_id','driving_license','passport'])}
             {F(visForm, setVisForm, 'ID Number', 'id_number')}
             {F(visForm, setVisForm, 'Purpose *', 'purpose', { xs: 12 })}
@@ -793,9 +793,9 @@ export default function Health() {
             {F(emForm, setEmForm, 'Person ID *', 'person_id', { type: 'number' })}
             {F(emForm, setEmForm, 'Contact Name *', 'contact_name')}
             {Sel(emForm, setEmForm, 'Relationship', 'relationship', ['parent','guardian','sibling','spouse','friend','neighbor','other'])}
-            {F(emForm, setEmForm, 'Phone Primary *', 'phone_primary')}
-            {F(emForm, setEmForm, 'Phone Secondary', 'phone_secondary')}
-            {F(emForm, setEmForm, 'Email', 'email')}
+            {F(emForm, setEmForm, 'Phone Primary *', 'phone_primary', { onChange: e => setEmForm({ ...emForm, phone_primary: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
+            {F(emForm, setEmForm, 'Phone Secondary', 'phone_secondary', { onChange: e => setEmForm({ ...emForm, phone_secondary: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
+            {F(emForm, setEmForm, 'Email', 'email', { error: emForm.email.length > 0 && !emForm.email.includes('@'), helperText: emForm.email.length > 0 && !emForm.email.includes('@') ? 'Invalid email' : '' })}
             {F(emForm, setEmForm, 'Priority (1=highest)', 'priority', { type: 'number' })}
             {F(emForm, setEmForm, 'Address', 'address', { xs: 12, multiline: true, rows: 2 })}
           </Grid>

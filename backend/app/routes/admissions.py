@@ -9,6 +9,7 @@ from app.models.student import Student, Class, Section, AcademicYear, ParentDeta
 from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required, feature_required
 from app.utils.helpers import success_response, error_response, paginate, validate
+from app.models.audit import AuditLog
 from datetime import datetime, date
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, subqueryload
@@ -237,6 +238,21 @@ def create_admission():
     if not data.get('student_name'):
         return error_response('Student name is required')
 
+    # Validate phone fields
+    import re
+    phone_fields = ['father_phone', 'mother_phone', 'guardian_phone', 'phone', 'emergency_contact']
+    for field in phone_fields:
+        val = data.get(field)
+        if val and not re.match(r'^\d+$', val):
+            return error_response(f'{field.replace("_", " ").title()} must contain only digits')
+
+    # Validate email fields
+    email_fields = ['father_email', 'mother_email', 'email']
+    for field in email_fields:
+        val = data.get(field)
+        if val and '@' not in val:
+            return error_response(f'{field.replace("_", " ").title()} must contain @')
+
     # Check admission open
     settings = AdmissionSettings.query.filter_by(school_id=g.school_id).first()
     if settings and not settings.admission_open:
@@ -315,7 +331,7 @@ def create_admission():
         academic_year_id=data.get('academic_year_id'),
         previous_school=data.get('previous_school'),
         previous_class=data.get('previous_class'),
-        previous_percentage=data.get('previous_percentage'),
+        previous_percentage=float(data['previous_percentage']) if data.get('previous_percentage') else None,
         tc_number=data.get('tc_number'),
         has_sibling=data.get('has_sibling', False),
         sibling_admission_no=data.get('sibling_admission_no'),
@@ -330,8 +346,15 @@ def create_admission():
         application_source=data.get('application_source', 'walk_in'),
         priority=data.get('priority', 'normal'),
         remarks=data.get('remarks'),
+        admission_fee_amount=float(data['admission_fee_amount']) if data.get('admission_fee_amount') else None,
+        tuition_fee_yearly=float(data['tuition_fee_yearly']) if data.get('tuition_fee_yearly') else None,
         processed_by=g.current_user.id,
     )
+
+    # Store password if provided (will be used during enrollment)
+    raw_password = data.get('password')
+    if raw_password and len(raw_password) < 8:
+        return error_response('Password must be at least 8 characters', 400)
 
     # Auto-detect sibling
     detect_sibling(admission)
@@ -365,12 +388,7 @@ def create_admission():
 @admissions_bp.route('/<int:admission_id>', methods=['PUT'])
 @school_required
 @feature_required('admission')
-@validate({
-    'class_applied': {'type': int},
-    'academic_year_id': {'type': int},
-    'previous_percentage': {'type': float, 'min': 0},
-    'father_income': {'type': float, 'min': 0},
-})
+@validate({})
 def update_admission(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
@@ -379,8 +397,8 @@ def update_admission(admission_id):
         return error_response('Cannot edit enrolled application')
 
     # Cannot edit after approval (only admin can)
-    if admission.status == 'approved' and not g.current_user.has_role('school_admin', 'super_admin'):
-        return error_response('Only admin can edit approved applications')
+    if admission.status == 'approved' and not g.current_user.has_role('school_admin', 'super_admin', 'principal'):
+        return error_response('Only admin/principal can edit approved applications')
 
     # DOB age check if class or DOB is changing
     if data.get('date_of_birth') or data.get('class_applied'):
@@ -410,7 +428,7 @@ def update_admission(admission_id):
         'mother_name', 'mother_phone', 'mother_email', 'mother_occupation',
         'guardian_name', 'guardian_phone', 'guardian_relation',
         'phone', 'email', 'emergency_contact',
-        'class_applied', 'academic_year_id', 'previous_school', 'previous_class',
+        'class_applied', 'section_applied', 'academic_year_id', 'previous_school', 'previous_class',
         'previous_percentage', 'tc_number', 'has_sibling', 'sibling_admission_no', 'sibling_name',
         'transport_required', 'pickup_address', 'medical_conditions', 'allergies', 'disability',
         'priority', 'remarks',
@@ -419,6 +437,8 @@ def update_admission(admission_id):
     for field in editable_fields:
         if field in data:
             value = data[field]
+            if isinstance(value, str) and value.strip() == '':
+                value = None
             if field == 'date_of_birth' and isinstance(value, str):
                 value = datetime.strptime(value, '%Y-%m-%d').date()
             setattr(admission, field, value)
@@ -431,8 +451,6 @@ def update_admission(admission_id):
 @role_required('school_admin')
 def delete_admission(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
-    if admission.status == 'enrolled':
-        return error_response('Cannot delete enrolled application')
     db.session.delete(admission)
     db.session.commit()
     return success_response(None, 'Application deleted')
@@ -492,9 +510,6 @@ def update_status(admission_id):
 
 @admissions_bp.route('/<int:admission_id>/enroll', methods=['POST'])
 @role_required('school_admin')
-@validate({
-    'section_id': {'type': int},
-})
 def enroll_student(admission_id):
     admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
 
@@ -506,13 +521,54 @@ def enroll_student(admission_id):
 
     data = g.get('validated_data') or request.get_json() or {}
 
+    admission_no = data.get('admission_no')
+    if not admission_no:
+        return error_response('Admission ID is required', 400)
+    if Student.query.get(admission_no):
+        return error_response(f'Admission ID "{admission_no}" already exists', 400)
+
+    admission_number = None
+    if data.get('admission_number'):
+        try:
+            admission_number = int(data['admission_number'])
+        except (ValueError, TypeError):
+            return error_response('Admission No must be a number', 400)
+    if admission_number is not None:
+        existing = Student.query.filter_by(school_id=g.school_id, admission_number=admission_number).first()
+        if existing:
+            return error_response(f'Admission No {admission_number} already exists', 400)
+
+    enrollment_no = None
+    if data.get('enrollment_no'):
+        try:
+            enrollment_no = int(data['enrollment_no'])
+        except (ValueError, TypeError):
+            return error_response('Enrollment No must be a number', 400)
+    if enrollment_no is not None:
+        existing = Student.query.filter_by(school_id=g.school_id, enrollment_no=enrollment_no).first()
+        if existing:
+            return error_response(f'Enrollment No {enrollment_no} already exists', 400)
+
+    roll_no = data.get('roll_no')
+    if roll_no:
+        existing = Student.query.filter_by(
+            school_id=g.school_id,
+            current_class_id=admission.class_applied,
+            current_section_id=data.get('section_id'),
+            roll_no=roll_no
+        ).first()
+        if existing:
+            return error_response(f'Roll No {roll_no} already exists in this class & section', 400)
+
     # Create student record
     name_parts = admission.student_name.split()
     student = Student(
         school_id=g.school_id,
         first_name=name_parts[0],
         last_name=' '.join(name_parts[1:]) if len(name_parts) > 1 else '',
-        admission_no=data.get('admission_no'),
+        admission_no=admission_no,
+        admission_number=admission_number,
+        enrollment_no=enrollment_no,
         roll_no=data.get('roll_no'),
         gender=admission.gender,
         date_of_birth=admission.date_of_birth,
@@ -542,7 +598,7 @@ def enroll_student(admission_id):
     # Create parent details
     if admission.father_name:
         father = ParentDetail(
-            student_id=student.id,
+            student_id=student.admission_no,
             school_id=g.school_id,
             relation='father',
             name=admission.father_name,
@@ -556,7 +612,7 @@ def enroll_student(admission_id):
 
     if admission.mother_name:
         mother = ParentDetail(
-            student_id=student.id,
+            student_id=student.admission_no,
             school_id=g.school_id,
             relation='mother',
             name=admission.mother_name,
@@ -568,7 +624,7 @@ def enroll_student(admission_id):
 
     if admission.guardian_name:
         guardian = ParentDetail(
-            student_id=student.id,
+            student_id=student.admission_no,
             school_id=g.school_id,
             relation='guardian',
             name=admission.guardian_name,
@@ -576,11 +632,22 @@ def enroll_student(admission_id):
         )
         db.session.add(guardian)
 
+    # Link to ex-student if same aadhar + name exists
+    if admission.aadhar_no:
+        ex_student = Student.query.filter(
+            Student.school_id == g.school_id,
+            Student.status == 'inactive',
+            Student.aadhar_no == admission.aadhar_no,
+            Student.admission_no != student.admission_no
+        ).first()
+        if ex_student:
+            student.linked_student_id = ex_student.admission_no
+
     # Update admission
     old_status = admission.status
     admission.status = 'enrolled'
-    admission.student_id = student.id
-    add_status_history(admission.id, old_status, 'enrolled', g.current_user.id, f'Enrolled as student #{student.id}')
+    admission.student_id = student.admission_no
+    add_status_history(admission.id, old_status, 'enrolled', g.current_user.id, f'Enrolled as student {student.admission_no}')
 
     # Update seat matrix
     seat = SeatMatrix.query.filter_by(school_id=g.school_id, class_id=admission.class_applied).first()
@@ -592,8 +659,10 @@ def enroll_student(admission_id):
         admission.lead.status = 'admitted'
 
     # Auto-create student login
-    login_id = student.admission_no or f'STU{student.id:06d}'
-    default_password = data.get('password', 'Student@123')
+    login_id = student.admission_no
+    default_password = data.get('password') or os.environ.get('DEFAULT_STUDENT_PASSWORD')
+    if not default_password:
+        return error_response('Default student password not configured. Set DEFAULT_STUDENT_PASSWORD env var or provide a password.', 400)
     student_role = Role.query.filter_by(name='student').first()
     if not student_role:
         student_role = Role(name='student', description='Student', is_system_role=True)
@@ -621,8 +690,68 @@ def enroll_student(admission_id):
     result['login'] = {
         'username': login_id,
         'password': default_password,
+        'admission_id': student.admission_no,
+        'enrollment_id': student.admission_no,
     }
     return success_response(result, 'Student enrolled successfully. Login created!', 201)
+
+
+@admissions_bp.route('/<int:admission_id>/pay-fee', methods=['POST'])
+@role_required('school_admin')
+@validate({
+    'payment_mode': {'required': True},
+    'amount': {'required': True, 'type': float, 'min': 0},
+})
+def pay_admission_fee(admission_id):
+    admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
+    if admission.admission_fee_paid:
+        return error_response('Admission fee already paid', 400)
+    data = g.get('validated_data') or request.get_json()
+    amount = data['amount']
+    mode = data['payment_mode']
+    receipt_no = data.get('receipt_no') or f"AF-{admission.id:06d}"
+    admission.admission_fee_amount = amount
+    admission.admission_fee_paid = True
+    admission.fee_receipt_no = receipt_no
+    admission.fee_payment_date = date.today()
+    admission.fee_payment_mode = mode
+    if admission.status == 'approved':
+        admission.status = 'fee_pending'
+    try:
+        log = AuditLog(school_id=g.school_id, user_id=g.user_id, action='pay_admission_fee', module='admission', record_id=admission.id, new_values={'amount': amount, 'mode': mode, 'receipt_no': receipt_no})
+        db.session.add(log)
+    except Exception:
+        pass
+    db.session.commit()
+    return success_response({'admission_id': admission.id, 'amount': amount, 'receipt_no': receipt_no, 'payment_mode': mode}, 'Admission fee recorded successfully')
+
+
+@admissions_bp.route('/<int:admission_id>/pay-tuition', methods=['POST'])
+@role_required('school_admin')
+@validate({
+    'payment_mode': {'required': True},
+    'amount': {'required': True, 'type': float, 'min': 0},
+    'month': {'required': True, 'type': int, 'min': 1, 'max': 12},
+    'year': {'required': True, 'type': int},
+})
+def pay_tuition_fee(admission_id):
+    admission = Admission.query.filter_by(id=admission_id, school_id=g.school_id).first_or_404()
+    if admission.status != 'enrolled':
+        return error_response('Student must be enrolled first', 400)
+    data = g.get('validated_data') or request.get_json()
+    amount = data['amount']
+    mode = data['payment_mode']
+    month = data['month']
+    yr = data['year']
+    receipt_no = data.get('receipt_no') or f"TF-{admission.id:06d}-{yr}{str(month).zfill(2)}"
+    admission.tuition_fee_paid = (admission.tuition_fee_paid or 0) + amount
+    try:
+        log = AuditLog(school_id=g.school_id, user_id=g.user_id, action='pay_tuition_fee', module='admission', record_id=admission.id, new_values={'amount': amount, 'mode': mode, 'month': month, 'year': yr, 'receipt_no': receipt_no})
+        db.session.add(log)
+    except Exception:
+        pass
+    db.session.commit()
+    return success_response({'admission_id': admission.id, 'amount': amount, 'receipt_no': receipt_no, 'payment_mode': mode, 'month': month, 'year': yr, 'total_paid': float(admission.tuition_fee_paid or 0)}, 'Tuition fee recorded successfully')
 
 
 # ======================== DOCUMENTS ========================
@@ -1036,7 +1165,7 @@ def generate_transfer_certificate():
     if not student_id:
         return error_response('Student ID is required')
 
-    student = Student.query.filter_by(id=student_id, school_id=g.school_id).first_or_404()
+    student = Student.query.filter_by(admission_no=student_id, school_id=g.school_id).first_or_404()
 
     # Generate TC number
     year = date.today().year

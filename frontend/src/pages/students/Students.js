@@ -19,6 +19,7 @@ import { Pie, Bar } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { validateForm } from '../../components/Validation';
 import { studentsAPI } from '../../services/api';
+import useAuthStore from '../../store/authStore';
 
 ChartJS.register(ArcElement, ChartTooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -517,7 +518,117 @@ function Promotions() {
   );
 }
 
-// ==================== TAB 3: ALUMNI ====================
+// ==================== TAB 3: EX-STUDENTS ====================
+function ExStudentsTab({ navigate }) {
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [filters, setFilters] = useState({ search: '', class_id: '', admission_no: '', aadhar_no: '', admission_number: '', enrollment_no: '' });
+
+  useEffect(() => {
+    studentsAPI.listClasses().then(r => setClasses(r.data.data || [])).catch(() => {});
+  }, []);
+
+  const fetchExStudents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = { page: page + 1, per_page: rowsPerPage, status: 'inactive' };
+      if (filters.search) params.search = filters.search;
+      if (filters.class_id) params.class_id = filters.class_id;
+      if (filters.admission_no) params.admission_no = filters.admission_no;
+      if (filters.aadhar_no) params.aadhar_no = filters.aadhar_no;
+      if (filters.admission_number) params.admission_number = filters.admission_number;
+      if (filters.enrollment_no) params.enrollment_no = filters.enrollment_no;
+      const res = await studentsAPI.list(params);
+      setStudents(res.data.data?.items || res.data.data || []);
+      setTotal(res.data.data?.total || 0);
+    } catch { toast.error('Failed to load ex-students'); }
+    setLoading(false);
+  }, [page, rowsPerPage, filters]);
+
+  useEffect(() => { fetchExStudents(); }, [fetchExStudents]);
+
+  return (
+    <Box>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={4} md={3}>
+            <TextField fullWidth size="small" placeholder="Search by name..." value={filters.search}
+              onChange={e => setFilters(p => ({ ...p, search: e.target.value }))}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} />
+          </Grid>
+          <Grid item xs={6} sm={4} md={2}>
+            <TextField fullWidth size="small" select label="Class" value={filters.class_id}
+              onChange={e => setFilters(p => ({ ...p, class_id: e.target.value }))}>
+              <MenuItem value="">All</MenuItem>
+              {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid item xs={6} sm={4} md={2}>
+            <TextField fullWidth size="small" label="Admission ID" value={filters.admission_no}
+              onChange={e => setFilters(p => ({ ...p, admission_no: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6} sm={4} md={2}>
+            <TextField fullWidth size="small" label="Aadhar No" value={filters.aadhar_no}
+              onChange={e => setFilters(p => ({ ...p, aadhar_no: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6} sm={4} md={1.5}>
+            <TextField fullWidth size="small" type="number" label="Admission No" value={filters.admission_number}
+              onChange={e => setFilters(p => ({ ...p, admission_number: e.target.value }))} />
+          </Grid>
+          <Grid item xs={6} sm={4} md={1.5}>
+            <TextField fullWidth size="small" type="number" label="Enrollment No" value={filters.enrollment_no}
+              onChange={e => setFilters(p => ({ ...p, enrollment_no: e.target.value }))} />
+          </Grid>
+        </Grid>
+      </Paper>
+
+      <TableContainer component={Paper}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Admission ID</TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Admission No</TableCell>
+              <TableCell>Enrollment No</TableCell>
+              <TableCell>Class</TableCell>
+              <TableCell>Section</TableCell>
+              <TableCell>Leave Date</TableCell>
+              <TableCell>Admission Date</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={9} align="center"><LinearProgress /></TableCell></TableRow>
+            ) : students.length === 0 ? (
+              <TableRow><TableCell colSpan={9} align="center">No ex-students found</TableCell></TableRow>
+            ) : students.map(s => (
+              <TableRow key={s.admission_no} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/students/${s.admission_no}`)}>
+                <TableCell>{s.admission_no}</TableCell>
+                <TableCell>{s.full_name}</TableCell>
+                <TableCell>{s.admission_number}</TableCell>
+                <TableCell>{s.enrollment_no}</TableCell>
+                <TableCell>{s.current_class?.name || '-'}</TableCell>
+                <TableCell>{s.current_section?.name || '-'}</TableCell>
+                <TableCell>{s.leave_date || '-'}</TableCell>
+                <TableCell>{s.admission_date || '-'}</TableCell>
+                <TableCell><Chip label="Ex-Student" color="default" size="small" /></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <TablePagination rowsPerPageOptions={[10, 25, 50]} component="div" count={total} rowsPerPage={rowsPerPage}
+          page={page} onPageChange={(e, p) => setPage(p)} onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value)); setPage(0); }} />
+      </TableContainer>
+    </Box>
+  );
+}
+
+// ==================== TAB 4: ALUMNI ====================
 function AlumniTab() {
   const [alumni, setAlumni] = useState([]);
   const [search, setSearch] = useState('');
@@ -596,7 +707,10 @@ function AlumniTab() {
               ['higher_education', 'Higher Education', 12], ['achievements_after', 'Achievements After School', 12],
             ].map(([field, label, size]) => (
               <Grid item xs={12} sm={size} key={field}>
-                <TextField fullWidth label={label} value={form[field]} onChange={e => setForm({ ...form, [field]: e.target.value })}
+                <TextField fullWidth label={label} value={form[field]} onChange={e => setForm({ ...form, [field]: field === 'phone' ? e.target.value.replace(/\D/g, '') : e.target.value })}
+                  inputProps={field === 'phone' ? { maxLength: 10 } : {}}
+                  error={field === 'email' && form.email.length > 0 && !form.email.includes('@')}
+                  helperText={field === 'email' && form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''}
                   multiline={size === 12 && field !== 'higher_education'} />
               </Grid>
             ))}
@@ -869,6 +983,8 @@ function IdCardsTab() {
 export default function Students() {
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
+  const { hasRole } = useAuthStore();
+  const showExStudents = hasRole('school_admin', 'principal');
 
   return (
     <Box>
@@ -881,6 +997,7 @@ export default function Students() {
         <Tab icon={<People />} label="Students" iconPosition="start" />
         <Tab icon={<TrendingUp />} label="Dashboard" iconPosition="start" />
         <Tab icon={<SwapVert />} label="Promotions" iconPosition="start" />
+        {showExStudents && <Tab icon={<Warning />} label="Ex-Students" iconPosition="start" />}
         <Tab icon={<School />} label="Alumni" iconPosition="start" />
         <Tab icon={<Groups />} label="Houses" iconPosition="start" />
         <Tab icon={<People />} label="Siblings" iconPosition="start" />
@@ -890,10 +1007,11 @@ export default function Students() {
       {tab === 0 && <StudentList navigate={navigate} />}
       {tab === 1 && <StudentDashboard />}
       {tab === 2 && <Promotions />}
-      {tab === 3 && <AlumniTab />}
-      {tab === 4 && <HousesTab />}
-      {tab === 5 && <SiblingsTab />}
-      {tab === 6 && <IdCardsTab />}
+      {showExStudents && tab === 3 && <ExStudentsTab navigate={navigate} />}
+      {tab === (showExStudents ? 4 : 3) && <AlumniTab />}
+      {tab === (showExStudents ? 5 : 4) && <HousesTab />}
+      {tab === (showExStudents ? 6 : 5) && <SiblingsTab />}
+      {tab === (showExStudents ? 7 : 6) && <IdCardsTab />}
     </Box>
   );
 }

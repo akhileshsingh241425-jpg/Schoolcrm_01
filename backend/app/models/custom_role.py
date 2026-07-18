@@ -151,4 +151,43 @@ DEFAULT_ROLE_TEMPLATES = {
             'user_management': 'none', 'data_import': 'none',
         }
     },
+    'exam_controller': {
+        'display_name': 'Exam Controller',
+        'description': 'Exam scheduling, hall allocation, marks verification, result publication',
+        'permissions': {
+            'dashboard': 'view', 'students': 'view', 'staff': 'view',
+            'fees': 'none', 'attendance': 'none', 'academics': 'view',
+            'exams': 'full', 'admissions': 'none', 'communication': 'create',
+            'transport': 'none', 'library': 'none', 'hostel': 'none',
+            'canteen': 'none', 'sports': 'none', 'inventory': 'none',
+            'health': 'none', 'reports': 'view', 'settings': 'none',
+            'user_management': 'none', 'data_import': 'none',
+        }
+    },
+    'academic_controller': {
+        'display_name': 'Academic Controller',
+        'description': 'Curriculum planning, syllabus monitoring, teaching quality',
+        'permissions': {
+            'dashboard': 'view', 'students': 'view', 'staff': 'view',
+            'fees': 'none', 'attendance': 'view', 'academics': 'full',
+            'exams': 'view', 'admissions': 'none', 'communication': 'create',
+            'transport': 'none', 'library': 'none', 'hostel': 'none',
+            'canteen': 'none', 'sports': 'none', 'inventory': 'none',
+            'health': 'none', 'reports': 'view', 'settings': 'none',
+            'user_management': 'none', 'data_import': 'none',
+        }
+    },
+    'it_department': {
+        'display_name': 'IT Department',
+        'description': 'System management, user accounts, technical support',
+        'permissions': {
+            'dashboard': 'view', 'students': 'view', 'staff': 'view',
+            'fees': 'none', 'attendance': 'none', 'academics': 'none',
+            'exams': 'none', 'admissions': 'none', 'communication': 'none',
+            'transport': 'none', 'library': 'none', 'hostel': 'none',
+            'canteen': 'none', 'sports': 'none', 'inventory': 'full',
+            'health': 'none', 'reports': 'none', 'settings': 'full',
+            'user_management': 'full', 'data_import': 'full',
+        }
+    },
 }

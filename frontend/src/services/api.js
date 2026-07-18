@@ -16,9 +16,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor - handle 401
+// Track unread notification count from backend (injected into every response)
+const notifListeners = [];
+export const onNotificationUpdate = (fn) => { notifListeners.push(fn); return () => { const i = notifListeners.indexOf(fn); if (i >= 0) notifListeners.splice(i, 1); }; };
+
+// Response interceptor - handle 401 & extract _notif_unread
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const unread = response.data?._notif_unread;
+    if (typeof unread === 'number') {
+      notifListeners.forEach(fn => fn(unread));
+    }
+    return response;
+  },
   async (error) => {
     if (error.response?.status === 401) {
       const refreshToken = localStorage.getItem('refresh_token');
@@ -30,6 +40,7 @@ api.interceptors.response.use(
           });
           const newToken = res.data.data.access_token;
           localStorage.setItem('access_token', newToken);
+          document.cookie = `access_token_cookie=${newToken}; path=/; SameSite=Lax`;
           error.config.headers.Authorization = `Bearer ${newToken}`;
           return api(error.config);
         } catch {
@@ -126,6 +137,10 @@ export const studentsAPI = {
   // Documents
   listDocuments: (id) => api.get(`/students/${id}/documents`),
   uploadDocument: (id, data) => api.post(`/students/${id}/documents`, data),
+  // Login
+  getLoginStatus: (id) => api.get(`/students/${id}`),
+  updateLogin: (id, data) => api.put(`/students/${id}/login`, data),
+  deleteLogin: (id) => api.delete(`/students/${id}/login`),
   verifyDocument: (id) => api.put(`/students/documents/${id}/verify`),
   deleteDocument: (id) => api.delete(`/students/documents/${id}`),
   // Houses
@@ -158,8 +173,11 @@ export const studentsAPI = {
   uploadStudentDocument: (id, formData) => api.post(`/students/${id}/documents/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  // Document file download
+  getDocumentFile: (studentId, docId) => api.get(`/students/${studentId}/documents/${docId}/file`, { responseType: 'blob' }),
   // Parent documents
   listParentDocuments: (studentId, parentId) => api.get(`/students/${studentId}/parents/${parentId}/documents`),
+  getParentDocumentFile: (studentId, parentId, docId) => api.get(`/students/${studentId}/parents/${parentId}/documents/${docId}/file`, { responseType: 'blob' }),
   uploadParentDocument: (studentId, parentId, formData) => api.post(`/students/${studentId}/parents/${parentId}/documents/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
@@ -168,7 +186,7 @@ export const studentsAPI = {
 // Staff
 export const staffAPI = {
   list: (params) => api.get('/staff/', { params }),
-  get: (id) => api.get(`/staff/${id}`),
+  get: (id, config) => api.get(`/staff/${id}`, config),
   getProfile: (id) => api.get(`/staff/${id}/profile`),
   create: (data) => api.post('/staff/', data),
   update: (id, data) => api.put(`/staff/${id}`, data),
@@ -178,6 +196,8 @@ export const staffAPI = {
   addDocument: (staffId, data) => api.post(`/staff/${staffId}/documents`, data),
   verifyDocument: (docId) => api.put(`/staff/documents/${docId}/verify`),
   deleteDocument: (docId) => api.delete(`/staff/documents/${docId}`),
+  updateLogin: (staffId, data) => api.put(`/staff/${staffId}/login`, data),
+  deleteLogin: (staffId) => api.delete(`/staff/${staffId}/login`),
   // Salary Structure
   listSalaryStructures: (params) => api.get('/staff/salary-structures', { params }),
   createSalaryStructure: (data) => api.post('/staff/salary-structures', data),
@@ -223,6 +243,9 @@ export const staffAPI = {
   listPendingApprovals: () => api.get('/staff/pending-approvals'),
   approveStaff: (id) => api.post(`/staff/${id}/approve`),
   rejectStaff: (id, data) => api.post(`/staff/${id}/reject`, data),
+  // Status Toggle
+  toggleStatus: (id, data) => api.post(`/staff/${id}/toggle-status`, data),
+  getStatusHistory: (id) => api.get(`/staff/${id}/status-history`),
   createLogin: (id, data) => api.post(`/staff/${id}/create-login`, data),
 };
 
@@ -248,6 +271,8 @@ export const admissionsAPI = {
   delete: (id) => api.delete(`/admissions/${id}`),
   updateStatus: (id, data) => api.put(`/admissions/${id}/status`, data),
   enroll: (id, data) => api.post(`/admissions/${id}/enroll`, data),
+  payAdmissionFee: (id, data) => api.post(`/admissions/${id}/pay-fee`, data),
+  payTuitionFee: (id, data) => api.post(`/admissions/${id}/pay-tuition`, data),
   // Documents
   getDocuments: (id) => api.get(`/admissions/${id}/documents`),
   uploadDocument: (id, formData) => api.post(`/admissions/${id}/documents`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
@@ -332,6 +357,8 @@ export const academicsAPI = {
   addExamSchedule: (examId, data) => api.post(`/academics/exams/${examId}/schedules`, data),
   updateSchedule: (scheduleId, data) => api.put(`/academics/exams/schedules/${scheduleId}`, data),
   deleteSchedule: (scheduleId) => api.delete(`/academics/exams/schedules/${scheduleId}`),
+  postponeSchedule: (scheduleId, data) => api.put(`/academics/exams/schedules/${scheduleId}/postpone`, data),
+  resetPostponeSchedule: (scheduleId) => api.delete(`/academics/exams/schedules/${scheduleId}/postpone`),
   bulkAddSchedules: (examId, data) => api.post(`/academics/exams/${examId}/schedules/bulk`, data),
   // Exam Groups
   listExamGroups: () => api.get('/academics/exam-groups'),
@@ -391,6 +418,8 @@ export const academicsAPI = {
   updateSyllabus: (id, data) => api.put(`/academics/syllabus/${id}`, data),
   deleteSyllabus: (id) => api.delete(`/academics/syllabus/${id}`),
   addSyllabusProgress: (id, data) => api.post(`/academics/syllabus/${id}/progress`, data),
+  addSyllabusProgressDirect: (data) => api.post('/academics/syllabus/progress/add', data),
+  updateSyllabusExamSetting: (id, data) => api.put(`/academics/syllabus/${id}/exam-setting`, data),
   getSyllabusOverview: (params) => api.get('/academics/syllabus-overview', { params }),
   // Lesson Plans
   listLessonPlans: (params) => api.get('/academics/lesson-plans', { params }),
@@ -459,6 +488,11 @@ export const attendanceAPI = {
   getStaff: (params) => api.get('/attendance/staff', { params }),
   markStaff: (data) => api.post('/attendance/staff', data),
   staffReport: (params) => api.get('/attendance/staff/report', { params }),
+  updateStaffAttendance: (id, data) => api.put(`/attendance/staff/${id}`, data),
+  staffMonthly: (params) => api.get('/attendance/staff/monthly', { params }),
+  staffMonthlyGrid: (params) => api.get('/attendance/staff/monthly-grid', { params }),
+  studentMonthlyGrid: (params) => api.get('/attendance/student/monthly-grid', { params }),
+  staffEvents: () => api.get('/attendance/staff-events'),
 
   // Leave types
   getLeaveTypes: (params) => api.get('/attendance/leave-types', { params }),
@@ -704,10 +738,17 @@ export const studentPortalAPI = {
   timetable: () => api.get('/student/timetable'),
   homework: (params) => api.get('/student/homework', { params }),
   exams: () => api.get('/student/exams'),
+  examsList: () => api.get('/student/exams-list'),
+  examDatesheet: (examId) => api.get(`/student/exams-list/${examId}/datesheet`),
+  examSeating: (examId) => api.get(`/student/exams-list/${examId}/seating`),
   fees: () => api.get('/student/fees'),
   announcements: () => api.get('/student/announcements'),
   activities: () => api.get('/student/activities'),
   lectures: (params) => api.get('/academics/study-materials', { params }),
+  mySyllabus: () => api.get('/student/my-syllabus'),
+  myProfile: () => api.get('/student/my-profile'),
+  myAttendanceMonthly: (month) => api.get('/student/attendance/monthly', { params: { month } }),
+  myEvents: () => api.get('/student/events'),
 };
 
 // File Upload

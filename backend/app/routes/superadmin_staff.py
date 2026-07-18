@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, jsonify
 from datetime import datetime, date
 from app import db
@@ -62,6 +63,19 @@ def create_staff():
     if not data.get('first_name') or not data.get('email'):
         return error_response('First name and email are required', 400)
 
+    phone = data.get('phone')
+    if phone and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    email = data.get('email')
+    if email and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+    ec = data.get('emergency_contact')
+    if ec and not re.match(r'^\d+$', str(ec)):
+        return error_response('Emergency contact must contain only digits', 400)
+    aadhar = data.get('aadhar_no')
+    if aadhar and not re.match(r'^\d{12}$', str(aadhar)):
+        return error_response('Aadhaar must be exactly 12 digits', 400)
+
     if PlatformStaff.query.filter_by(email=data['email']).first():
         return error_response('Staff with this email already exists', 409)
 
@@ -105,6 +119,19 @@ def create_staff():
 def update_staff(staff_id):
     staff = PlatformStaff.query.get_or_404(staff_id)
     data = request.get_json()
+
+    phone = data.get('phone')
+    if phone is not None and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    email = data.get('email')
+    if email is not None and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+    ec = data.get('emergency_contact')
+    if ec is not None and not re.match(r'^\d+$', str(ec)):
+        return error_response('Emergency contact must contain only digits', 400)
+    aadhar = data.get('aadhar_no')
+    if aadhar is not None and not re.match(r'^\d{12}$', str(aadhar)):
+        return error_response('Aadhaar must be exactly 12 digits', 400)
 
     updatable = ['first_name', 'last_name', 'gender', 'phone', 'email', 'qualification',
                  'experience_years', 'designation', 'department', 'salary', 'address',

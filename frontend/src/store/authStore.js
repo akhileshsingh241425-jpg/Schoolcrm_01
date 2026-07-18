@@ -9,11 +9,19 @@ const useAuthStore = create((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
 
+  _setTokenCookie: (token) => {
+    document.cookie = `access_token_cookie=${token}; path=/; SameSite=Lax`;
+  },
+  _clearTokenCookie: () => {
+    document.cookie = 'access_token_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  },
+
   login: async (credentials) => {
     const res = await authAPI.login(credentials);
     const { access_token, refresh_token, user, school, features, allowed_modules } = res.data.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    get()._setTokenCookie(access_token);
     set({ user, school, features, allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
     return res.data;
   },
@@ -23,6 +31,7 @@ const useAuthStore = create((set, get) => ({
     const { access_token, refresh_token, user, school, features, allowed_modules } = res.data.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    get()._setTokenCookie(access_token);
     set({ user, school, features: features || [], allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
     return res.data;
   },
@@ -34,6 +43,8 @@ const useAuthStore = create((set, get) => ({
         set({ isLoading: false });
         return;
       }
+      // Restore cookie for SSE (cleared on tab close)
+      document.cookie = `access_token_cookie=${token}; path=/; SameSite=Lax`;
       const res = await authAPI.getMe();
       const { user, school, features, allowed_modules } = res.data.data;
       set({ user, school, features, allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
@@ -56,6 +67,7 @@ const useAuthStore = create((set, get) => ({
 
   logout: () => {
     localStorage.clear();
+    get()._clearTokenCookie();
     set({ user: null, school: null, features: [], allowedModules: [], isAuthenticated: false });
   },
 
@@ -77,6 +89,24 @@ const useAuthStore = create((set, get) => ({
     // Admin, super_admin, and principal always have access
     if (roleNames.some(n => ['super_admin', 'school_admin', 'principal'].includes(n))) return true;
     return allowedModules.includes(moduleName);
+  },
+
+  roleNames: () => {
+    const { user } = get();
+    if (!user) return [];
+    const allRoles = user?.roles || (user?.role ? [user.role] : []);
+    return allRoles.map(r => r.name);
+  },
+
+  canEditModule: (editorRoles) => {
+    const { user } = get();
+    if (!user) return false;
+    const allRoles = user?.roles || (user?.role ? [user.role] : []);
+    const roleNames = allRoles.map(r => r.name);
+    // super_admin, school_admin, principal always have full access
+    if (roleNames.some(n => ['super_admin', 'school_admin', 'principal'].includes(n))) return true;
+    // If user has any of the editor roles, they can edit
+    return roleNames.some(r => editorRoles.includes(r));
   },
 }));
 

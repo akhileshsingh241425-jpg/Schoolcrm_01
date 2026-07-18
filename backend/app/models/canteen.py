@@ -6,7 +6,7 @@ class CanteenWallet(db.Model):
     __tablename__ = 'canteen_wallet'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     balance = db.Column(db.Numeric(10, 2), default=0)
     daily_limit = db.Column(db.Numeric(10, 2), default=200)
     is_active = db.Column(db.Boolean, default=True)
@@ -50,7 +50,7 @@ class CanteenTransaction(db.Model):
     __tablename__ = 'canteen_transactions'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     wallet_id = db.Column(db.Integer, db.ForeignKey('canteen_wallet.id'))
     transaction_type = db.Column(db.String(20), nullable=False)  # purchase, topup, refund
     amount = db.Column(db.Numeric(10, 2), nullable=False)
@@ -123,7 +123,7 @@ class CanteenPreorder(db.Model):
     __tablename__ = 'canteen_preorders'
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'), nullable=False)
     item_id = db.Column(db.Integer, db.ForeignKey('canteen_menu.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
     order_date = db.Column(db.Date, nullable=False)

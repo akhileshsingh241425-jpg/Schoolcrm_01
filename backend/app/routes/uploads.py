@@ -62,7 +62,10 @@ def upload_file():
 @uploads_bp.route('/uploads/<path:filepath>', methods=['GET'])
 def serve_upload(filepath):
     """Serve uploaded files."""
-    upload_dir = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-    directory = os.path.dirname(os.path.join(upload_dir, filepath))
-    filename = os.path.basename(filepath)
+    upload_dir = os.path.abspath(current_app.config.get('UPLOAD_FOLDER', 'uploads'))
+    safe_path = os.path.normpath(os.path.join(upload_dir, filepath))
+    if not safe_path.startswith(upload_dir):
+        return error_response('Access denied', 403)
+    directory = os.path.dirname(safe_path)
+    filename = os.path.basename(safe_path)
     return send_from_directory(directory, filename)

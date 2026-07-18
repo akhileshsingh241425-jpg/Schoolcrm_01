@@ -425,7 +425,7 @@ export default function Communication() {
                   <Grid container spacing={2}>
                     <Grid item xs={12}>
                       <TextField fullWidth size="small" label="Phone Number (with country code)" placeholder="+91 98765 43210"
-                        value={waForm.phone} onChange={e => setWaForm({ ...waForm, phone: e.target.value })} />
+                        value={waForm.phone} onChange={e => setWaForm({ ...waForm, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 15 }} />
                     </Grid>
                     <Grid item xs={12}>
                       <TextField fullWidth size="small" multiline rows={3} label="Message"
@@ -464,7 +464,7 @@ export default function Communication() {
                   <Grid container spacing={2}>
                     <Grid item xs={12}>
                       <TextField fullWidth size="small" label="Phone Number" placeholder="98765 43210"
-                        value={ivrForm.phone} onChange={e => setIvrForm({ ...ivrForm, phone: e.target.value })} />
+                        value={ivrForm.phone} onChange={e => setIvrForm({ ...ivrForm, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 15 }} />
                     </Grid>
                     <Grid item xs={12}>
                       <Typography variant="caption" color="text.secondary">

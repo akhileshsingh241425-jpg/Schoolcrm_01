@@ -6,7 +6,7 @@ class StudentAttendance(db.Model):
     __tablename__ = 'student_attendance'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id', ondelete='CASCADE'), nullable=False)
@@ -265,7 +265,7 @@ class EventAttendance(db.Model):
     event_name = db.Column(db.String(255), nullable=False)
     event_type = db.Column(db.Enum('sports', 'cultural', 'trip', 'assembly', 'competition', 'other'), default='other')
     event_date = db.Column(db.Date, nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     status = db.Column(db.Enum('present', 'absent', 'excused'), default='present')
     remarks = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

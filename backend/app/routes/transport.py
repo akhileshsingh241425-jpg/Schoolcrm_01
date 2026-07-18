@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, g
 from app import db
 from app.models.transport import (
@@ -137,6 +138,20 @@ def list_drivers():
 @validate({'name': {'required': True}, 'experience_years': {'type': int}, 'driving_score': {'type': float}})
 def create_driver():
     data = g.get('validated_data') or request.get_json()
+
+    phone = data.get('phone')
+    if phone and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    email = data.get('email')
+    if email and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+    ec = data.get('emergency_contact')
+    if ec and not re.match(r'^\d+$', str(ec)):
+        return error_response('Emergency contact must contain only digits', 400)
+    aadhar = data.get('aadhar_number')
+    if aadhar and not re.match(r'^\d{12}$', str(aadhar)):
+        return error_response('Aadhaar must be exactly 12 digits', 400)
+
     d = Driver(school_id=g.school_id, name=data['name'])
     for f in ['phone', 'email', 'license_number', 'license_type', 'license_expiry',
               'medical_fitness_expiry', 'aadhar_number', 'address', 'blood_group',
@@ -167,6 +182,19 @@ def update_driver(did):
     if not d:
         return error_response('Driver not found', 404)
     data = g.get('validated_data') or request.get_json()
+
+    phone = data.get('phone')
+    if phone is not None and not re.match(r'^\d+$', str(phone)):
+        return error_response('Phone must contain only digits', 400)
+    email = data.get('email')
+    if email is not None and '@' not in str(email):
+        return error_response('Invalid email format', 400)
+    ec = data.get('emergency_contact')
+    if ec is not None and not re.match(r'^\d+$', str(ec)):
+        return error_response('Emergency contact must contain only digits', 400)
+    aadhar = data.get('aadhar_number')
+    if aadhar is not None and not re.match(r'^\d{12}$', str(aadhar)):
+        return error_response('Aadhaar must be exactly 12 digits', 400)
     for f in ['name', 'phone', 'email', 'license_number', 'license_type', 'license_expiry',
               'medical_fitness_expiry', 'aadhar_number', 'address', 'blood_group',
               'emergency_contact', 'experience_years', 'driving_score', 'photo_url',
@@ -211,6 +239,14 @@ def list_routes():
 @validate({'route_name': {'required': True}, 'vehicle_id': {'type': int}, 'driver_id': {'type': int}, 'total_distance_km': {'type': float}, 'estimated_time_min': {'type': int}})
 def create_route():
     data = g.get('validated_data') or request.get_json()
+
+    hp = data.get('helper_phone')
+    if hp and not re.match(r'^\d+$', str(hp)):
+        return error_response('Helper phone must contain only digits', 400)
+    dp = data.get('driver_phone')
+    if dp and not re.match(r'^\d+$', str(dp)):
+        return error_response('Driver phone must contain only digits', 400)
+
     route = TransportRoute(school_id=g.school_id, route_name=data['route_name'])
     for f in ['route_code', 'description', 'vehicle_id', 'driver_id', 'helper_name',
               'helper_phone', 'start_location', 'end_location', 'total_distance_km',
@@ -240,6 +276,13 @@ def update_route(route_id):
     if not route:
         return error_response('Route not found', 404)
     data = g.get('validated_data') or request.get_json()
+
+    hp = data.get('helper_phone')
+    if hp is not None and not re.match(r'^\d+$', str(hp)):
+        return error_response('Helper phone must contain only digits', 400)
+    dp = data.get('driver_phone')
+    if dp is not None and not re.match(r'^\d+$', str(dp)):
+        return error_response('Driver phone must contain only digits', 400)
     for f in ['route_name', 'route_code', 'description', 'vehicle_id', 'driver_id',
               'helper_name', 'helper_phone', 'start_location', 'end_location',
               'total_distance_km', 'estimated_time_min', 'shift', 'status',
@@ -900,7 +943,7 @@ def _transport_recipient_user_ids(school_id, route_id=None):
     if not student_ids:
         return [], []
 
-    students = Student.query.filter(Student.id.in_(student_ids)).all()
+    students = Student.query.filter(Student.admission_no.in_(student_ids)).all()
     user_ids = set()
     for s in students:
         if s.user_id:
@@ -1010,9 +1053,9 @@ def my_transport():
     role_names = user.role_names if user.role else []
 
     student = None
-    override_id = request.args.get('student_id', type=int)
+    override_id = request.args.get('student_id', type=str)
     if override_id and user.has_role('school_admin', 'super_admin', 'principal', 'teacher', 'parent'):
-        student = Student.query.filter_by(id=override_id, school_id=g.school_id).first()
+        student = Student.query.filter_by(admission_no=override_id, school_id=g.school_id).first()
     elif user.has_role('student'):
         student = Student.query.filter_by(user_id=user.id, school_id=g.school_id).first()
 
@@ -1022,7 +1065,7 @@ def my_transport():
     assignment = StudentTransport.query.options(
         joinedload(StudentTransport.route),
         joinedload(StudentTransport.stop),
-    ).filter_by(school_id=g.school_id, student_id=student.id, status='active').first()
+    ).filter_by(school_id=g.school_id, student_id=student.admission_no, status='active').first()
 
     if not assignment:
         return success_response({'has_transport': False})

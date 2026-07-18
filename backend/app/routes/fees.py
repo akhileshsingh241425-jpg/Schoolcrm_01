@@ -39,7 +39,7 @@ def finance_dashboard():
     if class_ids:
         counts = db.session.query(
             Student.current_class_id,
-            func.count(Student.id)
+            func.count(Student.admission_no)
         ).filter(
             Student.school_id == sid,
             Student.status == 'active',
@@ -149,9 +149,17 @@ def list_structures():
 @validate({'class_id': {'required': True}, 'fee_category_id': {'required': True}, 'amount': {'required': True, 'type': float, 'min': 0}})
 def create_structure():
     data = g.get('validated_data') or request.get_json()
+    academic_year_id = data.get('academic_year_id')
+    from app.models.student import AcademicYear
+    if academic_year_id and not isinstance(academic_year_id, int):
+        ay = AcademicYear.query.filter_by(school_id=g.school_id, name=str(academic_year_id)).first()
+        if ay:
+            academic_year_id = ay.id
+        else:
+            return error_response('Invalid academic year', 400)
     structure = FeeStructure(
         school_id=g.school_id,
-        academic_year_id=data.get('academic_year_id'),
+        academic_year_id=academic_year_id,
         class_id=data['class_id'],
         fee_category_id=data['fee_category_id'],
         amount=data['amount'],
@@ -230,7 +238,8 @@ def generate_installments():
 @school_required
 def list_payments():
     query = FeePayment.query.options(
-        joinedload(FeePayment.student)
+        joinedload(FeePayment.student),
+        joinedload(FeePayment.refunds)
     ).filter_by(school_id=g.school_id)
     student_id = request.args.get('student_id', type=int)
     if student_id:
@@ -247,7 +256,7 @@ def list_payments():
 
 @fees_bp.route('/payments', methods=['POST'])
 @role_required('school_admin', 'accountant', 'principal')
-@validate({'amount_paid': {'type': float, 'min': 0}, 'late_fee_paid': {'type': float, 'min': 0}, 'discount_amount': {'type': float, 'min': 0}})
+@validate({'amount_paid': {'type': float, 'min': 0}, 'late_fee_paid': {'type': float, 'min': 0}, 'discount_amount': {'type': float, 'min': 0}, 'late_days': {'type': int, 'min': 0}})
 def record_payment():
     data = g.get('validated_data') or request.get_json()
 
@@ -258,6 +267,7 @@ def record_payment():
     amount = float(amount_val)
     late = float(data.get('late_fee_paid', 0))
     disc = float(data.get('discount_amount', 0))
+    late_days = int(data.get('late_days', 0))
 
     payment_mode = data.get('payment_mode') or data.get('payment_method')
     if not payment_mode:
@@ -272,7 +282,7 @@ def record_payment():
         ).first()
         if not student:
             return error_response(f'Student with admission no "{admission_no}" not found', 404)
-        student_id = student.id
+        student_id = student.admission_no
     elif not student_id:
         return error_response('Either student_id or admission_no is required', 400)
 
@@ -293,6 +303,7 @@ def record_payment():
         late_fee_paid=late,
         discount_amount=disc,
         total_amount=amount + late - disc,
+        late_days=late_days,
         payment_date=data.get('payment_date', date.today().isoformat()),
         payment_mode=payment_mode,
         transaction_id=data.get('transaction_id'),
@@ -570,7 +581,9 @@ def approve_concession(cid):
 @fees_bp.route('/refunds', methods=['GET'])
 @school_required
 def list_refunds():
-    query = FeeRefund.query.filter_by(school_id=g.school_id)
+    query = FeeRefund.query.options(
+        joinedload(FeeRefund.payment)
+    ).filter_by(school_id=g.school_id)
     status = request.args.get('status')
     if status:
         query = query.filter_by(status=status)

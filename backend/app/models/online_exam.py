@@ -196,7 +196,7 @@ class StudentExamAttempt(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     online_exam_id = db.Column(db.Integer, db.ForeignKey('online_exams.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     attempt_number = db.Column(db.Integer, default=1)
     started_at = db.Column(db.DateTime, default=datetime.utcnow)
     submitted_at = db.Column(db.DateTime)
@@ -224,9 +224,9 @@ class StudentExamAttempt(db.Model):
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
             'time_taken_seconds': self.time_taken_seconds,
-            'total_marks': float(self.total_marks) if self.total_marks else 0,
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else 0,
-            'percentage': float(self.percentage) if self.percentage else 0,
+            'total_marks': float(self.total_marks) if self.total_marks is not None else 0,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else 0,
+            'percentage': float(self.percentage) if self.percentage is not None else 0,
             'is_passed': self.is_passed,
             'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,

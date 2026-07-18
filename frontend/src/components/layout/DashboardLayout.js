@@ -7,8 +7,8 @@ import {
   Popover, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Collapse, CircularProgress, Paper
 } from '@mui/material';
 import {
-  Menu as MenuIcon, Dashboard, People, School, PersonAdd, Campaign,
-  EventNote, AttachMoney, CalendarMonth, Announcement, Assessment,
+  Menu as MenuIcon, Dashboard, People, School, PersonAdd, Campaign, Person,
+  EventNote, Event, AttachMoney, CalendarMonth, Announcement, Assessment,
   Inventory, DirectionsBus, LocalLibrary, Settings, Logout,
   FamilyRestroom, HealthAndSafety, Hotel, Restaurant, SportsBasketball,
   CloudUpload, Search, NotificationsNoneOutlined, Palette, Close,
@@ -16,11 +16,11 @@ import {
   KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook,
   Email, Sms, Message, Assignment, Edit, Lock, AccountBalance, Store, RateReview,
   ArrowUpward, SwapHoriz, TrendingUp, FactCheck, AutoGraph,
-  Timeline, HowToVote, TaskAlt, Checklist, Security
+  Timeline, HowToVote, TaskAlt, Checklist, Security, MeetingRoom, AccessTime
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
-import api, { noticesAPI } from '../../services/api';
+import api, { noticesAPI, onNotificationUpdate } from '../../services/api';
 import toast from 'react-hot-toast';
 
 const LOGO_CRM = '/assets/images/logo-crm.svg';
@@ -36,6 +36,7 @@ const menuGroups = [
       { text: 'Exam Controller', icon: <EventNote />, path: '/exam-controller', module: 'academics', role: ['principal', 'school_admin', 'super_admin', 'exam_controller'] },
       { text: 'Date Sheet Approval', icon: <CalendarMonth />, path: '/date-sheet-approval', module: 'academics', role: ['principal', 'school_admin', 'super_admin'] },
       { text: 'Grace Marks', icon: <Star />, path: '/grace-marks', module: 'academics', role: ['principal', 'school_admin', 'super_admin'] },
+      { text: 'Seating Approval', icon: <Assignment />, path: '/exam-controller/seating-arrangement', module: 'academics', role: ['principal', 'school_admin', 'super_admin'] },
       { text: 'Academic Control', icon: <MenuBook />, path: '/academic-controller', module: 'academics', role: ['principal', 'school_admin', 'super_admin', 'academic_controller'] },
       { text: 'Staff Positions', icon: <AdminPanelSettings />, path: '/staff-positions', module: 'staff', role: ['school_admin', 'super_admin'] },
       { text: 'Students', icon: <People />, path: '/students', feature: 'student_management', module: 'students', role: ['school_admin', 'super_admin', 'principal'] },
@@ -94,6 +95,8 @@ const menuGroups = [
     role: ['teacher'],
     items: [
       { text: 'My Profile', icon: <Edit />, path: '/teacher/profile' },
+      { text: 'My Attendance', icon: <AccessTime />, path: '/teacher/my-attendance-view' },
+      { text: 'Events', icon: <Event />, path: '/teacher/events' },
       { text: 'My Leave', icon: <CalendarMonth />, path: '/teacher/leave' },
       { text: 'Payroll', icon: <AccountBalance />, path: '/teacher/payroll' },
     ],
@@ -174,7 +177,6 @@ export default function DashboardLayout() {
   const [noticeForm, setNoticeForm] = useState({ title: '', message: '', target_audience: 'all' });
   const [noticeSaving, setNoticeSaving] = useState(false);
   const [emergencyAlert, setEmergencyAlert] = useState(null);
-  const seenEmergencyIds = React.useRef(new Set());
   const navigate = useNavigate();
   const location = useLocation();
   const { user, school, features, logout } = useAuthStore();
@@ -214,16 +216,6 @@ export default function DashboardLayout() {
       const list = data.notifications || [];
       setNotifications(list);
       setUnreadCount(data.unread_count || 0);
-      // Detect a new UNREAD emergency alert → auto-popup with sound
-      const emergency = list.find(n =>
-        !n.read_at && typeof n.title === 'string' && n.title.includes('[EMERGENCY]')
-        && !seenEmergencyIds.current.has(n.id)
-      );
-      if (emergency) {
-        seenEmergencyIds.current.add(emergency.id);
-        setEmergencyAlert(emergency);
-        playAlarm();
-      }
     } catch { setNotifications([]); setUnreadCount(0); }
     finally { setNotifLoading(false); }
   }, []);
@@ -253,10 +245,35 @@ export default function DashboardLayout() {
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    const interval = setInterval(loadNotifications, 30000); // poll every 30s for new notices
-    return () => clearInterval(interval);
+    loadNotifications(); // initial fetch
   }, [loadNotifications]);
+
+  // Listen for unread count from every backend response (no polling needed)
+  useEffect(() => {
+    const unsub = onNotificationUpdate(count => {
+      setUnreadCount(count);
+    });
+    return unsub;
+  }, []);
+
+  // SSE — real-time emergency alerts (uses JWT cookie, no token in URL)
+  useEffect(() => {
+    const es = new EventSource('/api/global/emergency-stream');
+
+    es.addEventListener('emergency', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setEmergencyAlert(data);
+        playAlarm();
+      } catch {}
+    });
+
+    es.onerror = () => {
+      // EventSource auto-reconnects on failure
+    };
+
+    return () => es.close();
+  }, []);
 
   const canPostNotice = ['principal', 'school_admin', 'super_admin', 'exam_controller', 'academic_controller'].includes(user?.role?.name);
 
@@ -315,6 +332,12 @@ export default function DashboardLayout() {
       { text: 'My Portal', icon: <Dashboard />, path: '/my-portal', module: 'dashboard' },
       { text: 'My Exams', icon: <EventNote />, path: '/student-exams', module: 'dashboard' },
     ] },
+    { label: 'My Pages', items: [
+      { text: 'My Attendance', icon: <CalendarMonth />, path: '/student-my-attendance', module: 'dashboard' },
+      { text: 'Events', icon: <Event />, path: '/student-events', module: 'dashboard' },
+      { text: 'Syllabus Progress', icon: <MenuBook />, path: '/student-syllabus', module: 'dashboard' },
+      { text: 'Profile', icon: <Person />, path: '/student-profile', module: 'dashboard' },
+    ] },
   ];
 
   const librarianMenuGroups = [
@@ -344,6 +367,7 @@ export default function DashboardLayout() {
       { text: 'Date Sheet Approval', icon: <CalendarMonth />, path: '/date-sheet-approval' },
       { text: 'Invigilator Duty', icon: <Assignment />, path: '/exam-controller/invigilator-duty' },
       { text: 'Grace Marks', icon: <Star />, path: '/grace-marks' },
+      { text: 'Seating Arrangement', icon: <Assignment />, path: '/exam-controller/seating-arrangement' },
     ] },
     { label: 'Academic', items: [
       { text: 'Academics', icon: <MenuBook />, path: '/academics', feature: 'academic', module: 'academics' },
@@ -363,6 +387,7 @@ export default function DashboardLayout() {
       { text: 'Substitutions', icon: <SwapHoriz />, path: '/academic-controller', tab: 'substitutions' },
       { text: 'Syllabus Progress', icon: <TrendingUp />, path: '/academic-controller', tab: 'syllabus' },
       { text: 'Promotions', icon: <ArrowUpward />, path: '/academic-controller', tab: 'promotions' },
+      { text: 'Room Management', icon: <MeetingRoom />, path: '/academic-controller', tab: 'rooms' },
     ] },
     { label: 'Staff & Students', items: [
       { text: 'Teacher Assignment', icon: <Assignment />, path: '/academic-controller', tab: 'teachers' },
@@ -372,10 +397,10 @@ export default function DashboardLayout() {
       { text: 'Classes & Sections', icon: <Group />, path: '/academics/classes', feature: 'academic', module: 'academics' },
     ] },
     { label: 'Exams & Assessment', items: [
-      { text: 'Exam Controller', icon: <EventNote />, path: '/exam-controller' },
-      { text: 'Marks Entry', icon: <RateReview />, path: '/exam-controller/marks-entry-dashboard' },
-      { text: 'Date Sheet', icon: <CalendarMonth />, path: '/exam-controller', view: 'datesheet' },
-      { text: 'Grace Marks', icon: <Star />, path: '/grace-marks' },
+      { text: 'Exam Controller', icon: <EventNote />, path: '/exam-controller', role: ['exam_controller'] },
+      { text: 'Marks Entry', icon: <RateReview />, path: '/exam-controller/marks-entry-dashboard', role: ['exam_controller'] },
+      { text: 'Date Sheet', icon: <CalendarMonth />, path: '/exam-controller', view: 'datesheet', role: ['exam_controller'] },
+      { text: 'Grace Marks', icon: <Star />, path: '/grace-marks', role: ['exam_controller'] },
     ] },
     { label: 'Reports & Planning', items: [
       { text: 'Reports', icon: <Assessment />, path: '/reports', feature: 'reports', module: 'reports' },
@@ -489,10 +514,6 @@ export default function DashboardLayout() {
     ] },
   ];
 
-  const isAcademicController = hasRole('academic_controller');
-  const isLibrarian = hasRole('librarian');
-  const isStoreManager = hasRole('store_manager');
-
   const roleMenuMap = {
     accountant: accountantMenuGroups,
     counselor: counselorMenuGroups,
@@ -506,23 +527,29 @@ export default function DashboardLayout() {
     sports_incharge: sportsInchargeMenuGroups,
     lab_assistant: labAssistantMenuGroups,
     hostel_warden: hostelWardenMenuGroups,
+    exam_controller: examControllerMenuGroups,
+    academic_controller: academicControllerMenuGroups,
+    librarian: librarianMenuGroups,
+    store_manager: storeManagerMenuGroups,
   };
 
-  const matchedRole = (user?.roles || []).map(r => r.name).find(n => roleMenuMap[n]);
+  const getActiveMenuGroups = () => {
+    if (hasRole('parent')) return parentMenuGroups;
+    if (hasRole('student')) return studentMenuGroups;
 
-  const activeMenuGroups = hasRole('parent')
-    ? parentMenuGroups
-    : hasRole('student')
-      ? studentMenuGroups
-      : hasRole('exam_controller')
-        ? examControllerMenuGroups
-        : isAcademicController
-          ? academicControllerMenuGroups
-          : isLibrarian
-            ? librarianMenuGroups
-            : isStoreManager
-              ? storeManagerMenuGroups
-              : roleMenuMap[matchedRole] || menuGroups;
+    const groups = [];
+    const userRoleNames = (user?.roles || []).map(r => r.name);
+
+    (user?.roles || []).map(r => r.name).filter(n => roleMenuMap[n]).forEach(roleName =>
+      groups.push(...roleMenuMap[roleName].map(g => ({ ...g, _key: g.label + '-' + roleName })))
+    );
+
+    groups.push(...menuGroups.map((g, i) => ({ ...g, _key: g.label + '-main-' + i })));
+
+    return groups;
+  };
+
+  const activeMenuGroups = getActiveMenuGroups();
 
   const matchNavItem = (item) => {
     if (!location.pathname.startsWith(item.path)) return false;
@@ -588,7 +615,7 @@ export default function DashboardLayout() {
           const isCollapsed = collapsedGroups[group.label];
           const hasActive = visibleItems.some(i => location.pathname.startsWith(i.path));
           return (
-            <Box key={group.label} sx={{ mb: 0.5 }}>
+            <Box key={group._key || group.label} sx={{ mb: 0.5 }}>
               <Box onClick={() => toggleGroup(group.label)}
                 sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   px: 1.5, py: 0.8, cursor: 'pointer', borderRadius: 2, userSelect: 'none',
@@ -864,7 +891,7 @@ export default function DashboardLayout() {
               <Button variant="outlined" color="error" onClick={() => playAlarm()}
                 sx={{ textTransform: 'none', fontWeight: 600 }}>🔊 Replay Sound</Button>
               <Button variant="contained" color="error"
-                onClick={() => { if (emergencyAlert) handleMarkRead(emergencyAlert.id); setEmergencyAlert(null); }}
+                onClick={() => { if (emergencyAlert?.id) handleMarkRead(emergencyAlert.id); setEmergencyAlert(null); }}
                 sx={{ textTransform: 'none', fontWeight: 700, px: 4 }}>
                 Acknowledge
               </Button>

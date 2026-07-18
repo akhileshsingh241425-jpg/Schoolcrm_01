@@ -125,7 +125,7 @@ class NotificationLog(db.Model):
     channel = db.Column(db.Enum('email', 'whatsapp', 'sms', 'in_app'), nullable=False)
     recipient_name = db.Column(db.String(255))
     recipient_contact = db.Column(db.String(255))  # email or phone
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     subject = db.Column(db.String(255))
     message = db.Column(db.Text)
     status = db.Column(db.Enum('sent', 'failed', 'pending'), default='pending')

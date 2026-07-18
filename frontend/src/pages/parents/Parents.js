@@ -166,8 +166,8 @@ function ProfilesTab() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}><TextField fullWidth label="Name" value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} required /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 10 }} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} error={form.email.length > 0 && !form.email.includes('@')} helperText={form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Occupation" value={form.occupation || ''} onChange={e => setForm({ ...form, occupation: e.target.value })} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Language" value={form.preferred_language || 'English'} onChange={e => setForm({ ...form, preferred_language: e.target.value })} /></Grid>
             <Grid item xs={12}><TextField fullWidth multiline rows={2} label="Address" value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></Grid>
@@ -920,7 +920,7 @@ function VolunteersTab() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={6}><TextField fullWidth label="Parent Name" value={form.parent_name} onChange={e => setForm({ ...form, parent_name: e.target.value })} /></Grid>
-            <Grid item xs={6}><TextField fullWidth label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 10 }} /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Event Name" value={form.event_name} onChange={e => setForm({ ...form, event_name: e.target.value })} required /></Grid>
             <Grid item xs={6}><TextField fullWidth type="date" label="Event Date" value={form.event_date} onChange={e => setForm({ ...form, event_date: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Role" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} /></Grid>
@@ -1008,7 +1008,7 @@ function PickupTab() {
             <Grid item xs={6}><TextField fullWidth type="number" label="Student ID" value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} required /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Authorized Person" value={form.authorized_person || ''} onChange={e => setForm({ ...form, authorized_person: e.target.value })} required /></Grid>
             <Grid item xs={6}><TextField fullWidth label="Relation" value={form.relation || ''} onChange={e => setForm({ ...form, relation: e.target.value })} /></Grid>
-            <Grid item xs={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} required /></Grid>
+            <Grid item xs={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 10 }} required /></Grid>
             <Grid item xs={12}><TextField fullWidth label="ID Proof" value={form.id_proof || ''} onChange={e => setForm({ ...form, id_proof: e.target.value })} /></Grid>
           </Grid>
         </DialogContent>

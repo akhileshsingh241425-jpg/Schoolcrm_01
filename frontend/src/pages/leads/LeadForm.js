@@ -48,10 +48,10 @@ export default function LeadForm() {
               <TextField fullWidth label="Parent Name" value={form.parent_name} onChange={handleChange('parent_name')} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Phone" required value={form.phone} onChange={handleChange('phone')} />
+              <TextField fullWidth label="Phone" required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '') })} inputProps={{ maxLength: 10 }} />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Email" value={form.email} onChange={handleChange('email')} />
+              <TextField fullWidth label="Email" value={form.email} onChange={handleChange('email')} error={form.email.length > 0 && !form.email.includes('@')} helperText={form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''} />
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField fullWidth label="Class Interested" value={form.class_interested} onChange={handleChange('class_interested')} />

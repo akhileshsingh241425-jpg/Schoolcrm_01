@@ -34,8 +34,12 @@ class FeeStructure(db.Model):
     class_ref = db.relationship('Class', backref='fee_structures')
 
     def to_dict(self):
+        from app.models.student import AcademicYear
+        academic_year = AcademicYear.query.get(self.academic_year_id)
         return {
             'id': self.id,
+            'academic_year_id': self.academic_year_id,
+            'academic_year': academic_year.name if academic_year else None,
             'class_id': self.class_id,
             'class_name': self.class_ref.name if self.class_ref else None,
             'category': self.category.to_dict() if self.category else None,
@@ -54,7 +58,7 @@ class FeeInstallment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_structure_id = db.Column(db.Integer, db.ForeignKey('fee_structures.id', ondelete='CASCADE'), nullable=False)
     installment_no = db.Column(db.Integer, nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -104,13 +108,14 @@ class FeePayment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_structure_id = db.Column(db.Integer, db.ForeignKey('fee_structures.id', ondelete='CASCADE'), nullable=False)
     installment_id = db.Column(db.Integer, db.ForeignKey('fee_installments.id'), nullable=True)
     amount_paid = db.Column(db.Numeric(12, 2), nullable=False)
     late_fee_paid = db.Column(db.Numeric(12, 2), default=0)
     discount_amount = db.Column(db.Numeric(12, 2), default=0)
     total_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    late_days = db.Column(db.Integer, default=0)
     payment_date = db.Column(db.Date, nullable=False)
     payment_mode = db.Column(db.Enum('cash', 'online', 'cheque', 'bank_transfer', 'upi', 'dd'), nullable=False)
     transaction_id = db.Column(db.String(255))
@@ -134,18 +139,33 @@ class FeePayment(db.Model):
     fee_structure = db.relationship('FeeStructure', backref='payments')
 
     def to_dict(self):
+        paid = float(self.amount_paid) if self.amount_paid else 0
+        refunds_list = []
+        for rf in (self.refunds or []):
+            refunds_list.append({
+                'id': rf.id,
+                'refund_amount': float(rf.refund_amount),
+                'reason': rf.reason,
+                'refund_mode': rf.refund_mode,
+                'status': rf.status,
+                'processed_date': rf.processed_date.isoformat() if rf.processed_date else None,
+                'created_at': rf.created_at.isoformat() if rf.created_at else None
+            })
         return {
             'id': self.id,
             'student_id': self.student_id,
             'student_name': f"{self.student.first_name} {self.student.last_name or ''}".strip() if self.student else '',
             'fee_structure_id': self.fee_structure_id,
             'installment_id': self.installment_id,
-            'amount_paid': float(self.amount_paid) if self.amount_paid else 0,
+            'amount_paid': paid,
+            'amount': paid,
             'late_fee_paid': float(self.late_fee_paid or 0),
+            'late_days': self.late_days or 0,
             'discount_amount': float(self.discount_amount or 0),
             'total_amount': float(self.total_amount) if self.total_amount else 0,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'payment_mode': self.payment_mode,
+            'payment_method': self.payment_mode,
             'transaction_id': self.transaction_id,
             'gateway': self.gateway,
             'razorpay_payment_id': self.razorpay_payment_id,
@@ -157,7 +177,8 @@ class FeePayment(db.Model):
             'receipt_no': self.receipt_no,
             'status': self.status,
             'remarks': self.remarks,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'refunds': refunds_list
         }
 
 
@@ -169,7 +190,7 @@ class FeeReceipt(db.Model):
     payment_id = db.Column(db.Integer, db.ForeignKey('fee_payments.id', ondelete='CASCADE'), nullable=False)
     receipt_no = db.Column(db.String(50), nullable=False)
     receipt_date = db.Column(db.Date, nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     amount_in_words = db.Column(db.String(255))
     pdf_url = db.Column(db.String(500))
@@ -195,7 +216,7 @@ class FeeDiscount(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_category_id = db.Column(db.Integer, db.ForeignKey('fee_categories.id', ondelete='CASCADE'), nullable=False)
     discount_type = db.Column(db.Enum('percentage', 'fixed'), nullable=False)
     discount_value = db.Column(db.Numeric(12, 2), nullable=False)
@@ -252,7 +273,7 @@ class ScholarshipAward(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     scholarship_id = db.Column(db.Integer, db.ForeignKey('scholarships.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     status = db.Column(db.Enum('pending', 'approved', 'rejected', 'active', 'revoked'), default='pending')
     approved_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -279,7 +300,7 @@ class Concession(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     fee_category_id = db.Column(db.Integer, db.ForeignKey('fee_categories.id'), nullable=True)
     concession_type = db.Column(db.Enum('percentage', 'fixed'), default='fixed')
     amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -369,7 +390,8 @@ class Vendor(db.Model):
             'contact_person': self.contact_person,
             'phone': self.phone, 'email': self.email,
             'address': self.address, 'gst_no': self.gst_no,
-            'pan_no': self.pan_no, 'category': self.category,
+            'pan_no': f'****{self.pan_no[-4:]}' if self.pan_no and len(self.pan_no) > 4 else self.pan_no,
+            'category': self.category,
             'status': self.status
         }
 
@@ -507,7 +529,7 @@ class FeeRefund(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     payment_id = db.Column(db.Integer, db.ForeignKey('fee_payments.id'), nullable=True)
     refund_amount = db.Column(db.Numeric(12, 2), nullable=False)
     reason = db.Column(db.Text)
@@ -520,12 +542,15 @@ class FeeRefund(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     student = db.relationship('Student', backref='fee_refunds')
+    payment = db.relationship('FeePayment', backref='refunds')
 
     def to_dict(self):
         return {
             'id': self.id, 'student_id': self.student_id,
             'student_name': f"{self.student.first_name} {self.student.last_name or ''}".strip() if self.student else '',
             'payment_id': self.payment_id,
+            'payment_transaction_id': self.payment.transaction_id if self.payment else None,
+            'payment_amount': float(self.payment.amount_paid) if self.payment else None,
             'refund_amount': float(self.refund_amount),
             'reason': self.reason, 'refund_mode': self.refund_mode,
             'reference_no': self.reference_no, 'status': self.status,

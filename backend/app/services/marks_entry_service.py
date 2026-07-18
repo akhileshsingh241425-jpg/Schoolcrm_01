@@ -446,9 +446,10 @@ def get_dashboard_data(school_id, exam_id, filters=None):
 
     now = datetime.utcnow()
     summary = {
-        'total': len(schedules),
+        'total_schedules': len(schedules),
         'completed': 0,
-        'pending': 0,
+        'in_progress': 0,
+        'not_started': 0,
         'overdue': 0,
         'locked': 0
     }
@@ -492,9 +493,12 @@ def get_dashboard_data(school_id, exam_id, filters=None):
         elif is_overdue and progress['status'] != 'completed':
             entry_status = 'overdue'
             summary['overdue'] += 1
+        elif progress['status'] == 'in_progress':
+            entry_status = 'in_progress'
+            summary['in_progress'] += 1
         else:
-            entry_status = progress['status']  # not_started or in_progress
-            summary['pending'] += 1
+            entry_status = 'not_started'
+            summary['not_started'] += 1
 
         schedule_data.append({
             'exam_schedule_id': schedule.id,
@@ -505,11 +509,15 @@ def get_dashboard_data(school_id, exam_id, filters=None):
             'total_students': progress['total_students'],
             'marks_entered': progress['marks_entered'],
             'pending': progress['pending'],
-            'percentage_complete': progress['percentage_complete'],
+            'completion_percentage': progress['percentage_complete'],
             'is_marks_locked': schedule.is_marks_locked,
-            'entry_status': entry_status,
+            'status': entry_status,
             'deadline': deadline_date,
-            'is_overdue': is_overdue
+            'is_overdue': is_overdue,
+            'exam_date': schedule.exam_date.isoformat() if schedule.exam_date else None,
+            'max_marks': float(schedule.max_marks) if schedule.max_marks else None,
+            'passing_marks': float(schedule.passing_marks) if schedule.passing_marks else None,
+            'auto_lock': deadline.auto_lock if deadline else False,
         })
 
     return {

@@ -1,4 +1,5 @@
 from flask import Blueprint, request, g
+import calendar
 from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_, extract, or_
 from sqlalchemy.orm import joinedload
@@ -10,12 +11,17 @@ from app.models.attendance import (
     SubstituteAssignment
 )
 from app.models.student import Student, Class, Section
-from app.models.academic import Timetable, Subject
+from app.models.academic import Timetable, Subject, AcademicCalendar
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, get_teacher_scope, validate
+from app.utils.helpers import success_response, error_response, get_teacher_scope, validate, is_sunday, is_school_holiday, working_records, working_days_between
 
 attendance_bp = Blueprint('attendance', __name__)
+
+_is_sunday = is_sunday
+_is_holiday = is_school_holiday
+_working_records = working_records
+_working_days_between = working_days_between
 
 
 def _get_teacher_staff():
@@ -24,12 +30,23 @@ def _get_teacher_staff():
 
 
 def _get_teacher_section_ids(staff_id):
-    """Get section IDs where this staff is class_teacher or co_class_teacher."""
+    """Get section IDs where this staff is class_teacher or co_class_teacher.
+       Falls back to Class-level assignment if no Section-level match."""
     sections = Section.query.filter(
         Section.school_id == g.school_id,
         or_(Section.class_teacher_id == staff_id, Section.co_class_teacher_id == staff_id)
     ).all()
-    return [s.id for s in sections]
+    section_ids = {s.id for s in sections}
+    # Fallback: check Class-level class_teacher_id / co_class_teacher_id
+    from app.models.student import Class
+    classes = Class.query.filter(
+        Class.school_id == g.school_id,
+        or_(Class.class_teacher_id == staff_id, Class.co_class_teacher_id == staff_id)
+    ).all()
+    for cls in classes:
+        for sec in cls.sections:
+            section_ids.add(sec.id)
+    return list(section_ids)
 
 
 def _is_admin():
@@ -133,6 +150,13 @@ def mark_student_attendance():
     period = data.get('period')  # None = full day
     capture_mode = data.get('capture_mode', 'manual')
 
+    if isinstance(att_date, str):
+        att_date_obj = date.fromisoformat(att_date)
+    else:
+        att_date_obj = att_date
+    if _is_holiday(g.school_id, att_date_obj, context='student'):
+        return error_response('Cannot mark attendance on a Holiday (Sunday or school holiday)')
+
     # --- Class teacher / co-class teacher enforcement ---
     allowed_section_ids = None
     if not _is_admin():
@@ -148,8 +172,8 @@ def mark_student_attendance():
 
     # Batch fetch all students to avoid N+1
     student_ids = [r['student_id'] for r in records]
-    students_map = {s.id: s for s in Student.query.filter(
-        Student.id.in_(student_ids), Student.school_id == g.school_id
+    students_map = {s.admission_no: s for s in Student.query.filter(
+        Student.admission_no.in_(student_ids), Student.school_id == g.school_id
     ).all()} if student_ids else {}
 
     # If teacher, verify all students belong to their sections
@@ -242,9 +266,10 @@ def student_attendance_report():
         query = query.filter(StudentAttendance.date <= to_date)
 
     records = query.order_by(StudentAttendance.date.desc()).all()
+    records = _working_records(records, g.school_id)
 
     total = len(records)
-    present = sum(1 for r in records if r.status == 'present')
+    present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
     absent = sum(1 for r in records if r.status == 'absent')
     late = sum(1 for r in records if r.status == 'late')
     half_day = sum(1 for r in records if r.status == 'half_day')
@@ -291,6 +316,7 @@ def get_student_attendance_detail(student_id):
         query = query.filter(StudentAttendance.date <= to_date)
 
     records = query.order_by(StudentAttendance.date.desc()).all()
+    records = _working_records(records, g.school_id, context='student')
     total = len(records)
     present = sum(1 for r in records if r.status in ('present', 'late'))
 
@@ -304,7 +330,7 @@ def get_student_attendance_detail(student_id):
         monthly[key]['total'] += 1
 
     return success_response({
-        'student': {'id': student.id, 'name': student.full_name,
+        'student': {'id': student.admission_no, 'name': student.full_name,
                      'class_id': student.current_class_id,
                      'section_id': student.current_section_id},
         'records': [r.to_dict() for r in records[:100]],
@@ -390,8 +416,8 @@ def mark_period_attendance():
 
     # Batch fetch students
     student_ids = [r['student_id'] for r in records]
-    students_map = {s.id: s for s in Student.query.filter(
-        Student.id.in_(student_ids), Student.school_id == g.school_id
+    students_map = {s.admission_no: s for s in Student.query.filter(
+        Student.admission_no.in_(student_ids), Student.school_id == g.school_id
     ).all()} if student_ids else {}
 
     # If teacher, verify all students belong to their sections
@@ -434,23 +460,56 @@ def mark_period_attendance():
 # =====================================================
 
 @attendance_bp.route('/staff', methods=['GET'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 def get_staff_attendance():
     att_date = request.args.get('date', date.today().isoformat())
-    records = StaffAttendance.query.options(
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+
+    query = StaffAttendance.query.options(
         joinedload(StaffAttendance.staff)
-    ).filter_by(school_id=g.school_id, date=att_date).all()
+    ).filter_by(school_id=g.school_id)
+
+    # If teacher (non-admin), only see own attendance
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if staff:
+            query = query.filter_by(staff_id=staff.id)
+
+    if from_date and to_date:
+        query = query.filter(StaffAttendance.date >= from_date, StaffAttendance.date <= to_date)
+    elif att_date:
+        query = query.filter_by(date=att_date)
+
+    records = query.order_by(StaffAttendance.date.desc()).all()
     return success_response([r.to_dict() for r in records])
 
 
 @attendance_bp.route('/staff', methods=['POST'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 @validate({'attendance': {'required': True}})
 def mark_staff_attendance():
     data = g.get('validated_data') or request.get_json()
     att_date = data.get('date', date.today().isoformat())
     records = data.get('attendance', [])
     capture_mode = data.get('capture_mode', 'manual')
+
+    # Block Sunday/Holiday attendance
+    if isinstance(att_date, str):
+        att_date_obj = date.fromisoformat(att_date)
+    else:
+        att_date_obj = att_date
+    if _is_holiday(g.school_id, att_date_obj, context='staff'):
+        return error_response('Cannot mark attendance on a Holiday (Sunday or school holiday)')
+
+    # If teacher (non-admin), only allow marking own attendance
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if not staff:
+            return error_response('Staff record not found', 404)
+        for record in records:
+            if record['staff_id'] != staff.id:
+                return error_response('Teachers can only mark their own attendance', 403)
 
     for record in records:
         existing = StaffAttendance.query.filter_by(
@@ -461,6 +520,7 @@ def mark_staff_attendance():
             existing.check_in = record.get('check_in')
             existing.check_out = record.get('check_out')
             existing.capture_mode = capture_mode
+            existing.remarks = record.get('remarks')
         else:
             att = StaffAttendance(
                 staff_id=record['staff_id'],
@@ -478,8 +538,21 @@ def mark_staff_attendance():
     return success_response(message='Staff attendance marked')
 
 
+@attendance_bp.route('/staff/<int:id>', methods=['PUT'])
+@role_required('principal', 'school_admin')
+def update_staff_attendance(id):
+    """Principal/Admin can edit any staff attendance record"""
+    rec = StaffAttendance.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    data = request.get_json() or {}
+    for field in ['status', 'check_in', 'check_out', 'remarks', 'capture_mode']:
+        if field in data:
+            setattr(rec, field, data[field])
+    db.session.commit()
+    return success_response(rec.to_dict(), message='Attendance record updated')
+
+
 @attendance_bp.route('/staff/report', methods=['GET'])
-@role_required('school_admin', 'principal', 'hr')
+@role_required('school_admin', 'principal', 'hr', 'teacher')
 def staff_attendance_report():
     staff_id = request.args.get('staff_id', type=int)
     from_date = request.args.get('from_date')
@@ -488,7 +561,18 @@ def staff_attendance_report():
     query = StaffAttendance.query.options(
         joinedload(StaffAttendance.staff)
     ).filter_by(school_id=g.school_id)
-    if staff_id:
+
+    # Teacher non-admin: only see own report
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if staff:
+            query = query.filter_by(staff_id=staff.id)
+        else:
+            return success_response({'records': [], 'summary': {
+                'total_days': 0, 'present': 0, 'absent': 0, 'late': 0, 'percentage': 0
+            }})
+
+    if staff_id and _is_admin():
         query = query.filter_by(staff_id=staff_id)
     if from_date:
         query = query.filter(StaffAttendance.date >= from_date)
@@ -496,8 +580,9 @@ def staff_attendance_report():
         query = query.filter(StaffAttendance.date <= to_date)
 
     records = query.order_by(StaffAttendance.date.desc()).all()
+    records = _working_records(records, g.school_id, context='staff')
     total = len(records)
-    present = sum(1 for r in records if r.status in ('present', 'late'))
+    present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
 
     return success_response({
         'records': [r.to_dict() for r in records],
@@ -507,6 +592,313 @@ def staff_attendance_report():
             'late': sum(1 for r in records if r.status == 'late'),
             'percentage': round((present / total * 100), 2) if total > 0 else 0
         }
+    })
+
+
+@attendance_bp.route('/staff/monthly', methods=['GET'])
+@role_required('school_admin', 'principal', 'teacher')
+def staff_monthly_attendance():
+    """Get monthly attendance for any staff member (teacher/principal view)"""
+    staff_id = request.args.get('staff_id', type=int)
+    month = request.args.get('month')  # YYYY-MM format
+    
+    if not staff_id or not month:
+        return error_response('staff_id and month (YYYY-MM) are required')
+
+    try:
+        year, mon = month.split('-')
+        year, mon = int(year), int(mon)
+    except:
+        return error_response('Invalid month format. Use YYYY-MM')
+
+    # Teacher non-admin: only view their own
+    if g.current_user.has_role('teacher') and not _is_admin():
+        staff = _get_teacher_staff()
+        if not staff or staff.id != staff_id:
+            return error_response('You can only view your own attendance', 403)
+
+    staff_member = Staff.query.filter_by(id=staff_id, school_id=g.school_id).first()
+    if not staff_member:
+        return error_response('Staff not found', 404)
+
+    from app.models.school import SchoolSetting
+    open_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_open_time').first()
+    close_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_close_time').first()
+    halfday_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_halfday_end_time').first()
+    open_time = open_setting.setting_value if open_setting else '08:00'
+    close_time = close_setting.setting_value if close_setting else '15:00'
+    halfday_time = halfday_setting.setting_value if halfday_setting else '12:00'
+
+    records = StaffAttendance.query.filter(
+        StaffAttendance.staff_id == staff_id,
+        StaffAttendance.school_id == g.school_id,
+        extract('year', StaffAttendance.date) == year,
+        extract('month', StaffAttendance.date) == mon
+    ).order_by(StaffAttendance.date).all()
+    records = _working_records(records, g.school_id, context='staff')
+
+    enriched = []
+    for r in records:
+        d = r.to_dict()
+        if r.status in ('present', 'late'):
+            d['check_in'] = d['check_in'] or open_time
+            d['check_out'] = d['check_out'] or close_time
+        elif r.status == 'half_day':
+            d['check_in'] = d['check_in'] or open_time
+            d['check_out'] = d['check_out'] or halfday_time
+        elif r.status in ('absent', 'leave'):
+            d['check_in'] = None
+            d['check_out'] = None
+        enriched.append(d)
+
+    total = len(enriched)
+    present = sum(1 for r in enriched if r['status'] in ('present', 'late', 'half_day'))
+
+    return success_response({
+        'staff': staff_member.to_dict(),
+        'records': enriched,
+        'school_open_time': open_time,
+        'school_close_time': close_time,
+        'school_halfday_end_time': halfday_time,
+        'summary': {
+            'total_days': total,
+            'present': present,
+            'absent': sum(1 for r in enriched if r['status'] == 'absent'),
+            'late': sum(1 for r in enriched if r['status'] == 'late'),
+            'half_day': sum(1 for r in enriched if r['status'] == 'half_day'),
+            'leave': sum(1 for r in enriched if r['status'] == 'leave'),
+            'percentage': round((present / total * 100), 2) if total > 0 else 0
+        }
+    })
+
+
+# =====================================================
+# PRINCIPAL - Monthly Staff Attendance Grid
+# =====================================================
+
+@attendance_bp.route('/staff/monthly-grid', methods=['GET'])
+@role_required('school_admin', 'principal')
+def staff_monthly_grid():
+    """Get monthly attendance grid for all staff - Principal view
+    Returns: grid with staff as rows, days as columns, clickable cells showing entry/exit times
+    """
+    import calendar
+    month = request.args.get('month')  # YYYY-MM format
+    if not month:
+        # Default to current month
+        from datetime import date
+        today = date.today()
+        month = f"{today.year}-{today.month:02d}"
+
+    try:
+        year, mon = month.split('-')
+        year, mon = int(year), int(mon)
+    except:
+        return error_response('Invalid month format. Use YYYY-MM')
+
+    # Get school settings for default times
+    from app.models.school import SchoolSetting
+    open_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_open_time').first()
+    close_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_close_time').first()
+    halfday_setting = SchoolSetting.query.filter_by(school_id=g.school_id, setting_key='school_halfday_end_time').first()
+    open_time = open_setting.setting_value if open_setting else '08:00'
+    close_time = close_setting.setting_value if close_setting else '15:00'
+    halfday_time = halfday_setting.setting_value if halfday_setting else '12:00'
+
+    # Get all active staff
+    staff_list = Staff.query.filter_by(school_id=g.school_id, status='active').order_by(Staff.employee_id).all()
+    if not staff_list:
+        return success_response({
+            'month': month,
+            'month_name': calendar.month_name[mon],
+            'year': year,
+            'days_in_month': calendar.monthrange(year, mon)[1],
+            'school_open_time': open_time,
+            'school_close_time': close_time,
+            'grid': []
+        })
+
+    # Get all attendance records for this month
+    records = StaffAttendance.query.filter(
+        StaffAttendance.school_id == g.school_id,
+        extract('year', StaffAttendance.date) == year,
+        extract('month', StaffAttendance.date) == mon
+    ).all()
+
+    # Build record map: staff_id -> {day -> record}
+    record_map = {}
+    for r in records:
+        if r.staff_id not in record_map:
+            record_map[r.staff_id] = {}
+        record_map[r.staff_id][r.date.day] = r
+
+    days_in_month = calendar.monthrange(year, mon)[1]
+
+    # Build grid
+    from datetime import date as date_cls
+    today = date_cls.today()
+    grid = []
+    for staff in staff_list:
+        row = {
+            'staff_id': staff.id,
+            'employee_id': staff.employee_id,
+            'name': f"{staff.first_name} {staff.last_name or ''}".strip(),
+            'designation': staff.designation,
+            'department': staff.department,
+            'days': {}
+        }
+        for day in range(1, days_in_month + 1):
+            cell_date = date_cls(year, mon, day)
+            date_str = cell_date.isoformat()
+            is_future = cell_date > today
+            day_is_holiday = _is_holiday(g.school_id, cell_date, context='staff')
+
+            if day_is_holiday:
+                row['days'][day] = {
+                    'status': 'holiday',
+                    'check_in': None,
+                    'check_out': None,
+                    'date': date_str
+                }
+            elif is_future:
+                row['days'][day] = {
+                    'status': None,
+                    'check_in': None,
+                    'check_out': None,
+                    'date': date_str
+                }
+            elif staff.id in record_map and day in record_map[staff.id]:
+                rec = record_map[staff.id][day]
+                status = rec.status
+                check_in = rec.check_in.isoformat() if rec.check_in else None
+                check_out = rec.check_out.isoformat() if rec.check_out else None
+                if status in ('present', 'late'):
+                    check_in = check_in or open_time
+                    check_out = check_out or close_time
+                elif status == 'half_day':
+                    check_in = check_in or open_time
+                    check_out = check_out or halfday_time
+                elif status in ('absent', 'leave'):
+                    check_in = None
+                    check_out = None
+                row['days'][day] = {
+                    'status': status,
+                    'check_in': check_in,
+                    'check_out': check_out,
+                    'date': date_str
+                }
+            else:
+                row['days'][day] = {
+                    'status': 'absent',
+                    'check_in': None,
+                    'check_out': None,
+                    'date': date_str
+                }
+        grid.append(row)
+
+    return success_response({
+        'month': month,
+        'month_name': calendar.month_name[mon],
+        'year': year,
+        'days_in_month': days_in_month,
+        'school_open_time': open_time,
+        'school_close_time': close_time,
+        'school_halfday_end_time': halfday_time,
+        'grid': grid
+    })
+
+
+@attendance_bp.route('/student/monthly-grid', methods=['GET'])
+@role_required('school_admin', 'principal')
+def student_monthly_grid():
+    """Monthly attendance grid for students filtered by class+section. P/A only, no times."""
+    import calendar
+    month = request.args.get('month')
+    class_id = request.args.get('class_id', type=int)
+    section_id = request.args.get('section_id', type=int)
+
+    if not class_id:
+        return error_response('class_id is required')
+
+    if not month:
+        from datetime import date as date_cls
+        today = date_cls.today()
+        month = f"{today.year}-{today.month:02d}"
+
+    try:
+        year, mon = month.split('-')
+        year, mon = int(year), int(mon)
+    except:
+        return error_response('Invalid month format. Use YYYY-MM')
+
+    days_in_month = calendar.monthrange(year, mon)[1]
+
+    # Get students for this class+section
+    student_query = Student.query.filter_by(
+        school_id=g.school_id, current_class_id=class_id, status='active'
+    )
+    if section_id:
+        student_query = student_query.filter_by(current_section_id=section_id)
+    student_list = student_query.order_by(Student.roll_no, Student.first_name).all()
+
+    if not student_list:
+        return success_response({
+            'month': month, 'month_name': calendar.month_name[mon], 'year': year,
+            'days_in_month': days_in_month, 'grid': []
+        })
+
+    # Get all attendance records for this class+section+month
+    from datetime import date as date_cls
+    today = date_cls.today()
+
+    sa = StudentAttendance
+    records = sa.query.filter(
+        sa.school_id == g.school_id,
+        sa.class_id == class_id,
+        extract('year', sa.date) == year,
+        extract('month', sa.date) == mon,
+        sa.period.is_(None)
+    ).all()
+    if section_id:
+        records = [r for r in records if r.section_id == section_id]
+
+    # Build record map: student_id -> {day -> record}
+    record_map = {}
+    for r in records:
+        sid = r.student_id
+        if sid not in record_map:
+            record_map[sid] = {}
+        record_map[sid][r.date.day] = r
+
+    # Build grid
+    grid = []
+    for student in student_list:
+        row = {
+            'student_id': student.admission_no,
+            'roll_no': student.roll_no,
+            'name': f"{student.first_name} {student.last_name or ''}".strip(),
+            'days': {}
+        }
+        for day in range(1, days_in_month + 1):
+            cell_date = date_cls(year, mon, day)
+            date_str = cell_date.isoformat()
+            is_future = cell_date > today
+            day_is_holiday = _is_holiday(g.school_id, cell_date, context='student')
+
+            if day_is_holiday:
+                row['days'][day] = {'status': 'holiday', 'date': date_str}
+            elif is_future:
+                row['days'][day] = {'status': None, 'date': date_str}
+            elif student.admission_no in record_map and day in record_map[student.admission_no]:
+                rec = record_map[student.admission_no][day]
+                row['days'][day] = {'status': rec.status, 'date': date_str}
+            else:
+                row['days'][day] = {'status': 'absent', 'date': date_str}
+        grid.append(row)
+
+    return success_response({
+        'month': month, 'month_name': calendar.month_name[mon], 'year': year,
+        'days_in_month': days_in_month, 'grid': grid
     })
 
 
@@ -598,7 +990,8 @@ def apply_leave():
     data = g.get('validated_data') or request.get_json()
     from_d = date.fromisoformat(data['from_date'])
     to_d = date.fromisoformat(data['to_date'])
-    days = (to_d - from_d).days + 1
+    ctx = 'student' if data.get('applicant_type') == 'student' else 'staff'
+    days = _working_days_between(g.school_id, from_d, to_d, context=ctx)
 
     la = LeaveApplication(
         school_id=g.school_id,
@@ -641,24 +1034,41 @@ def approve_reject_leave(id):
         la.status = 'approved'
         la.approved_by = g.current_user.id
         la.approved_at = datetime.utcnow()
-        # Auto-mark leave days in attendance
+        la.days = _working_days_between(g.school_id, la.from_date, la.to_date, context='student' if la.applicant_type == 'student' else 'staff')
+        # Auto-mark leave days in attendance (skip Sundays & holidays)
         current_date = la.from_date
         while current_date <= la.to_date:
-            if la.applicant_type == 'student':
-                student = Student.query.get(la.applicant_id)
-                if student:
-                    existing = StudentAttendance.query.filter_by(
-                        student_id=la.applicant_id, date=current_date, period=None
+            if not _is_holiday(g.school_id, current_date, context='student' if la.applicant_type == 'student' else 'staff'):
+                if la.applicant_type == 'student':
+                    student = Student.query.get(la.applicant_id)
+                    if student:
+                        existing = StudentAttendance.query.filter_by(
+                            student_id=la.applicant_id, date=current_date, period=None
+                        ).first()
+                        if not existing:
+                            att = StudentAttendance(
+                                student_id=la.applicant_id,
+                                school_id=g.school_id,
+                                class_id=student.current_class_id,
+                                section_id=student.current_section_id,
+                                date=current_date, status='leave',
+                                remarks=f'Leave: {la.reason}',
+                                marked_by=g.current_user.id
+                            )
+                            db.session.add(att)
+                        else:
+                            existing.status = 'leave'
+                elif la.applicant_type == 'staff':
+                    existing = StaffAttendance.query.filter_by(
+                        staff_id=la.applicant_id, date=current_date
                     ).first()
                     if not existing:
-                        att = StudentAttendance(
-                            student_id=la.applicant_id,
+                        att = StaffAttendance(
+                            staff_id=la.applicant_id,
                             school_id=g.school_id,
-                            class_id=student.current_class_id,
-                            section_id=student.current_section_id,
-                            date=current_date, status='leave',
-                            remarks=f'Leave: {la.reason}',
-                            marked_by=g.current_user.id
+                            date=current_date,
+                            status='leave',
+                            remarks=f'Leave: {la.reason}'
                         )
                         db.session.add(att)
                     else:
@@ -703,7 +1113,7 @@ def get_late_arrivals():
 
     # Teacher scoping: only show late arrivals for students in their sections
     if scope and scope['section_ids']:
-        allowed_student_ids = [s[0] for s in db.session.query(Student.id).filter(
+        allowed_student_ids = [s[0] for s in db.session.query(Student.admission_no).filter(
             Student.school_id == g.school_id,
             Student.current_section_id.in_(scope['section_ids'])
         ).all()]
@@ -740,7 +1150,7 @@ def record_late_arrival():
     # Teacher scoping: only allow recording for students in their sections
     scope = get_teacher_scope()
     if scope and data.get('person_type') == 'student':
-        student = Student.query.filter_by(id=data['person_id'], school_id=g.school_id).first()
+        student = Student.query.filter_by(admission_no=data['person_id'], school_id=g.school_id).first()
         if not student:
             return error_response('Student not found', 404)
         if student.current_section_id not in scope['section_ids']:
@@ -869,7 +1279,7 @@ def get_event_attendance():
 
     # Teacher scoping: only show events for students in their sections
     if scope and scope['section_ids']:
-        allowed_ids = [s[0] for s in db.session.query(Student.id).filter(
+        allowed_ids = [s[0] for s in db.session.query(Student.admission_no).filter(
             Student.school_id == g.school_id,
             Student.current_section_id.in_(scope['section_ids'])
         ).all()]
@@ -950,6 +1360,7 @@ def attendance_analytics():
         query = query.filter(StudentAttendance.section_id.in_(scope['section_ids']))
 
     records = query.all()
+    records = _working_records(records, g.school_id, context='student')
     total = len(records)
     present = sum(1 for r in records if r.status in ('present', 'late'))
     absent = sum(1 for r in records if r.status == 'absent')
@@ -1025,22 +1436,23 @@ def attendance_alerts():
     alerts = []
     for student in student_query.all():
         records = StudentAttendance.query.filter_by(
-            student_id=student.id, school_id=g.school_id
+            student_id=student.admission_no, school_id=g.school_id
         ).filter(
             StudentAttendance.period.is_(None),
             StudentAttendance.date >= from_date,
             StudentAttendance.date <= to_date
         ).all()
+        records = _working_records(records, g.school_id, context='student')
 
         total = len(records)
         if total == 0:
             continue
-        present = sum(1 for r in records if r.status in ('present', 'late'))
+        present = sum(1 for r in records if r.status in ('present', 'late', 'half_day'))
         pct = round((present / total * 100), 2)
 
         if pct < threshold:
             alerts.append({
-                'student_id': student.id,
+                'student_id': student.admission_no,
                 'student_name': student.full_name,
                 'class_id': student.current_class_id,
                 'section_id': student.current_section_id,
@@ -1075,6 +1487,10 @@ def attendance_dashboard():
         if section_ids:
             section_filter = StudentAttendance.section_id.in_(section_ids)
 
+    # Today is a holiday — return holiday message
+    student_holiday = _is_holiday(g.school_id, today, context='student')
+    staff_holiday = _is_holiday(g.school_id, today, context='staff')
+
     # Today's student attendance
     query = StudentAttendance.query.filter_by(school_id=g.school_id, date=today).filter(
         StudentAttendance.period.is_(None)
@@ -1088,16 +1504,23 @@ def attendance_dashboard():
         student_query = student_query.filter(Student.current_section_id.in_(section_ids))
     total_students = student_query.count()
 
-    present_today = sum(1 for r in today_records if r.status in ('present', 'late'))
-    absent_today = sum(1 for r in today_records if r.status == 'absent')
-    late_today = sum(1 for r in today_records if r.status == 'late')
-    on_leave = sum(1 for r in today_records if r.status == 'leave')
-    unmarked = total_students - len(today_records)
+    if student_holiday:
+        present_today = absent_today = late_today = on_leave = 0
+        unmarked = 0
+    else:
+        present_today = sum(1 for r in today_records if r.status in ('present', 'late'))
+        absent_today = sum(1 for r in today_records if r.status == 'absent')
+        late_today = sum(1 for r in today_records if r.status == 'late')
+        on_leave = sum(1 for r in today_records if r.status == 'leave')
+        unmarked = total_students - len(today_records)
 
     # Today's staff attendance
     staff_records = StaffAttendance.query.filter_by(school_id=g.school_id, date=today).all()
     total_staff = Staff.query.filter_by(school_id=g.school_id).count()
-    staff_present = sum(1 for r in staff_records if r.status in ('present', 'late'))
+    if staff_holiday:
+        staff_present = 0
+    else:
+        staff_present = sum(1 for r in staff_records if r.status in ('present', 'late'))
 
     # Pending leaves
     pending_leaves = LeaveApplication.query.filter_by(
@@ -1109,10 +1532,19 @@ def attendance_dashboard():
         school_id=g.school_id, date=today
     ).count()
 
-    # Weekly trend (last 7 days)
+    # Weekly trend (last 7 days, skip holidays)
     weekly = []
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
+        if _is_holiday(g.school_id, d, context='student'):
+            weekly.append({
+                'date': d.isoformat(),
+                'day': d.strftime('%a'),
+                'total': 0, 'present': 0,
+                'percentage': 0,
+                'is_holiday': True
+            })
+            continue
         day_query = StudentAttendance.query.filter_by(
             school_id=g.school_id, date=d
         ).filter(StudentAttendance.period.is_(None))
@@ -1129,6 +1561,8 @@ def attendance_dashboard():
         })
 
     return success_response({
+        'today_is_holiday': student_holiday,
+        'staff_holiday': staff_holiday,
         'today': {
             'total_students': total_students,
             'present': present_today, 'absent': absent_today,
@@ -1138,8 +1572,8 @@ def attendance_dashboard():
         },
         'staff': {
             'total': total_staff, 'present': staff_present,
-            'absent': total_staff - len(staff_records),
-            'percentage': round((staff_present / total_staff * 100), 2) if total_staff > 0 else 0
+            'absent': 0 if staff_holiday else total_staff - len(staff_records),
+            'percentage': 0 if staff_holiday else round((staff_present / total_staff * 100), 2) if total_staff > 0 else 0
         },
         'pending_leaves': pending_leaves,
         'late_arrivals_today': late_arrivals_count,
@@ -1413,3 +1847,53 @@ def delete_substitution(sub_id):
     db.session.delete(sub)
     db.session.commit()
     return success_response(None, 'Substitution deleted')
+
+
+# ─────────────────────── STAFF EVENTS (all events visible, with audience labels) ───────────────────────
+
+@attendance_bp.route('/staff-events', methods=['GET'])
+@school_required
+def staff_events():
+    from datetime import date as _date
+
+    events = AcademicCalendar.query.filter_by(
+        school_id=g.school_id
+    ).order_by(AcademicCalendar.start_date.desc()).all()
+
+    today = _date.today()
+    result = []
+    for e in events:
+        end = e.end_date or e.start_date
+        is_upcoming = e.start_date > today
+        is_active = not is_upcoming and not (end < today)
+        d = e.to_dict()
+        audience = _build_event_audience(d)
+        d['audience'] = audience
+        d['is_upcoming'] = is_upcoming
+        d['is_active'] = is_active
+        result.append(d)
+
+    return success_response(result)
+
+
+def _build_event_audience(d):
+    applies = d.get('applies_to', 'all')
+    class_names = d.get('class_names') or []
+    class_name = d.get('class_name')
+
+    if applies == 'all':
+        return 'This event is for all students and staff'
+    elif applies == 'students':
+        return 'This event is for all students'
+    elif applies == 'staff':
+        return 'This event is for staff only'
+    elif applies == 'specific_class':
+        names = class_names if class_names else ([class_name] if class_name else [])
+        if len(names) > 1:
+            joined = ', '.join(names[:-1]) + f' and {names[-1]}'
+            return f'This event is only for {joined} students'
+        elif len(names) == 1:
+            return f'This event is only for {names[0]} students'
+        else:
+            return 'This event is for specific class students'
+    return 'This event is for all students and staff'

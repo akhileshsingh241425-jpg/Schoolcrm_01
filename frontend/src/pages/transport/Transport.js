@@ -619,15 +619,15 @@ export default function Transport() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {F(driverForm, setDriverForm, 'Name *', 'name')}
-            {F(driverForm, setDriverForm, 'Phone', 'phone')}
-            {F(driverForm, setDriverForm, 'Email', 'email')}
+            {F(driverForm, setDriverForm, 'Phone', 'phone', { onChange: e => setDriverForm({ ...driverForm, phone: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
+            {F(driverForm, setDriverForm, 'Email', 'email', { error: driverForm.email.length > 0 && !driverForm.email.includes('@'), helperText: driverForm.email.length > 0 && !driverForm.email.includes('@') ? 'Invalid email' : '' })}
             {F(driverForm, setDriverForm, 'License Number', 'license_number')}
             {Sel(driverForm, setDriverForm, 'License Type', 'license_type', ['LMV','HMV'])}
             {F(driverForm, setDriverForm, 'License Expiry', 'license_expiry', { type: 'date', InputLabelProps: { shrink: true } })}
             {F(driverForm, setDriverForm, 'Medical Fitness Expiry', 'medical_fitness_expiry', { type: 'date', InputLabelProps: { shrink: true } })}
             {F(driverForm, setDriverForm, 'Aadhar Number', 'aadhar_number')}
             {F(driverForm, setDriverForm, 'Blood Group', 'blood_group')}
-            {F(driverForm, setDriverForm, 'Emergency Contact', 'emergency_contact')}
+            {F(driverForm, setDriverForm, 'Emergency Contact', 'emergency_contact', { onChange: e => setDriverForm({ ...driverForm, emergency_contact: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
             {F(driverForm, setDriverForm, 'Experience (Years)', 'experience_years', { type: 'number' })}
             {Sel(driverForm, setDriverForm, 'Status', 'status', ['active','on_leave','terminated'])}
             {F(driverForm, setDriverForm, 'Address', 'address', { xs: 12, multiline: true, rows: 2 })}
@@ -653,7 +653,7 @@ export default function Transport() {
             {Sel(routeForm, setRouteForm, 'Driver', 'driver_id',
               [{ value: '', label: 'ΓÇö None ΓÇö' }, ...drivers.map(d => ({ value: d.id, label: `${d.name}${d.phone ? ' ΓÇó ' + d.phone : ''}` }))])}
             {F(routeForm, setRouteForm, 'Helper Name', 'helper_name')}
-            {F(routeForm, setRouteForm, 'Helper Phone', 'helper_phone')}
+            {F(routeForm, setRouteForm, 'Helper Phone', 'helper_phone', { onChange: e => setRouteForm({ ...routeForm, helper_phone: e.target.value.replace(/\D/g, '') }), inputProps: { maxLength: 10 } })}
             {F(routeForm, setRouteForm, 'Start Location', 'start_location')}
             {F(routeForm, setRouteForm, 'End Location', 'end_location')}
             {Sel(routeForm, setRouteForm, 'Shift', 'shift', ['morning','afternoon','both'])}

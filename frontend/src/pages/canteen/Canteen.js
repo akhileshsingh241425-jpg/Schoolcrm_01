@@ -406,8 +406,8 @@ function VendorTab({ showMsg }) {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Name" value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} required /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Contact Person" value={form.contact_person || ''} onChange={e => setForm({...form, contact_person: e.target.value})} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} /></Grid>
-            <Grid item xs={12} sm={6}><TextField fullWidth label="Email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g, '')})} inputProps={{ maxLength: 10 }} /></Grid>
+            <Grid item xs={12} sm={6}><TextField fullWidth label="Email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} error={form.email && form.email.length > 0 && !form.email.includes('@')} helperText={form.email && form.email.length > 0 && !form.email.includes('@') ? 'Invalid email' : ''} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="FSSAI License" value={form.fssai_license || ''} onChange={e => setForm({...form, fssai_license: e.target.value})} /></Grid>
             <Grid item xs={12} sm={6}><TextField fullWidth label="Rating (1-5)" type="number" inputProps={{ min: 1, max: 5 }} value={form.rating || ''} onChange={e => setForm({...form, rating: e.target.value})} /></Grid>
             <Grid item xs={12}><TextField fullWidth label="Address" multiline rows={2} value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} /></Grid>

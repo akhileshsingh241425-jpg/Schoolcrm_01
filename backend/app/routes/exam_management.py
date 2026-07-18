@@ -47,7 +47,7 @@ def get_date_sheet(exam_id):
 
 
 @exam_mgmt_bp.route('/date-sheet/<int:exam_id>/submit', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({})
 def submit_date_sheet(exam_id):
     """Submit date sheet for Principal approval."""
@@ -155,7 +155,7 @@ def upload_question_paper(exam_id):
 @validate({})
 def approve_paper(paper_id):
     """Approve question paper. Allowed: exam_controller, principal, school_admin, teacher (for HOD approval)."""
-    allowed = ['exam_controller', 'principal', 'school_admin', 'super_admin', 'teacher', 'academic_controller']
+    allowed = ['exam_controller', 'principal', 'school_admin', 'super_admin', 'teacher']
     if g.current_user.role and not g.current_user.has_role(*allowed):
         return error_response('Insufficient permissions', 403)
     paper = QuestionPaper.query.filter_by(id=paper_id, school_id=g.school_id).first_or_404()
@@ -182,7 +182,7 @@ def get_deadlines(exam_id):
 
 
 @exam_mgmt_bp.route('/deadlines/<int:exam_id>', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({
     'class_id': {'required': True, 'type': int},
     'subject_id': {'required': True, 'type': int},
@@ -207,7 +207,7 @@ def set_deadline(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/marks-status/<int:exam_id>', methods=['GET'])
-@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
 def marks_entry_status(exam_id):
     """Track which subjects have marks entered."""
     schedules = ExamSchedule.query.filter_by(exam_id=exam_id, school_id=g.school_id).all()
@@ -245,7 +245,7 @@ def marks_entry_status(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/results/<int:exam_id>/process', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({})
 def process_exam_results(exam_id):
     """Trigger result processing."""
@@ -256,7 +256,7 @@ def process_exam_results(exam_id):
 
 
 @exam_mgmt_bp.route('/results/<int:exam_id>/analysis', methods=['GET'])
-@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
 def result_analysis(exam_id):
     """Get subject-wise analysis."""
     class_id = request.args.get('class_id', type=int)
@@ -269,7 +269,7 @@ def result_analysis(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/seating/<int:schedule_id>/generate', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({})
 def generate_seating_arrangement(schedule_id):
     """Generate seating for an exam schedule."""
@@ -355,7 +355,7 @@ def create_grievance():
 
 
 @exam_mgmt_bp.route('/grievances/<int:gid>', methods=['PUT'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({})
 def update_grievance(gid):
     grievance = ExamGrievance.query.filter_by(id=gid, school_id=g.school_id).first_or_404()
@@ -397,7 +397,7 @@ def apply_grace_marks(exam_id):
 
 
 @exam_mgmt_bp.route('/grace-marks/<int:exam_id>', methods=['GET'])
-@role_required('exam_controller', 'academic_controller', 'principal', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'principal', 'school_admin', 'super_admin')
 def get_grace_marks(exam_id):
     entries = GraceMarks.query.filter_by(exam_id=exam_id, school_id=g.school_id).all()
     return success_response([e.to_dict() for e in entries])
@@ -408,7 +408,7 @@ def get_grace_marks(exam_id):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/re-exams/<int:exam_id>', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({
     're_exam_type': {'required': True},
     'new_exam_date': {'required': True},
@@ -463,7 +463,7 @@ def mark_notification_read(nid):
 # ═══════════════════════════════════════════════════════════
 
 @exam_mgmt_bp.route('/verification/<int:schedule_id>/generate', methods=['POST'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 @validate({})
 def generate_verification(schedule_id):
     """Randomly select students for marks verification."""
@@ -489,7 +489,7 @@ def generate_verification(schedule_id):
 
 
 @exam_mgmt_bp.route('/verification/<int:schedule_id>', methods=['GET'])
-@role_required('exam_controller', 'academic_controller', 'school_admin', 'super_admin')
+@role_required('exam_controller', 'school_admin', 'super_admin')
 def get_verifications(schedule_id):
     vlist = MarksVerification.query.filter_by(
         exam_schedule_id=schedule_id, school_id=g.school_id
@@ -566,3 +566,132 @@ def get_all_room_seatings(exam_id):
     from app.models.exam_extended import RoomSeatingGrid
     grids = RoomSeatingGrid.query.filter_by(school_id=g.school_id, exam_id=exam_id).all()
     return success_response([g.to_dict() for g in grids])
+
+
+# ═══════════════════════════════════════════════════════════
+# SEATING ARRANGEMENT (with approval workflow)
+# ═══════════════════════════════════════════════════════════
+
+@exam_mgmt_bp.route('/seating-arrangement', methods=['GET'])
+@school_required
+def list_seating_arrangements():
+    status = request.args.get('status')
+    exam_id = request.args.get('exam_id')
+    from app.models.exam_extended import ExamSeatingArrangement
+    query = ExamSeatingArrangement.query.filter_by(school_id=g.school_id)
+    if status:
+        query = query.filter_by(status=status)
+    if exam_id:
+        query = query.filter_by(exam_id=exam_id)
+    arrangements = query.order_by(ExamSeatingArrangement.id.desc()).all()
+    return success_response([a.to_dict() for a in arrangements])
+
+
+@exam_mgmt_bp.route('/seating-arrangement', methods=['POST'])
+@school_required
+@validate({
+    'exam_id': {'type': int, 'message': 'Exam is required'},
+    'hall_id': {'type': int, 'message': 'Hall is required'},
+    'columns': {'type': int, 'message': 'Number of columns is required'},
+    'rows': {'type': int, 'message': 'Number of rows is required'},
+})
+def create_seating_arrangement():
+    data = g.get('validated_data') or request.get_json()
+    from app.models.exam_extended import ExamSeatingArrangement
+    grid = [[{'class_section': '', 'roll_no': ''} for _ in range(data['rows'])] for _ in range(data['columns'])]
+    arrangement = ExamSeatingArrangement(
+        school_id=g.school_id,
+        exam_id=data['exam_id'],
+        hall_id=data['hall_id'],
+        title=data.get('title', ''),
+        num_columns=data['columns'],
+        num_rows=data['rows'],
+        grid=grid,
+        status='draft',
+        created_by=g.current_user.id,
+    )
+    db.session.add(arrangement)
+    db.session.commit()
+    return success_response(arrangement.to_dict(), 'Seating arrangement created')
+
+
+@exam_mgmt_bp.route('/seating-arrangement/<int:id>', methods=['GET'])
+@school_required
+def get_seating_arrangement(id):
+    from app.models.exam_extended import ExamSeatingArrangement
+    arrangement = ExamSeatingArrangement.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    return success_response(arrangement.to_dict())
+
+
+@exam_mgmt_bp.route('/seating-arrangement/<int:id>', methods=['PUT'])
+@school_required
+@validate({})
+def update_seating_arrangement(id):
+    data = g.get('validated_data') or request.get_json()
+    from app.models.exam_extended import ExamSeatingArrangement
+    arrangement = ExamSeatingArrangement.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    if arrangement.status != 'draft':
+        return error_response('Only draft arrangements can be edited')
+    if 'grid' in data:
+        arrangement.grid = data['grid']
+    if 'title' in data:
+        arrangement.title = data['title']
+    if 'num_columns' in data:
+        arrangement.num_columns = data['num_columns']
+    if 'num_rows' in data:
+        arrangement.num_rows = data['num_rows']
+    db.session.commit()
+    return success_response(arrangement.to_dict(), 'Seating updated')
+
+
+@exam_mgmt_bp.route('/seating-arrangement/<int:id>/submit', methods=['POST'])
+@school_required
+def submit_seating_arrangement(id):
+    from app.models.exam_extended import ExamSeatingArrangement
+    arrangement = ExamSeatingArrangement.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    if arrangement.status != 'draft':
+        return error_response('Only draft can be submitted for approval')
+    arrangement.status = 'pending_approval'
+    db.session.commit()
+    return success_response(arrangement.to_dict(), 'Submitted for approval')
+
+
+@exam_mgmt_bp.route('/seating-arrangement/<int:id>/approve', methods=['POST'])
+@role_required('school_admin', 'principal', 'super_admin')
+def approve_seating_arrangement(id):
+    from app.models.exam_extended import ExamSeatingArrangement
+    from app.models.student import Class, Section
+    arrangement = ExamSeatingArrangement.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    if arrangement.status != 'pending_approval':
+        return error_response('Arrangement must be in pending_approval status')
+    arrangement.status = 'approved'
+    arrangement.approved_by = g.current_user.id
+    arrangement.approved_at = datetime.utcnow()
+    db.session.commit()
+
+    # Notify creator that arrangement is approved
+    if arrangement.created_by:
+        notification_service.send_notification(
+            school_id=g.school_id,
+            recipient_user_id=arrangement.created_by,
+            type='exam',
+            title=f'Seating Approved: {arrangement.title or arrangement.hall.name}',
+            message=f'Seating arrangement for {arrangement.exam.name} in {arrangement.hall.name} has been approved.',
+            exam_id=arrangement.exam_id,
+        )
+    return success_response(arrangement.to_dict(), 'Seating approved & notified')
+
+
+@exam_mgmt_bp.route('/seating-arrangement/<int:id>/reject', methods=['POST'])
+@role_required('school_admin', 'principal', 'super_admin')
+@validate({})
+def reject_seating_arrangement(id):
+    data = g.get('validated_data') or request.get_json()
+    from app.models.exam_extended import ExamSeatingArrangement
+    arrangement = ExamSeatingArrangement.query.filter_by(id=id, school_id=g.school_id).first_or_404()
+    if arrangement.status != 'pending_approval':
+        return error_response('Arrangement must be in pending_approval status')
+    arrangement.status = 'rejected'
+    arrangement.rejection_reason = data.get('reason', 'No reason provided')
+    db.session.commit()
+    return success_response(arrangement.to_dict(), 'Seating rejected')

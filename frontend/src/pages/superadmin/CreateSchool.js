@@ -53,7 +53,7 @@ const INDIAN_STATES = [
   'Lakshadweep', 'Puducherry'
 ];
 
-const SESSION_OPTIONS = ['2021-2022', '2022-2023', '2023-2024', '2024-2025', '2025-2026'];
+
 
 const STAFF_CATEGORIES = [
   { value: 'director', label: 'Director' },
@@ -439,15 +439,8 @@ export default function CreateSchool() {
                     onChange={e => handleChange('established_year', e.target.value)} />
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Session</InputLabel>
-                    <Select label="Session" value={form.session}
-                      onChange={e => handleChange('session', e.target.value)}>
-                      {SESSION_OPTIONS.map(s => (
-                        <MenuItem key={s} value={s}>{s}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <TextField fullWidth label="Session" placeholder="e.g. 2026-2027" value={form.session}
+                    onChange={e => handleChange('session', e.target.value)} />
                 </Grid>
               </Grid>
 

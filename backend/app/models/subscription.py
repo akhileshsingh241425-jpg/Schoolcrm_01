@@ -18,6 +18,13 @@ class SubscriptionPlan(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
+        import json
+        feats = self.features
+        if isinstance(feats, str):
+            try:
+                feats = json.loads(feats)
+            except (json.JSONDecodeError, TypeError):
+                feats = []
         return {
             'id': self.id,
             'name': self.name,
@@ -26,7 +33,7 @@ class SubscriptionPlan(db.Model):
             'yearly_price': float(self.yearly_price) if self.yearly_price else None,
             'max_students': self.max_students,
             'max_staff': self.max_staff,
-            'features': self.features,
+            'features': feats or [],
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

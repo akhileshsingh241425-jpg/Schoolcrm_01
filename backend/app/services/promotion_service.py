@@ -8,6 +8,7 @@ from app.models.academic import (
 )
 from app.models.student import Student, Class, Section, AcademicYear
 from app.models.attendance import StudentAttendance
+from app.utils.helpers import working_records
 from sqlalchemy import func
 
 
@@ -109,26 +110,20 @@ def _get_student_attendance_pct(student_id, school_id, academic_year):
     start_date = academic_year.start_date
     end_date = academic_year.end_date
 
-    total_days = db.session.query(func.count(func.distinct(StudentAttendance.date))).filter(
-        StudentAttendance.school_id == school_id,
-        StudentAttendance.student_id == student_id,
-        StudentAttendance.date >= start_date,
-        StudentAttendance.date <= end_date,
-        StudentAttendance.period.is_(None),  # Full-day attendance only
-    ).scalar() or 0
-
-    if total_days == 0:
-        return 0.0
-
-    present_days = db.session.query(func.count(func.distinct(StudentAttendance.date))).filter(
+    records = StudentAttendance.query.filter(
         StudentAttendance.school_id == school_id,
         StudentAttendance.student_id == student_id,
         StudentAttendance.date >= start_date,
         StudentAttendance.date <= end_date,
         StudentAttendance.period.is_(None),
-        StudentAttendance.status.in_(['present', 'late']),
-    ).scalar() or 0
+    ).all()
+    records = working_records(records, school_id, context='student')
 
+    total_days = len(records)
+    if total_days == 0:
+        return 0.0
+
+    present_days = sum(1 for r in records if r.status in ('present', 'late'))
     return round((present_days / total_days) * 100, 2)
 
 

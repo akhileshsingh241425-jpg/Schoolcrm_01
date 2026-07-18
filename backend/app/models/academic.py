@@ -1,3 +1,4 @@
+import json
 from app import db
 from datetime import datetime
 
@@ -285,6 +286,8 @@ class ExamSchedule(db.Model):
     hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id'))
     instructions = db.Column(db.Text)
     is_marks_locked = db.Column(db.Boolean, default=False)
+    postponed_to = db.Column(db.Date)
+    paper_status = db.Column(db.Enum('scheduled', 'cancelled', 'postponed'), default='scheduled')
 
     subject = db.relationship('Subject')
     class_ref = db.relationship('Class')
@@ -310,6 +313,8 @@ class ExamSchedule(db.Model):
             'hall_id': self.hall_id,
             'hall_name': self.hall.name if self.hall else None,
             'is_marks_locked': self.is_marks_locked,
+            'postponed_to': self.postponed_to.isoformat() if self.postponed_to else None,
+            'paper_status': self.paper_status or 'scheduled',
         }
 
 
@@ -365,7 +370,7 @@ class ExamResult(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     marks_obtained = db.Column(db.Numeric(5, 2))
     grade = db.Column(db.String(5))
@@ -388,16 +393,17 @@ class ExamResult(db.Model):
             'student_id': self.student_id,
             'student_name': f"{self.student.first_name} {self.student.last_name}" if self.student else None,
             'admission_no': self.student.admission_no if self.student else None,
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'max_marks': float(self.schedule.max_marks) if self.schedule and self.schedule.max_marks else None,
             'passing_marks': float(self.schedule.passing_marks) if self.schedule and self.schedule.passing_marks else None,
             'grade': self.grade,
-            'grade_point': float(self.grade_point) if self.grade_point else None,
-            'percentage': float(self.percentage) if self.percentage else None,
+            'grade_point': float(self.grade_point) if self.grade_point is not None else None,
+            'percentage': float(self.percentage) if self.percentage is not None else None,
             'is_absent': self.is_absent,
             'is_exempted': self.is_exempted,
             'remarks': self.remarks,
             'subject': self.schedule.subject.to_dict() if self.schedule and self.schedule.subject else None,
+            'subject_name': self.schedule.subject.name if self.schedule and self.schedule.subject else None,
         }
 
 
@@ -408,7 +414,7 @@ class MarkEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     component_id = db.Column(db.Integer, db.ForeignKey('subject_components.id'))
     marks_obtained = db.Column(db.Numeric(5, 2))
     is_absent = db.Column(db.Boolean, default=False)
@@ -428,7 +434,7 @@ class MarkEntry(db.Model):
             'student_id': self.student_id,
             'component_id': self.component_id,
             'component_name': self.component.name if self.component else 'Total',
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'max_marks': float(self.component.max_marks) if self.component else None,
             'is_absent': self.is_absent,
             'is_exempted': self.is_exempted,
@@ -441,7 +447,7 @@ class MarkEntry(db.Model):
 # =====================================================
 
 class ExamHall(db.Model):
-    """Exam hall/room management"""
+    """Room/hall management — assigned to a class on normal days, used as exam hall on exam days."""
     __tablename__ = 'exam_halls'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -454,7 +460,10 @@ class ExamHall(db.Model):
     columns = db.Column(db.Integer)
     has_cctv = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
+    assigned_class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='SET NULL'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    assigned_class = db.relationship('Class', backref='exam_halls')
 
     def to_dict(self):
         return {
@@ -467,6 +476,8 @@ class ExamHall(db.Model):
             'columns': self.columns,
             'has_cctv': self.has_cctv,
             'is_active': self.is_active,
+            'assigned_class_id': self.assigned_class_id,
+            'assigned_class_name': self.assigned_class.name if self.assigned_class else None,
         }
 
 
@@ -478,7 +489,7 @@ class ExamSeating(db.Model):
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
     hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     seat_number = db.Column(db.String(20))
     row_number = db.Column(db.Integer)
     column_number = db.Column(db.Integer)
@@ -539,7 +550,7 @@ class ExamAdmitCard(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_id = db.Column(db.Integer, db.ForeignKey('exams.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     roll_number = db.Column(db.String(20))
     status = db.Column(db.Enum('generated', 'issued', 'revoked'), default='generated')
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -569,7 +580,7 @@ class ReportCard(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     exam_id = db.Column(db.Integer, db.ForeignKey('exams.id'))
     exam_group_id = db.Column(db.Integer, db.ForeignKey('exam_groups.id'))
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
@@ -632,7 +643,7 @@ class ExamIncident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     exam_schedule_id = db.Column(db.Integer, db.ForeignKey('exam_schedules.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no'))
     hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id'))
     type = db.Column(db.Enum('cheating', 'disruption', 'unfair_means', 'medical', 'other'), nullable=False)
     description = db.Column(db.Text, nullable=False)
@@ -675,14 +686,17 @@ class Syllabus(db.Model):
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
-    chapter_number = db.Column(db.Integer, nullable=False)
-    chapter_name = db.Column(db.String(255), nullable=False)
-    topics = db.Column(db.Text)  # JSON array of topics
+    book_name = db.Column(db.String(255))
+    total_chapters = db.Column(db.Integer)
+    chapter_number = db.Column(db.Integer)
+    chapter_name = db.Column(db.String(255))
+    chapter_added_date = db.Column(db.Date)
+    topics = db.Column(db.Text)
     learning_objectives = db.Column(db.Text)
     estimated_hours = db.Column(db.Numeric(5, 1))
     term = db.Column(db.Enum('term1', 'term2', 'term3', 'annual'), default='term1')
     display_order = db.Column(db.Integer, default=0)
-    resources = db.Column(db.Text)  # JSON: textbook pages, reference links
+    resources = db.Column(db.Text)
     status = db.Column(db.Enum('not_started', 'in_progress', 'completed'), default='not_started')
     completion_percentage = db.Column(db.Numeric(5, 2), default=0)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -695,6 +709,14 @@ class Syllabus(db.Model):
     progress_logs = db.relationship('SyllabusProgress', backref='syllabus', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
+        exam = {}
+        if self.learning_objectives:
+            try:
+                lo = json.loads(self.learning_objectives) if isinstance(self.learning_objectives, str) else self.learning_objectives
+                if isinstance(lo, dict) and 'exam' in lo:
+                    exam = lo['exam']
+            except:
+                pass
         return {
             'id': self.id,
             'school_id': self.school_id,
@@ -703,10 +725,16 @@ class Syllabus(db.Model):
             'subject_id': self.subject_id,
             'subject_name': self.subject.name if self.subject else None,
             'academic_year_id': self.academic_year_id,
+            'book_name': self.book_name,
+            'total_chapters': self.total_chapters,
             'chapter_number': self.chapter_number,
             'chapter_name': self.chapter_name,
+            'chapter_added_date': self.chapter_added_date.isoformat() if self.chapter_added_date else None,
             'topics': self.topics,
             'learning_objectives': self.learning_objectives,
+            'exam_included': exam.get('included', False),
+            'exam_weightage': exam.get('weightage'),
+            'exam_topics': exam.get('topics'),
             'estimated_hours': float(self.estimated_hours) if self.estimated_hours else None,
             'term': self.term,
             'display_order': self.display_order,
@@ -726,6 +754,8 @@ class SyllabusProgress(db.Model):
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.id', ondelete='CASCADE'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('staff.id'))
+    chapter_number = db.Column(db.Integer)
+    chapter_name = db.Column(db.String(200))
     date = db.Column(db.Date, nullable=False)
     topics_covered = db.Column(db.Text, nullable=False)
     hours_spent = db.Column(db.Numeric(3, 1))
@@ -742,6 +772,8 @@ class SyllabusProgress(db.Model):
             'syllabus_id': self.syllabus_id,
             'teacher_id': self.teacher_id,
             'teacher_name': f"{self.teacher.first_name} {self.teacher.last_name or ''}".strip() if self.teacher else None,
+            'chapter_number': self.chapter_number,
+            'chapter_name': self.chapter_name,
             'date': self.date.isoformat() if self.date else None,
             'topics_covered': self.topics_covered,
             'hours_spent': float(self.hours_spent) if self.hours_spent else None,
@@ -903,7 +935,7 @@ class HomeworkSubmission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     homework_id = db.Column(db.Integer, db.ForeignKey('homework.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     submission_text = db.Column(db.Text)
     attachment_url = db.Column(db.String(500))
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -928,7 +960,7 @@ class HomeworkSubmission(db.Model):
             'attachment_url': self.attachment_url,
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
             'is_late': self.is_late,
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'grade': self.grade,
             'teacher_remarks': self.teacher_remarks,
             'graded_at': self.graded_at.isoformat() if self.graded_at else None,
@@ -1026,6 +1058,9 @@ class AcademicCalendar(db.Model):
     class_ref = db.relationship('Class')
 
     def to_dict(self):
+        event_class_rows = CalendarEventClass.query.filter_by(event_id=self.id).all()
+        class_ids = [rc.class_id for rc in event_class_rows]
+        class_names = [rc.class_ref.name for rc in event_class_rows if rc.class_ref]
         return {
             'id': self.id,
             'academic_year_id': self.academic_year_id,
@@ -1040,12 +1075,27 @@ class AcademicCalendar(db.Model):
             'applies_to': self.applies_to,
             'class_id': self.class_id,
             'class_name': self.class_ref.name if self.class_ref else None,
+            'class_ids': class_ids,
+            'class_names': class_names,
             'color': self.color,
             'is_recurring': self.is_recurring,
             'recurrence_pattern': self.recurrence_pattern,
             'notify_parents': self.notify_parents,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class CalendarEventClass(db.Model):
+    """Multi-class mapping for AcademicCalendar events"""
+    __tablename__ = 'calendar_event_classes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    event_id = db.Column(db.Integer, db.ForeignKey('academic_calendar.id', ondelete='CASCADE'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+
+    event = db.relationship('AcademicCalendar', backref=db.backref('event_classes', lazy='dynamic', cascade='all, delete-orphan'))
+    class_ref = db.relationship('Class')
 
 
 # =====================================================
@@ -1158,7 +1208,7 @@ class StudentElective(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey('elective_groups.id', ondelete='CASCADE'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
     status = db.Column(db.Enum('selected', 'confirmed', 'dropped'), default='selected')
@@ -1194,7 +1244,7 @@ class StudentSubjectEnrollment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'))
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))
@@ -1353,7 +1403,7 @@ class PromotionRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.String(50), db.ForeignKey('students.admission_no', ondelete='CASCADE'), nullable=False)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=False)
     from_class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     from_section_id = db.Column(db.Integer, db.ForeignKey('sections.id'))

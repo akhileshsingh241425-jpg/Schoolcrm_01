@@ -748,7 +748,7 @@ def import_students(rows, school_id):
         if row.get('father_name'):
             father = ParentDetail(
                 school_id=school_id,
-                student_id=student.id,
+                student_id=student.admission_no,
                 relation='father',
                 name=row['father_name'],
                 phone=row.get('father_phone') or None,
@@ -760,7 +760,7 @@ def import_students(rows, school_id):
         if row.get('mother_name'):
             mother = ParentDetail(
                 school_id=school_id,
-                student_id=student.id,
+                student_id=student.admission_no,
                 relation='mother',
                 name=row['mother_name'],
                 phone=row.get('mother_phone') or None,

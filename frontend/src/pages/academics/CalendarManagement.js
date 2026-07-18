@@ -49,6 +49,7 @@ const DEFAULT_FORM = {
   end_date: '',
   class_id: '',
   is_holiday: false,
+  applies_to: 'all',
   color: '#3b82f6',
 };
 
@@ -550,6 +551,21 @@ export default function CalendarManagement() {
               label="Mark as Holiday"
               sx={{ mt: 1 }}
             />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Applies To</InputLabel>
+              <Select
+                value={formData.applies_to || 'all'}
+                label="Applies To"
+                onChange={e => handleFormChange('applies_to', e.target.value)}
+              >
+                <MenuItem value="all">All (Students + Staff)</MenuItem>
+                <MenuItem value="students">Students Only</MenuItem>
+                <MenuItem value="staff">Staff Only</MenuItem>
+                {formData.class_id && <MenuItem value="specific_class">Specific Class Only</MenuItem>}
+              </Select>
+            </FormControl>
           </Grid>
         </Grid>
       </DialogContent>

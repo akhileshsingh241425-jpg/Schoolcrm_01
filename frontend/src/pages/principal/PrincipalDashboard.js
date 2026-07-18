@@ -1,19 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Typography, Grid, Card, CardContent, Paper, Chip, Avatar, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   LinearProgress, alpha, useTheme, IconButton, Tooltip, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  Alert, Stack, Divider, Rating, Tabs, Tab
+  Alert, Stack, Divider, Rating, Tabs, Tab, TableFooter, TablePagination
 } from '@mui/material';
 import {
   People, School, AttachMoney, CalendarMonth, TrendingUp, Warning,
   CheckCircle, Gavel, PersonOff, Assignment, Refresh, Visibility,
-  ThumbUp, ThumbDown, Schedule, Star, Assessment
+  ThumbUp, ThumbDown, Schedule, Star, Assessment, AccessTime,
+  ViewColumn, Today, ChevronLeft, ChevronRight
 } from '@mui/icons-material';
 import { principalAPI, studentsAPI } from '../../services/api';
 import examMgmtAPI from '../../services/examApi';
 import { academicsAPI } from '../../services/api';
+import { attendanceAPI } from '../../services/api';
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 
@@ -238,6 +240,575 @@ function AllTimetablesSection() {
     </Box>
   );
 }
+ 
+// ─── Staff Attendance Grid (Principal View) ───
+function StaffAttendanceGrid() {
+  const [gridData, setGridData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { school } = useAuthStore();
+  const [month, setMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedCell, setSelectedCell] = useState(null);
+
+  const loadGrid = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await attendanceAPI.staffMonthlyGrid({ month });
+      setGridData(res.data.data);
+    } catch (err) {
+      console.error('Failed to load staff attendance grid:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [month]);
+
+  useEffect(() => { loadGrid(); }, [loadGrid]);
+
+  const changeMonth = (delta) => {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'present': return '#10b981';
+      case 'late': return '#f59e0b';
+      case 'half_day': return '#3b82f6';
+      case 'leave': return '#8b5cf6';
+      case 'absent': return '#ef4444';
+      case 'holiday': return '#6b7280';
+      default: return '#d1d5db';
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'present': return 'P';
+      case 'late': return 'L';
+      case 'half_day': return 'HD';
+      case 'leave': return 'Lv';
+      case 'absent': return 'A';
+      case 'holiday': return 'H';
+      default: return '';
+    }
+  };
+
+  if (loading) return <LinearProgress />;
+
+  if (!gridData || !gridData.grid?.length) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <ViewColumn sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+        <Typography color="text.secondary">No staff attendance data for this month</Typography>
+      </Box>
+    );
+  }
+
+  const { days_in_month, school_open_time, school_close_time, grid } = gridData;
+
+  return (
+    <Box sx={{ p: 2 }}>
+      {/* Month Navigation */}
+      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <IconButton onClick={() => changeMonth(-1)} size="small"><ChevronLeft /></IconButton>
+        <Typography variant="h6" fontWeight={700} sx={{ minWidth: 180, textAlign: 'center' }}>
+          {gridData.month_name} {gridData.year}
+        </Typography>
+        <IconButton onClick={() => changeMonth(1)} size="small"><ChevronRight /></IconButton>
+        <Box sx={{ flex: 1 }} />
+        <TextField
+          select
+          size="small"
+          value={month.split('-')[0]}
+          onChange={(e) => setMonth(`${e.target.value}-${month.split('-')[1]}`)}
+          sx={{ minWidth: 100 }}
+        >
+          {(() => {
+            const opts = [];
+            const startYear = school?.created_at ? new Date(school.created_at).getFullYear() : 2020;
+            const endYear = new Date().getFullYear() + 10;
+            for (let y = startYear; y <= endYear; y++) {
+              opts.push(<MenuItem key={y} value={String(y)}>{y}</MenuItem>);
+            }
+            return opts;
+          })()}
+        </TextField>
+        <TextField
+          select
+          size="small"
+          value={month.split('-')[1]}
+          onChange={(e) => setMonth(`${month.split('-')[0]}-${e.target.value}`)}
+          sx={{ minWidth: 130 }}
+        >
+          {Array.from({ length: 12 }, (_, i) => {
+            const m = String(i + 1).padStart(2, '0');
+            return <MenuItem key={m} value={m}>{new Date(2024, i).toLocaleDateString('en-IN', { month: 'long' })}</MenuItem>;
+          })}
+        </TextField>
+      </Stack>
+
+      {/* Legend */}
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Typography variant="caption" fontWeight={600}>Legend:</Typography>
+        {['present', 'late', 'half_day', 'leave', 'absent', 'holiday'].map(s => (
+          <Chip key={s} label={getStatusLabel(s)} size="small" icon={<Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: getStatusColor(s), mr: 0.5 }} />}
+            color={getStatusColor(s) === '#ef4444' ? 'error' : getStatusColor(s) === '#f59e0b' ? 'warning' : getStatusColor(s) === '#6b7280' ? 'default' : 'primary'}
+            variant="outlined" sx={{ fontSize: '0.65rem', height: 22 }} />
+        ))}
+      </Box>
+
+      {/* Grid Table */}
+      <TableContainer component={Paper} sx={{ maxHeight: 600, overflow: 'auto' }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'primary.main', color: 'white' }}>
+              <TableCell sx={{ fontWeight: 700, sticky: 'left', minWidth: 80, width: 80 }}>Emp ID</TableCell>
+              <TableCell sx={{ fontWeight: 700, sticky: 'left', minWidth: 160, width: 160 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 700, sticky: 'left', minWidth: 120, width: 120 }}>Designation</TableCell>
+              {Array.from({ length: days_in_month }, (_, i) => i + 1).map(day => (
+                <TableCell key={day} sx={{ fontWeight: 700, textAlign: 'center', minWidth: 50, width: 50 }}>
+                  {day}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {grid.map((staff, rowIdx) => (
+              <TableRow key={staff.staff_id} hover>
+                <TableCell sx={{ fontWeight: 700, sticky: 'left', fontSize: '0.7rem', color: 'text.secondary' }}>
+                  {staff.employee_id || '-'}
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600, sticky: 'left', fontSize: '0.75rem' }}>
+                  {staff.name}
+                </TableCell>
+                <TableCell sx={{ fontSize: '0.65rem', sticky: 'left', color: 'text.secondary', maxWidth: 120 }}>
+                  {staff.designation || '-'}
+                </TableCell>
+                {Array.from({ length: days_in_month }, (_, i) => i + 1).map(day => {
+                  const cell = staff.days[day];
+                  const status = cell?.status;
+                  const isHoliday = status === 'holiday';
+                  const isFuture = status === null || status === undefined;
+                  const displayStatus = status || 'absent';
+
+                  return (
+                    <TableCell
+                      key={day}
+                      sx={{
+                        textAlign: 'center',
+                        cursor: isHoliday || isFuture ? 'default' : 'pointer',
+                        fontSize: '0.65rem',
+                        padding: '4px 2px',
+                        minWidth: 50,
+                        width: 50,
+                        bgcolor: isHoliday ? alpha('#6b7280', 0.08) : isFuture ? '#f9fafb' : rowIdx % 2 === 0 ? 'grey.50' : 'transparent',
+                        borderRight: '1px solid',
+                        borderColor: 'divider',
+                        '&:hover': isHoliday || isFuture ? {} : { bgcolor: alpha(getStatusColor(status), 0.08) }
+                      }}
+                      onClick={() => {
+                        if (!isHoliday && !isFuture) {
+                          setSelectedCell({ staff, day, cell, openTime: school_open_time, closeTime: school_close_time });
+                        }
+                      }}
+                    >
+                      {isHoliday ? (
+                        <Chip
+                          label="H"
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.6rem',
+                            height: 20,
+                            px: 0.5,
+                            fontWeight: 700,
+                            bgcolor: alpha('#6b7280', 0.1),
+                            borderColor: '#6b7280',
+                            color: '#6b7280'
+                          }}
+                        />
+                      ) : isFuture ? (
+                        <Typography variant="caption" color="text.disabled">-</Typography>
+                      ) : (
+                        <Chip
+                          label={getStatusLabel(status)}
+                          size="small"
+                          color={getStatusColor(status) === '#ef4444' ? 'error' : getStatusColor(status) === '#f59e0b' ? 'warning' : 'primary'}
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.6rem',
+                            height: 20,
+                            px: 0.5,
+                            fontWeight: 700,
+                            bgcolor: alpha(getStatusColor(status), 0.1),
+                            borderColor: getStatusColor(status)
+                          }}
+                        />
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!selectedCell} onClose={() => setSelectedCell(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <AccessTime sx={{ fontSize: 20 }} />
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>{selectedCell?.staff?.name}</Typography>
+              <Typography variant="caption" color="text.secondary">{selectedCell?.cell?.date}</Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: alpha(getStatusColor(selectedCell?.cell?.status), 0.05) }}>
+                <Typography variant="caption" color="text.secondary">Status</Typography>
+                <Typography variant="h5" fontWeight={700} color={getStatusColor(selectedCell?.cell?.status)}>
+                  {getStatusLabel(selectedCell?.cell?.status)} - {selectedCell?.cell?.status?.toUpperCase()}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary">Entry Time</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {selectedCell?.cell?.status === 'absent' || selectedCell?.cell?.status === 'leave' ? (
+                    <Typography color="text.secondary">—</Typography>
+                  ) : (
+                    selectedCell?.cell?.check_in || selectedCell?.openTime || '—'
+                  )}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary">Exit Time</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {selectedCell?.cell?.status === 'absent' || selectedCell?.cell?.status === 'leave' ? (
+                    <Typography color="text.secondary">—</Typography>
+                  ) : (
+                    selectedCell?.cell?.check_out || selectedCell?.closeTime || '—'
+                  )}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary">School Open Time</Typography>
+                <Typography variant="body1" fontWeight={600}>{selectedCell?.openTime}</Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary">School Close Time</Typography>
+                <Typography variant="body1" fontWeight={600}>{selectedCell?.closeTime}</Typography>
+              </Paper>
+            </Grid>
+            {selectedCell?.cell?.remarks && (
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="caption" color="text.secondary">Remarks</Typography>
+                  <Typography>{selectedCell.cell.remarks}</Typography>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedCell(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// ─── Student Attendance Grid (Principal View) ───
+function StudentAttendanceGrid() {
+  const [gridData, setGridData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [classes, setClasses] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [classId, setClassId] = useState('');
+  const [sectionId, setSectionId] = useState('');
+  const { school } = useAuthStore();
+  const [month, setMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [marking, setMarking] = useState(false);
+
+  useEffect(() => {
+    studentsAPI.listClasses().then(r => setClasses(toArr(r.data?.data))).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (classId) {
+      studentsAPI.listSections(classId).then(r => setSections(toArr(r.data?.data))).catch(() => setSections([]));
+      setSectionId('');
+    } else {
+      setSections([]);
+      setSectionId('');
+    }
+  }, [classId]);
+
+  const loadGrid = useCallback(async () => {
+    if (!classId) { setGridData(null); return; }
+    setLoading(true);
+    try {
+      const params = { month, class_id: classId };
+      if (sectionId) params.section_id = sectionId;
+      const res = await attendanceAPI.studentMonthlyGrid(params);
+      setGridData(res.data.data);
+    } catch (err) {
+      console.error('Failed to load student attendance grid:', err);
+      setGridData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [month, classId, sectionId]);
+
+  useEffect(() => { loadGrid(); }, [loadGrid]);
+
+  const changeMonth = (delta) => {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const normalizeStatus = (status) => {
+    if (status === 'present' || status === 'late' || status === 'half_day') return 'present';
+    if (status === 'absent' || status === 'leave') return 'absent';
+    return status;
+  };
+
+  const getStatusColor = (status) => {
+    const normalized = normalizeStatus(status);
+    switch (normalized) {
+      case 'present': return '#10b981';
+      case 'absent': return '#ef4444';
+      case 'holiday': return '#6b7280';
+      default: return '#d1d5db';
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    const normalized = normalizeStatus(status);
+    switch (normalized) {
+      case 'present': return 'P';
+      case 'absent': return 'A';
+      case 'holiday': return 'H';
+      default: return '';
+    }
+  };
+
+  const markAttendance = async (status) => {
+    if (!selectedCell) return;
+    setMarking(true);
+    try {
+      await attendanceAPI.markStudent({
+        date: selectedCell.cell.date,
+        attendance: [{ student_id: selectedCell.studentId, status }],
+      });
+      toast.success(`${selectedCell.studentName} marked as ${status === 'present' ? 'Present' : 'Absent'}`);
+      setSelectedCell(null);
+      loadGrid();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to mark attendance');
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  return (
+    <Box sx={{ p: 2 }}>
+      {/* Filters */}
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField select size="small" label="Class" value={classId} onChange={e => setClassId(e.target.value)} sx={{ minWidth: 130 }}>
+          <MenuItem value="">Select Class</MenuItem>
+          {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+        </TextField>
+        <TextField select size="small" label="Section" value={sectionId} onChange={e => setSectionId(e.target.value)} sx={{ minWidth: 130 }} disabled={!classId}>
+          <MenuItem value="">All Sections</MenuItem>
+          {sections.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+        </TextField>
+        {!classId && (
+          <Alert severity="info" sx={{ borderRadius: 2 }}>Select a class to view attendance</Alert>
+        )}
+      </Stack>
+
+      {classId && (
+        <>
+          {/* Month Navigation */}
+          <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <IconButton onClick={() => changeMonth(-1)} size="small"><ChevronLeft /></IconButton>
+            <Typography variant="h6" fontWeight={700} sx={{ minWidth: 180, textAlign: 'center' }}>
+              {gridData?.month_name} {gridData?.year}
+            </Typography>
+            <IconButton onClick={() => changeMonth(1)} size="small"><ChevronRight /></IconButton>
+            <Box sx={{ flex: 1 }} />
+            <TextField
+              select size="small" value={month.split('-')[0]}
+              onChange={(e) => setMonth(`${e.target.value}-${month.split('-')[1]}`)}
+              sx={{ minWidth: 100 }}
+            >
+              {(() => {
+                const opts = [];
+                const startYear = school?.created_at ? new Date(school.created_at).getFullYear() : 2020;
+                const endYear = new Date().getFullYear() + 10;
+                for (let y = startYear; y <= endYear; y++) {
+                  opts.push(<MenuItem key={y} value={String(y)}>{y}</MenuItem>);
+                }
+                return opts;
+              })()}
+            </TextField>
+            <TextField
+              select size="small" value={month.split('-')[1]}
+              onChange={(e) => setMonth(`${month.split('-')[0]}-${e.target.value}`)}
+              sx={{ minWidth: 130 }}
+            >
+              {Array.from({ length: 12 }, (_, i) => {
+                const m = String(i + 1).padStart(2, '0');
+                return <MenuItem key={m} value={m}>{new Date(2024, i).toLocaleDateString('en-IN', { month: 'long' })}</MenuItem>;
+              })}
+            </TextField>
+          </Stack>
+
+          {/* Legend */}
+          <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Typography variant="caption" fontWeight={600}>Legend:</Typography>
+            {['present', 'absent', 'holiday'].map(s => (
+              <Chip key={s} label={getStatusLabel(s)} size="small"
+                icon={<Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: getStatusColor(s), mr: 0.5 }} />}
+                variant="outlined" sx={{ fontSize: '0.65rem', height: 22 }} />
+            ))}
+          </Box>
+
+          {loading ? <LinearProgress /> : (!gridData || !gridData.grid?.length ? (
+            <Box sx={{ p: 4, textAlign: 'center' }}>
+              <ViewColumn sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+              <Typography color="text.secondary">No student attendance data for this month</Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} sx={{ maxHeight: 600, overflow: 'auto' }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                    <TableCell sx={{ fontWeight: 700, sticky: 'left', minWidth: 60, width: 60 }}>Roll</TableCell>
+                    <TableCell sx={{ fontWeight: 700, sticky: 'left', minWidth: 160, width: 160 }}>Name</TableCell>
+                    {Array.from({ length: gridData.days_in_month }, (_, i) => i + 1).map(day => (
+                      <TableCell key={day} sx={{ fontWeight: 700, textAlign: 'center', minWidth: 45, width: 45 }}>{day}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {gridData.grid.map((student, rowIdx) => (
+                    <TableRow key={student.student_id} hover>
+                      <TableCell sx={{ fontWeight: 700, sticky: 'left', fontSize: '0.7rem', color: 'text.secondary' }}>
+                        {student.roll_no || '-'}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, sticky: 'left', fontSize: '0.75rem' }}>
+                        {student.name}
+                      </TableCell>
+                      {Array.from({ length: gridData.days_in_month }, (_, i) => i + 1).map(day => {
+                        const cell = student.days[day];
+                        const status = cell?.status;
+                        const isHoliday = status === 'holiday';
+                        const isFuture = status === null || status === undefined;
+                        const normalized = normalizeStatus(status);
+
+                        return (
+                          <TableCell
+                            key={day}
+                            sx={{
+                              textAlign: 'center',
+                              cursor: isHoliday || isFuture ? 'default' : 'pointer',
+                              fontSize: '0.65rem',
+                              padding: '4px 2px',
+                              minWidth: 45,
+                              width: 45,
+                              bgcolor: isHoliday ? alpha('#6b7280', 0.08) : isFuture ? '#f9fafb' : rowIdx % 2 === 0 ? 'grey.50' : 'transparent',
+                              borderRight: '1px solid',
+                              borderColor: 'divider',
+                              '&:hover': isHoliday || isFuture ? {} : { bgcolor: alpha(getStatusColor(status), 0.15) }
+                            }}
+                            onClick={() => {
+                              if (!isHoliday && !isFuture) {
+                                setSelectedCell({ studentId: student.student_id, studentName: student.name, day, cell });
+                              }
+                            }}
+                          >
+                            {isHoliday ? (
+                              <Chip label="H" size="small" variant="outlined"
+                                sx={{ fontSize: '0.6rem', height: 20, px: 0.5, fontWeight: 700, bgcolor: alpha('#6b7280', 0.1), borderColor: '#6b7280', color: '#6b7280' }} />
+                            ) : isFuture ? (
+                              <Typography variant="caption" color="text.disabled">-</Typography>
+                            ) : (
+                              <Chip label={getStatusLabel(status)} size="small" variant="outlined"
+                                sx={{
+                                  fontSize: '0.6rem', height: 20, px: 0.5, fontWeight: 700,
+                                  bgcolor: alpha(getStatusColor(status), 0.1),
+                                  borderColor: getStatusColor(status),
+                                  color: getStatusColor(status)
+                                }} />
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ))}
+        </>
+      )}
+
+      {/* Mark Attendance Dialog */}
+      <Dialog open={!!selectedCell} onClose={() => setSelectedCell(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ borderBottom: '1px solid #e9ecef', fontWeight: 600 }}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Assignment sx={{ fontSize: 20 }} />
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>{selectedCell?.studentName}</Typography>
+              <Typography variant="caption" color="text.secondary">{selectedCell?.cell?.date}</Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Current: <strong>{normalizeStatus(selectedCell?.cell?.status) === 'present' ? 'Present' : normalizeStatus(selectedCell?.cell?.status) === 'absent' ? 'Absent' : selectedCell?.cell?.status || 'Not marked'}</strong>
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            <Button fullWidth variant="contained" disabled={marking}
+              onClick={() => markAttendance('present')}
+              sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' }, textTransform: 'none', fontWeight: 700, py: 1.5 }}>
+              Present (P)
+            </Button>
+            <Button fullWidth variant="contained" disabled={marking}
+              onClick={() => markAttendance('absent')}
+              sx={{ bgcolor: '#ef4444', '&:hover': { bgcolor: '#dc2626' }, textTransform: 'none', fontWeight: 700, py: 1.5 }}>
+              Absent (A)
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedCell(null)} sx={{ textTransform: 'none' }}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
 
 // ─── Exam Approval Section ───
 function ExamApprovalSection() {
@@ -374,7 +945,6 @@ const MetricCard = ({ title, value, icon, color, sub }) => (
 
 export default function PrincipalDashboard() {
   const [data, setData] = useState(null);
-  const [teachers, setTeachers] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(0);
@@ -386,12 +956,9 @@ export default function PrincipalDashboard() {
     setLoading(true);
     Promise.all([
       principalAPI.dashboard().catch(() => ({ data: { data: {} } })),
-      principalAPI.teacherPerformance().catch(() => ({ data: { data: [] } })),
       principalAPI.pendingLeaves().catch(() => ({ data: { data: [] } })),
-    ]).then(([dashRes, teachRes, leaveRes]) => {
+    ]).then(([dashRes, leaveRes]) => {
       setData(dashRes.data?.data || {});
-      const td = teachRes.data?.data;
-      setTeachers(Array.isArray(td) ? td : []);
       const ld = leaveRes.data?.data;
       setPendingLeaves(Array.isArray(ld) ? ld : []);
     }).finally(() => setLoading(false));
@@ -488,17 +1055,18 @@ export default function PrincipalDashboard() {
         </Paper>
       )}
 
-      {/* Tabs: Approvals | Teachers | Absent Staff */}
+      {/* Exam Approval */}
       <ExamApprovalSection />
 
-      {/* Tabs: Leaves | Teachers | Absent */}
+      {/* Tabs: Leaves | Absent | Report Cards | Timetables | Staff Attendance */}
       <Paper sx={{ borderRadius: 3, overflow: 'hidden', mb: 3 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Tab label={`Pending Leaves (${pendingLeaves.length})`} />
-          <Tab label={`Teacher Performance (${teachers.length})`} />
           <Tab label={`Absent Today (${absentTeachers.length})`} />
           <Tab label="Report Cards" />
           <Tab label="All Timetables" />
+          <Tab label="Staff Attendance" />
+          <Tab label="Student Attendance" />
         </Tabs>
 
         {/* Tab 0: Pending Leaves */}
@@ -557,77 +1125,8 @@ export default function PrincipalDashboard() {
           </Box>
         )}
 
-        {/* Tab 1: Teacher Performance */}
+        {/* Tab 1: Absent Today */}
         {tab === 1 && (
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow sx={{ bgcolor: alpha('#000', 0.02) }}>
-                  <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Teacher</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Attendance</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Subjects</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Homework</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Grade</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Score</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {teachers.map((t, idx) => {
-                  const gradeColor = t.grade === 'A+' || t.grade === 'A' ? '#10b981' :
-                    t.grade === 'B+' || t.grade === 'B' ? '#3b82f6' : '#f59e0b';
-                  return (
-                    <TableRow key={t.id} hover>
-                      <TableCell sx={{ color: 'text.secondary' }}>{idx + 1}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ width: 30, height: 30, fontSize: '0.7rem', bgcolor: alpha(PRIMARY, 0.1), color: PRIMARY }}>
-                            {t.name?.[0]}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight={600}>{t.name}</Typography>
-                            <Typography variant="caption" color="text.secondary">{t.designation || 'Teacher'}</Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem' }}>{t.department || '-'}</TableCell>
-                      <TableCell>
-                        <Chip label={`${t.attendance_pct}%`} size="small"
-                          sx={{ fontWeight: 700, bgcolor: alpha(t.attendance_pct >= 90 ? '#10b981' : '#f59e0b', 0.12),
-                            color: t.attendance_pct >= 90 ? '#10b981' : '#f59e0b' }} />
-                      </TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem' }}>{t.subjects_count}</TableCell>
-                      <TableCell sx={{ fontSize: '0.8rem' }}>{t.homework_given}</TableCell>
-                      <TableCell>
-                        <Chip label={t.grade} size="small"
-                          sx={{ fontWeight: 800, bgcolor: alpha(gradeColor, 0.12), color: gradeColor, minWidth: 35 }} />
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <LinearProgress variant="determinate" value={Math.min(t.total_score, 100)}
-                            sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: alpha(gradeColor, 0.15),
-                              '& .MuiLinearProgress-bar': { bgcolor: gradeColor, borderRadius: 3 } }} />
-                          <Typography variant="caption" fontWeight={700} sx={{ color: gradeColor, minWidth: 30 }}>
-                            {Math.round(t.total_score)}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {teachers.length === 0 && (
-                  <TableRow><TableCell colSpan={8} sx={{ textAlign: 'center', py: 4 }}>
-                    <Typography color="text.secondary">No teaching staff data</Typography>
-                  </TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-
-        {/* Tab 2: Absent Today */}
-        {tab === 2 && (
           <Box sx={{ p: 2 }}>
             {absentTeachers.length === 0 ? (
               <Alert severity="success" sx={{ borderRadius: 2 }}>All staff present today! 🎉</Alert>
@@ -653,11 +1152,17 @@ export default function PrincipalDashboard() {
           </Box>
         )}
 
-        {/* Tab 3: Report Cards */}
-        {tab === 3 && <ReportCardsSection />}
+        {/* Tab 2: Report Cards */}
+        {tab === 2 && <ReportCardsSection />}
 
-        {/* Tab 4: All Timetables */}
-        {tab === 4 && <AllTimetablesSection />}
+        {/* Tab 3: All Timetables */}
+        {tab === 3 && <AllTimetablesSection />}
+
+        {/* Tab 4: Staff Attendance Grid */}
+        {tab === 4 && <StaffAttendanceGrid />}
+
+        {/* Tab 5: Student Attendance Grid */}
+        {tab === 5 && <StudentAttendanceGrid />}
       </Paper>
     </Box>
   );

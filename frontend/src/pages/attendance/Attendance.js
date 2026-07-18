@@ -17,7 +17,7 @@ import useAuthStore from '../../store/authStore';
 const ADMIN_TABS = ['Dashboard', 'Student Attendance', 'Staff Attendance', 'Period-wise',
   'Leave Management', 'Late Arrivals', 'Substitutions', 'Rules & Settings', 'Reports'];
 const TEACHER_TABS = ['Dashboard', 'Student Attendance', 'Period-wise',
-  'Late Arrivals', 'Reports'];
+  'Staff Attendance', 'Late Arrivals', 'Reports'];
 
 const statusColors = { present: 'success', absent: 'error', late: 'warning', half_day: 'info', leave: 'secondary' };
 
@@ -187,7 +187,7 @@ function StudentTab({ snack, setSnack }) {
 
   const save = () => {
     const records = Object.entries(attendance).map(([student_id, status]) => ({
-      student_id: parseInt(student_id), status
+      student_id, status
     }));
     if (records.length === 0) return;
     attendanceAPI.markStudent({ date, attendance: records })
@@ -299,78 +299,260 @@ function StudentTab({ snack, setSnack }) {
 // STAFF ATTENDANCE TAB
 // =====================================================
 function StaffTab({ snack, setSnack }) {
+  const [mode, setMode] = useState('daily'); // daily | monthly
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [month, setMonth] = useState(new Date().toISOString().substring(0, 7));
   const [staffList, setStaffList] = useState([]);
   const [attendance, setAttendance] = useState({});
+  const [attData, setAttData] = useState({}); // full record data per staff_id
+  const [selStaff, setSelStaff] = useState('');
+  const [monthlyData, setMonthlyData] = useState(null);
+  const isPrincipal = useAuthStore(s => s.hasRole('principal'));
+
+  // For editing individual record (principal only)
+  const [editRec, setEditRec] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editStatus, setEditStatus] = useState('');
+  const [editCheckIn, setEditCheckIn] = useState('');
+  const [editCheckOut, setEditCheckOut] = useState('');
 
   useEffect(() => {
     staffAPI.list({ per_page: 200 }).then(r => setStaffList(r.data.data?.items || [])).catch(() => {});
-    attendanceAPI.getStaff({ date }).then(r => {
-      const map = {};
-      (r.data.data || []).forEach(a => { map[a.staff_id] = a.status; });
-      setAttendance(map);
-    }).catch(() => {});
-  }, [date]);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'daily') {
+      attendanceAPI.getStaff({ date }).then(r => {
+        const records = r.data.data || [];
+        const map = {}; const full = {};
+        records.forEach(a => { map[a.staff_id] = a.status; full[a.staff_id] = a; });
+        setAttendance(map); setAttData(full);
+      }).catch(() => {});
+    }
+  }, [date, mode]);
+
+  const loadMonthly = () => {
+    if (!selStaff || !month) return;
+    attendanceAPI.staffMonthly({ staff_id: selStaff, month }).then(r => {
+      setMonthlyData(r.data.data);
+    }).catch(() => setSnack({ open: true, message: 'Failed to load report', severity: 'error' }));
+  };
 
   const save = () => {
-    const records = Object.entries(attendance).map(([staff_id, status]) => ({
-      staff_id: parseInt(staff_id), status
-    }));
+    const records = Object.entries(attendance).map(([staff_id, status]) => {
+      const existing = attData[staff_id] || {};
+      return {
+        staff_id: parseInt(staff_id),
+        status,
+        check_in: existing.check_in || null,
+        check_out: existing.check_out || null,
+      };
+    });
     attendanceAPI.markStaff({ date, attendance: records })
       .then(() => setSnack({ open: true, message: 'Staff attendance saved!', severity: 'success' }))
       .catch(() => setSnack({ open: true, message: 'Failed to save', severity: 'error' }));
   };
 
+  const openEdit = (rec) => {
+    setEditRec(rec);
+    setEditStatus(rec.status || '');
+    setEditCheckIn(rec.check_in ? rec.check_in.substring(0, 5) : '');
+    setEditCheckOut(rec.check_out ? rec.check_out.substring(0, 5) : '');
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editRec?.id) return;
+    try {
+      await attendanceAPI.updateStaffAttendance(editRec.id, {
+        status: editStatus,
+        check_in: editCheckIn ? `${editCheckIn}:00` : null,
+        check_out: editCheckOut ? `${editCheckOut}:00` : null,
+      });
+      setSnack({ open: true, message: 'Attendance record updated!', severity: 'success' });
+      setEditOpen(false);
+      // Reload
+      attendanceAPI.getStaff({ date }).then(r => {
+        const records = r.data.data || [];
+        const map = {}; const full = {};
+        records.forEach(a => { map[a.staff_id] = a.status; full[a.staff_id] = a; });
+        setAttendance(map); setAttData(full);
+      }).catch(() => {});
+    } catch {
+      setSnack({ open: true, message: 'Failed to update', severity: 'error' });
+    }
+  };
+
   return (
     <Box>
+      {/* Mode Toggle */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
-          <TextField type="date" size="small" label="Date" value={date}
-            onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-          <Button variant="contained" onClick={save}>Save</Button>
+          <Chip label="Daily" color={mode === 'daily' ? 'primary' : 'default'} clickable onClick={() => setMode('daily')} />
+          <Chip label="Monthly Report" color={mode === 'monthly' ? 'primary' : 'default'} clickable onClick={() => setMode('monthly')} />
+          <Box flex={1} />
+          {mode === 'daily' ? (
+            <>
+              <TextField type="date" size="small" label="Date" value={date}
+                onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+              <Button variant="contained" onClick={save}>Save All</Button>
+            </>
+          ) : (
+            <>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Staff Member</InputLabel>
+                <Select value={selStaff} label="Staff Member" onChange={e => setSelStaff(e.target.value)}>
+                  {staffList.map(s => (
+                    <MenuItem key={s.id} value={s.id}>{s.full_name || s.name} ({s.employee_id || ''})</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField type="month" size="small" label="Month" value={month}
+                onChange={(e) => setMonth(e.target.value)} InputLabelProps={{ shrink: true }} />
+              <Button variant="contained" onClick={loadMonthly}>Load</Button>
+            </>
+          )}
         </Box>
       </Paper>
-      <TableContainer component={Paper}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>#</TableCell>
-              <TableCell>Employee ID</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Department</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Quick Mark</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {staffList.map((s, i) => (
-              <TableRow key={s.id}>
-                <TableCell>{i + 1}</TableCell>
-                <TableCell>{s.employee_id || '-'}</TableCell>
-                <TableCell>{s.full_name || s.name}</TableCell>
-                <TableCell>{s.department || '-'}</TableCell>
-                <TableCell>
-                  <Chip label={attendance[s.id] || 'Not marked'} size="small"
-                    color={statusColors[attendance[s.id]] || 'default'} />
-                </TableCell>
-                <TableCell>
-                  <Box display="flex" gap={0.5}>
-                    {['present', 'absent', 'late', 'half_day', 'leave'].map(st => (
-                      <Button key={st} size="small"
-                        variant={attendance[s.id] === st ? 'contained' : 'outlined'}
-                        color={statusColors[st] || 'primary'}
-                        onClick={() => setAttendance(prev => ({ ...prev, [s.id]: st }))}>
-                        {st === 'half_day' ? 'HD' : st === 'leave' ? 'Lv' : st.charAt(0).toUpperCase()}
-                      </Button>
-                    ))}
-                  </Box>
-                </TableCell>
+
+      {mode === 'daily' ? (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>#</TableCell>
+                <TableCell>Employee ID</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Department</TableCell>
+                <TableCell>Check In</TableCell>
+                <TableCell>Check Out</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Quick Mark</TableCell>
+                {isPrincipal && <TableCell>Edit</TableCell>}
               </TableRow>
-            ))}
-            {staffList.length === 0 && <TableRow><TableCell colSpan={6} align="center">No staff found</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {staffList.map((s, i) => {
+                const rec = attData[s.id];
+                return (
+                  <TableRow key={s.id}>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell>{s.employee_id || '-'}</TableCell>
+                    <TableCell>{s.full_name || s.name}</TableCell>
+                    <TableCell>{s.department || '-'}</TableCell>
+                    <TableCell sx={{ fontSize: '0.75rem' }}>{rec?.check_in ? rec.check_in.substring(0, 5) : '-'}</TableCell>
+                    <TableCell sx={{ fontSize: '0.75rem' }}>{rec?.check_out ? rec.check_out.substring(0, 5) : '-'}</TableCell>
+                    <TableCell>
+                      <Chip label={attendance[s.id] || 'Not marked'} size="small"
+                        color={statusColors[attendance[s.id]] || 'default'} />
+                    </TableCell>
+                    <TableCell>
+                      <Box display="flex" gap={0.5}>
+                        {['present', 'absent', 'late', 'half_day', 'leave'].map(st => (
+                          <Button key={st} size="small"
+                            variant={attendance[s.id] === st ? 'contained' : 'outlined'}
+                            color={statusColors[st] || 'primary'}
+                            onClick={() => setAttendance(prev => ({ ...prev, [s.id]: st }))}>
+                            {st === 'half_day' ? 'HD' : st === 'leave' ? 'Lv' : st.charAt(0).toUpperCase()}
+                          </Button>
+                        ))}
+                      </Box>
+                    </TableCell>
+                    {isPrincipal && (
+                      <TableCell>
+                        {rec ? (
+                          <IconButton size="small" onClick={() => openEdit(rec)}><Edit fontSize="small" /></IconButton>
+                        ) : '-'}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+              {staffList.length === 0 && <TableRow><TableCell colSpan={isPrincipal ? 9 : 8} align="center">No staff found</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : (
+        /* Monthly Report View */
+        monthlyData ? (
+          <Box>
+            <Paper sx={{ p: 2, mb: 2 }}>
+              <Typography variant="h6" mb={1}>{monthlyData.staff?.first_name} {monthlyData.staff?.last_name} — {month}</Typography>
+              <Box display="flex" gap={2}>
+                <Chip label={`Present: ${monthlyData.summary?.present}`} color="success" size="small" />
+                <Chip label={`Absent: ${monthlyData.summary?.absent}`} color="error" size="small" />
+                <Chip label={`Late: ${monthlyData.summary?.late}`} color="warning" size="small" />
+                <Chip label={`Half Day: ${monthlyData.summary?.half_day}`} color="info" size="small" />
+                <Chip label={`Percentage: ${monthlyData.summary?.percentage}%`} color="primary" size="small" />
+              </Box>
+            </Paper>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Check In</TableCell>
+                    <TableCell>Check Out</TableCell>
+                    <TableCell>Remarks</TableCell>
+                    {isPrincipal && <TableCell>Edit</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {monthlyData.records?.map(r => (
+                    <TableRow key={r.id}>
+                      <TableCell>{r.date}</TableCell>
+                      <TableCell>
+                        <Chip label={r.status} size="small" color={statusColors[r.status] || 'default'} />
+                      </TableCell>
+                      <TableCell>{r.check_in ? r.check_in.substring(0, 5) : '-'}</TableCell>
+                      <TableCell>{r.check_out ? r.check_out.substring(0, 5) : '-'}</TableCell>
+                      <TableCell>{r.remarks || '-'}</TableCell>
+                      {isPrincipal && (
+                        <TableCell>
+                          <IconButton size="small" onClick={() => openEdit(r)}><Edit fontSize="small" /></IconButton>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                  {(!monthlyData.records || monthlyData.records.length === 0) && (
+                    <TableRow><TableCell colSpan={isPrincipal ? 6 : 5} align="center">No records found</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        ) : (
+          <Alert severity="info">Select a staff member and month, then click Load.</Alert>
+        )
+      )}
+
+      {/* Edit Dialog (Principal only) */}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Attendance Record</DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap={2} sx={{ mt: 1 }}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select value={editStatus} label="Status" onChange={e => setEditStatus(e.target.value)}>
+                <MenuItem value="present">Present</MenuItem>
+                <MenuItem value="absent">Absent</MenuItem>
+                <MenuItem value="late">Late</MenuItem>
+                <MenuItem value="half_day">Half Day</MenuItem>
+                <MenuItem value="leave">Leave</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField type="time" size="small" label="Check In" InputLabelProps={{ shrink: true }}
+              value={editCheckIn} onChange={e => setEditCheckIn(e.target.value)} />
+            <TextField type="time" size="small" label="Check Out" InputLabelProps={{ shrink: true }}
+              value={editCheckOut} onChange={e => setEditCheckOut(e.target.value)} />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={saveEdit}>Save</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -384,6 +566,8 @@ function MyStaffAttendanceTab({ snack, setSnack }) {
   const [staffId, setStaffId] = useState(null);
   const [staffName, setStaffName] = useState('');
   const [status, setStatus] = useState('');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -402,13 +586,24 @@ function MyStaffAttendanceTab({ snack, setSnack }) {
         const mine = records.find(a => a.staff_id === staffId);
         setMyRecord(mine || null);
         setStatus(mine?.status || '');
+        setCheckIn(mine?.check_in ? mine.check_in.substring(0, 5) : '');
+        setCheckOut(mine?.check_out ? mine.check_out.substring(0, 5) : '');
       }).catch(() => {});
     }
   }, [staffId, date]);
 
   const save = () => {
     if (!staffId || !status) return;
-    attendanceAPI.markStaff({ date, attendance: [{ staff_id: staffId, status }] })
+    attendanceAPI.markStaff({
+      date,
+      attendance: [{
+        staff_id: staffId,
+        status,
+        check_in: checkIn ? `${checkIn}:00` : null,
+        check_out: checkOut ? `${checkOut}:00` : null,
+      }],
+      capture_mode: 'manual'
+    })
       .then(() => setSnack({ open: true, message: 'Attendance marked!', severity: 'success' }))
       .catch(() => setSnack({ open: true, message: 'Failed to save', severity: 'error' }));
   };
@@ -417,12 +612,22 @@ function MyStaffAttendanceTab({ snack, setSnack }) {
 
   return (
     <Box>
-      <Paper sx={{ p: 3, mb: 2, maxWidth: 500 }}>
+      <Paper sx={{ p: 3, mb: 2, maxWidth: 600 }}>
         <Typography variant="h6" mb={2}>Mark Your Attendance</Typography>
         <Box display="flex" flexDirection="column" gap={2}>
           <TextField label="Name" value={staffName} disabled size="small" />
           <TextField type="date" size="small" label="Date" value={date}
             onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <TextField fullWidth type="time" size="small" label="Check In" InputLabelProps={{ shrink: true }}
+                value={checkIn} onChange={(e) => setCheckIn(e.target.value)} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth type="time" size="small" label="Check Out" InputLabelProps={{ shrink: true }}
+                value={checkOut} onChange={(e) => setCheckOut(e.target.value)} />
+            </Grid>
+          </Grid>
           <FormControl size="small">
             <InputLabel>Status</InputLabel>
             <Select value={status} label="Status" onChange={(e) => setStatus(e.target.value)}>
@@ -434,7 +639,11 @@ function MyStaffAttendanceTab({ snack, setSnack }) {
           </FormControl>
           <Button variant="contained" onClick={save} disabled={!status}>Save</Button>
           {myRecord && (
-            <Alert severity="info">Today's status: <strong>{myRecord.status}</strong></Alert>
+            <Alert severity="info">
+              Today's status: <strong>{myRecord.status}</strong>
+              {myRecord.check_in ? ` | In: ${myRecord.check_in.substring(0, 5)}` : ''}
+              {myRecord.check_out ? ` | Out: ${myRecord.check_out.substring(0, 5)}` : ''}
+            </Alert>
           )}
         </Box>
       </Paper>
@@ -1546,8 +1755,8 @@ export default function Attendance() {
     switch (teacherType) {
       case 'admin': return ADMIN_TABS;
       case 'hr': return ['Staff Attendance', 'Leave Management'];
-      case 'class_teacher': return ['Student Attendance'];
-      case 'subject_teacher': return ['My Attendance'];
+      case 'class_teacher': return ['Student Attendance', 'Staff Attendance'];
+      case 'subject_teacher': return ['My Attendance', 'Staff Attendance'];
       default: return [];
     }
   };
@@ -1578,9 +1787,19 @@ export default function Attendance() {
           </>
         );
       case 'class_teacher':
-        return <StudentTab snack={snack} setSnack={setSnack} />;
+        return (
+          <>
+            {tab === 0 && <StudentTab snack={snack} setSnack={setSnack} />}
+            {tab === 1 && <StaffTab snack={snack} setSnack={setSnack} />}
+          </>
+        );
       case 'subject_teacher':
-        return <MyStaffAttendanceTab snack={snack} setSnack={setSnack} />;
+        return (
+          <>
+            {tab === 0 && <MyStaffAttendanceTab snack={snack} setSnack={setSnack} />}
+            {tab === 1 && <StaffTab snack={snack} setSnack={setSnack} />}
+          </>
+        );
       default:
         return <LinearProgress />;
     }

@@ -5,6 +5,16 @@ from app.models.student import Section
 from app.models.academic import TeacherSubject
 from sqlalchemy import or_
 from functools import wraps
+import calendar
+from datetime import timedelta
+
+
+def get_client_ip():
+    """Get real client IP behind Nginx reverse proxy."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or '0.0.0.0'
 
 
 def validate(rules):
@@ -97,10 +107,27 @@ def paginate(query, schema=None):
     }
 
 
+def _inject_notif_unread(response_dict):
+    """Add unread notification count to every API response."""
+    try:
+        user = g.get('current_user')
+        school_id = g.get('school_id')
+        if user and school_id:
+            from app.models.notification import Notification
+            unread = Notification.query.filter_by(
+                school_id=school_id, user_id=user.id, read_at=None
+            ).count()
+            response_dict['_notif_unread'] = unread
+    except Exception:
+        pass
+    return response_dict
+
+
 def success_response(data=None, message='Success', status_code=200):
     response = {'success': True, 'message': message}
     if data is not None:
         response['data'] = data
+    _inject_notif_unread(response)
     return jsonify(response), status_code
 
 
@@ -108,6 +135,7 @@ def error_response(message='Error', status_code=400, errors=None):
     response = {'success': False, 'message': message}
     if errors:
         response['errors'] = errors
+    _inject_notif_unread(response)
     return jsonify(response), status_code
 
 
@@ -301,3 +329,69 @@ def make_ivr_call(phone):
     except Exception as e:
         current_app.logger.error(f'IVR call failed: {str(e)}')
         return False, str(e)
+
+
+def is_sunday(check_date):
+    return check_date.weekday() == calendar.SUNDAY
+
+
+def is_school_holiday(school_id, check_date, context=None):
+    """Check if a date is a holiday: Sunday OR AcademicCalendar event with is_holiday=True.
+    context: 'student' or 'staff' to filter by applies_to field.
+    """
+    if is_sunday(check_date):
+        return True
+    from app.models.academic import AcademicCalendar
+    q = AcademicCalendar.query.filter(
+        AcademicCalendar.school_id == school_id,
+        AcademicCalendar.is_holiday == True,
+        AcademicCalendar.start_date <= check_date,
+        or_(AcademicCalendar.end_date >= check_date, AcademicCalendar.end_date.is_(None))
+    )
+    if context == 'staff':
+        q = q.filter(or_(AcademicCalendar.applies_to == 'all', AcademicCalendar.applies_to == 'staff'))
+    elif context == 'student':
+        q = q.filter(or_(AcademicCalendar.applies_to == 'all', AcademicCalendar.applies_to == 'students', AcademicCalendar.applies_to == 'specific_class'))
+    holiday = q.first()
+    return holiday is not None
+
+
+def working_records(records, school_id, context=None):
+    """Filter attendance records to only working days (exclude Sundays + AcademicCalendar holidays).
+    context: 'student' or 'staff' to filter by applies_to field.
+    """
+    if not records:
+        return records
+    from app.models.academic import AcademicCalendar
+    dates = [r.date for r in records]
+    min_date, max_date = min(dates), max(dates)
+    cal_holidays = set()
+    q = AcademicCalendar.query.filter(
+        AcademicCalendar.school_id == school_id,
+        AcademicCalendar.is_holiday == True,
+        AcademicCalendar.start_date <= max_date,
+        or_(AcademicCalendar.end_date >= min_date, AcademicCalendar.end_date.is_(None))
+    )
+    if context == 'staff':
+        q = q.filter(or_(AcademicCalendar.applies_to == 'all', AcademicCalendar.applies_to == 'staff'))
+    elif context == 'student':
+        q = q.filter(or_(AcademicCalendar.applies_to == 'all', AcademicCalendar.applies_to == 'students', AcademicCalendar.applies_to == 'specific_class'))
+    events = q.all()
+    for ev in events:
+        d = ev.start_date
+        end = ev.end_date or ev.start_date
+        while d <= end:
+            cal_holidays.add(d)
+            d += timedelta(days=1)
+    return [r for r in records if r.date.weekday() != calendar.SUNDAY and r.date not in cal_holidays]
+
+
+def working_days_between(school_id, from_date, to_date, context=None):
+    """Count working days (excluding Sundays and holidays) between two dates"""
+    count = 0
+    current = from_date
+    while current <= to_date:
+        if not is_school_holiday(school_id, current, context=context):
+            count += 1
+        current += timedelta(days=1)
+    return count

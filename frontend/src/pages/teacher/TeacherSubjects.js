@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Collapse
 } from '@mui/material';
 import {
-  Book, School, People, Schedule, MenuBook, TrendingUp, Edit,
+  Book, School, People, Schedule, MenuBook, TrendingUp, Edit, RateReview,
   ExpandMore, ExpandLess, Refresh, CheckCircle
 } from '@mui/icons-material';
 import { dashboardAPI, academicsAPI } from '../../services/api';
@@ -18,7 +18,7 @@ export default function TeacherSubjects() {
   const [syllabus, setSyllabus] = useState([]);
   const [sylLoading, setSylLoading] = useState(false);
   const [progressDialog, setProgressDialog] = useState(null);
-  const [progressForm, setProgressForm] = useState({ topics_covered: '', date: new Date().toISOString().split('T')[0], percentage: 0 });
+  const [progressForm, setProgressForm] = useState({ chapter_number: '', chapter_name: '', topics_covered: '', date: new Date().toISOString().split('T')[0], percentage_covered: '' });
   const theme = useTheme();
   const PRIMARY = theme.palette.primary.main;
   const SECONDARY = theme.palette.secondary.main;
@@ -50,23 +50,27 @@ export default function TeacherSubjects() {
 
   const handleAddProgress = async () => {
     if (!progressDialog) return;
+    if (!progressForm.chapter_number || !progressForm.chapter_name) {
+      toast.error('Chapter number and name are required');
+      return;
+    }
+    const { class_id, subject_id } = progressDialog;
     try {
-      await academicsAPI.addSyllabusProgress(progressDialog.id, {
+      await academicsAPI.addSyllabusProgressDirect({
+        class_id, subject_id,
+        chapter_number: parseInt(progressForm.chapter_number),
+        chapter_name: progressForm.chapter_name,
         topics_covered: progressForm.topics_covered,
         date: progressForm.date,
-        percentage: parseInt(progressForm.percentage) || 0,
+        percentage_covered: progressForm.percentage_covered ? parseInt(progressForm.percentage_covered) : null,
       });
-      toast.success('Progress updated!');
+      toast.success('Progress added!');
       setProgressDialog(null);
-      setProgressForm({ topics_covered: '', date: new Date().toISOString().split('T')[0], percentage: 0 });
-      // Reload syllabus for current expanded
+      setProgressForm({ chapter_number: '', chapter_name: '', topics_covered: '', date: new Date().toISOString().split('T')[0], percentage_covered: '' });
       if (expandedSubject) {
         const [cid, sid] = expandedSubject.split('_');
         academicsAPI.listSyllabus({ class_id: cid, subject_id: sid })
-          .then(res => {
-            const data = res.data?.data;
-            setSyllabus(Array.isArray(data) ? data : data?.items || []);
-          });
+          .then(res => setSyllabus(Array.isArray(res.data?.data) ? res.data.data : (res.data?.data?.items || [])));
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed');
@@ -144,6 +148,18 @@ export default function TeacherSubjects() {
                                   label="Syllabus" size="small" clickable
                                   sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
                               </Tooltip>
+                              <Button size="small" variant="outlined" color="secondary"
+                                startIcon={<RateReview sx={{ fontSize: 14 }} />}
+                                onClick={(e) => { e.stopPropagation(); window.location.href = '/teacher/marks-entry'; }}
+                                sx={{ borderRadius: 2, textTransform: 'none', fontSize: '0.7rem', fontWeight: 600, minWidth: 0, px: 1, py: 0.3 }}>
+                                Marks Entry
+                              </Button>
+                              <Button size="small" variant="contained"
+                                startIcon={<TrendingUp sx={{ fontSize: 14 }} />}
+                                onClick={(e) => { e.stopPropagation(); setProgressDialog({ class_id: cls.class_id, subject_id: cls.subject_id }); setProgressForm({ chapter_number: '', chapter_name: '', topics_covered: '', date: new Date().toISOString().split('T')[0], percentage_covered: '' }); }}
+                                sx={{ borderRadius: 2, textTransform: 'none', fontSize: '0.7rem', fontWeight: 600, minWidth: 0, px: 1, py: 0.3 }}>
+                                Add Progress
+                              </Button>
                               {isExpanded ? <ExpandLess sx={{ fontSize: 20, color: 'text.secondary' }} /> : <ExpandMore sx={{ fontSize: 20, color: 'text.secondary' }} />}
                             </Box>
                           </Box>
@@ -228,38 +244,44 @@ export default function TeacherSubjects() {
         </Stack>
       )}
 
-      {/* Progress Update Dialog */}
+      {/* Progress Add Dialog */}
       <Dialog open={!!progressDialog} onClose={() => setProgressDialog(null)} maxWidth="xs" fullWidth
         PaperProps={{ sx: { borderRadius: 4 } }}>
-        <DialogTitle><Typography variant="h6" fontWeight={700}>Update Progress</Typography></DialogTitle>
+        <DialogTitle><Typography variant="h6" fontWeight={700}>Add Progress</Typography></DialogTitle>
         <DialogContent>
-          {progressDialog && (
-            <Box sx={{ mt: 1 }}>
-              <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
-                Chapter {progressDialog.chapter_number}: {progressDialog.chapter_name || progressDialog.title}
-              </Typography>
-              <TextField fullWidth size="small" label="Topics Covered Today" multiline rows={2}
-                value={progressForm.topics_covered}
-                onChange={e => setProgressForm({ ...progressForm, topics_covered: e.target.value })}
-                sx={{ mb: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <TextField fullWidth size="small" type="date" label="Date" InputLabelProps={{ shrink: true }}
-                    value={progressForm.date}
-                    onChange={e => setProgressForm({ ...progressForm, date: e.target.value })} />
-                </Grid>
-                <Grid item xs={6}>
-                  <TextField fullWidth size="small" type="number" label="Completion %" inputProps={{ min: 0, max: 100 }}
-                    value={progressForm.percentage}
-                    onChange={e => setProgressForm({ ...progressForm, percentage: e.target.value })} />
-                </Grid>
+          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField fullWidth size="small" type="number" label="Chapter No"
+                  value={progressForm.chapter_number}
+                  onChange={e => setProgressForm({ ...progressForm, chapter_number: e.target.value })} />
               </Grid>
-            </Box>
-          )}
+              <Grid item xs={6}>
+                <TextField fullWidth size="small" label="Chapter Name"
+                  value={progressForm.chapter_name}
+                  onChange={e => setProgressForm({ ...progressForm, chapter_name: e.target.value })} />
+              </Grid>
+            </Grid>
+            <TextField fullWidth size="small" label="Topics Covered" multiline rows={2}
+              value={progressForm.topics_covered}
+              onChange={e => setProgressForm({ ...progressForm, topics_covered: e.target.value })} />
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField fullWidth size="small" type="date" label="Date" InputLabelProps={{ shrink: true }}
+                  value={progressForm.date}
+                  onChange={e => setProgressForm({ ...progressForm, date: e.target.value })} />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField fullWidth size="small" type="number" label="Completion %" inputProps={{ min: 0, max: 100 }}
+                  value={progressForm.percentage_covered}
+                  onChange={e => setProgressForm({ ...progressForm, percentage_covered: e.target.value })} />
+              </Grid>
+            </Grid>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setProgressDialog(null)} sx={{ borderRadius: 2, textTransform: 'none' }}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddProgress} sx={{ borderRadius: 2, textTransform: 'none' }}>Save</Button>
+          <Button variant="contained" onClick={handleAddProgress} sx={{ borderRadius: 2, textTransform: 'none' }}>Submit</Button>
         </DialogActions>
       </Dialog>
     </Box>
