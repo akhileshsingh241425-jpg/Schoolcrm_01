@@ -183,40 +183,47 @@ def get_teacher_performance(school_id, teacher_id):
 
     academic_year_id = current_year.id if current_year else None
 
+    # Get subjects/classes assigned to this teacher
+    assignments = TeacherSubject.query.filter_by(
+        school_id=school_id,
+        teacher_id=teacher_id,
+        status='active'
+    ).all()
+
     # Syllabus completion rate: percentage of chapters marked completed
+    # Match records with NULL academic_year_id (legacy) or matching current year
     total_syllabus = 0
     completed_syllabus = 0
-    if academic_year_id:
-        # Get subjects/classes assigned to this teacher
-        assignments = TeacherSubject.query.filter_by(
-            school_id=school_id,
-            teacher_id=teacher_id,
-            status='active'
-        ).all()
-
-        for assignment in assignments:
-            syllabus_entries = Syllabus.query.filter_by(
-                school_id=school_id,
-                class_id=assignment.class_id,
-                subject_id=assignment.subject_id,
-                academic_year_id=academic_year_id
-            ).all()
-            total_syllabus += len(syllabus_entries)
-            completed_syllabus += sum(
-                1 for s in syllabus_entries if s.status == 'completed'
+    for assignment in assignments:
+        q = Syllabus.query.filter(
+            Syllabus.school_id == school_id,
+            Syllabus.class_id == assignment.class_id,
+            Syllabus.subject_id == assignment.subject_id,
+        )
+        if academic_year_id:
+            q = q.filter(
+                or_(Syllabus.academic_year_id.is_(None), Syllabus.academic_year_id == academic_year_id)
             )
+        syllabus_entries = q.all()
+        total_syllabus += len(syllabus_entries)
+        completed_syllabus += sum(
+            1 for s in syllabus_entries if s.status == 'completed'
+        )
 
     syllabus_completion_rate = round(
         (completed_syllabus / total_syllabus * 100), 1
     ) if total_syllabus > 0 else 0
 
     # Lesson plan submission rate: submitted or approved / total scheduled teaching days
+    # Match records with NULL academic_year_id (legacy) or matching current year
     lesson_plan_query = LessonPlan.query.filter_by(
         school_id=school_id,
         teacher_id=teacher_id
     )
     if academic_year_id:
-        lesson_plan_query = lesson_plan_query.filter_by(academic_year_id=academic_year_id)
+        lesson_plan_query = lesson_plan_query.filter(
+            or_(LessonPlan.academic_year_id.is_(None), LessonPlan.academic_year_id == academic_year_id)
+        )
 
     total_plans = lesson_plan_query.count()
     submitted_or_approved = lesson_plan_query.filter(
@@ -287,6 +294,8 @@ def get_teacher_performance(school_id, teacher_id):
 
             avg_student_pct = round(float(avg_result), 1) if avg_result else 0
 
+    total_homework = sum(row.count for row in homework_by_month)
+
     return {
         'teacher_id': teacher_id,
         'syllabus_completion_rate': syllabus_completion_rate,
@@ -295,6 +304,7 @@ def get_teacher_performance(school_id, teacher_id):
         'lesson_plan_submission_rate': lesson_plan_rate,
         'total_lesson_plans': total_plans,
         'submitted_or_approved_plans': submitted_or_approved,
+        'total_homework': total_homework,
         'homework_per_month': homework_per_month,
         'avg_student_percentage': avg_student_pct,
     }

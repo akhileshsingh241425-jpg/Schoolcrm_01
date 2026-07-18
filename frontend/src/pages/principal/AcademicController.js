@@ -5,12 +5,12 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Select, MenuItem,
   FormControl, InputLabel, IconButton, Tooltip, LinearProgress, Alert, Stack,
-  Checkbox, FormControlLabel, Switch, CircularProgress, Divider, InputAdornment, alpha
+  Checkbox, FormControlLabel, Switch, CircularProgress, Divider, InputAdornment, alpha, ListItemText
 } from '@mui/material';
 import {
   Add, Edit, Delete, Refresh, Warning, Assignment, MenuBook,
   CalendarMonth, SwapHoriz, Search, ThumbUp, ThumbDown, Undo, ArrowForward,
-  CheckCircle, Cancel, MeetingRoom
+  CheckCircle, Cancel, MeetingRoom, ExpandMore, ExpandLess
 } from '@mui/icons-material';
 import { validateForm } from '../../components/Validation';
 import { academicsAPI, studentsAPI, staffAPI } from '../../services/api';
@@ -1876,6 +1876,7 @@ function SyllabusProgressTab({ classes, subjects }) {
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ class_id: '', subject_id: '', book_name: '', total_chapters: '', estimated_hours: '', term: 'term1' });
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -1892,6 +1893,10 @@ function SyllabusProgressTab({ classes, subjects }) {
   }, [selectedClass, selectedSubject]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const toggleGroup = (key) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleAdd = async () => {
     if (!form.class_id || !form.subject_id) {
@@ -1918,6 +1923,22 @@ function SyllabusProgressTab({ classes, subjects }) {
     setSaving(false);
   };
 
+  const grouped = React.useMemo(() => {
+    const groups = {};
+    data.forEach(item => {
+      const key = `${item.class_id}_${item.subject_id}`;
+      if (!groups[key]) {
+        groups[key] = { class_id: item.class_id, class_name: item.class_name, subject_id: item.subject_id, subject_name: item.subject_name, book: null, chapters: [] };
+      }
+      if (item.chapter_number === null || item.chapter_number === undefined) {
+        groups[key].book = item;
+      } else {
+        groups[key].chapters.push(item);
+      }
+    });
+    return Object.values(groups).sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || '') || (a.class_name || '').localeCompare(b.class_name || ''));
+  }, [data]);
+
   if (loading) return <LinearProgress />;
 
   return (
@@ -1941,65 +1962,108 @@ function SyllabusProgressTab({ classes, subjects }) {
         <Button size="small" variant="contained" startIcon={<Add />} onClick={() => setAddOpen(true)} sx={btnStyle}>Add Book</Button>
       </Box>
 
-      {data.length === 0 ? (
+      {grouped.length === 0 ? (
         <Alert severity="info" sx={selectStyle}>No syllabus data available for the selected filters.</Alert>
       ) : (
         <TableContainer sx={tableStyles}>
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell sx={{ width: 30 }}></TableCell>
                 <TableCell>Subject</TableCell>
                 <TableCell>Class</TableCell>
                 <TableCell>Book Name</TableCell>
-                <TableCell>Ch #</TableCell>
-                <TableCell>Chapter Name</TableCell>
-                <TableCell>Topics</TableCell>
+                <TableCell>Teacher</TableCell>
+                <TableCell>Chapters</TableCell>
                 <TableCell>Hours</TableCell>
-                <TableCell>Exam</TableCell>
                 <TableCell>Completion</TableCell>
                 <TableCell>Status</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {data.map((item, i) => {
-                const isBookEntry = item.chapter_number === null || item.chapter_number === undefined;
-                const pct = item.completion_percentage || 0;
-                const status = isBookEntry ? 'Book' : (pct >= 100 ? 'Completed' : pct >= 50 ? 'In Progress' : pct > 0 ? 'Started' : 'Not Started');
-                const statusColor = isBookEntry ? 'info' : (pct >= 100 ? 'success' : pct >= 50 ? 'primary' : pct > 0 ? 'warning' : 'default');
-                const totalAdded = data.filter(d => d.chapter_number !== null && d.chapter_number !== undefined && d.subject_id === item.subject_id && d.class_id === item.class_id).length;
+              {grouped.map((group) => {
+                const key = `${group.class_id}_${group.subject_id}`;
+                const isOpen = expandedGroups[key];
+                const totalChapters = group.book?.total_chapters || 0;
+                const addedChapters = group.chapters.length;
+                const completedCount = group.chapters.filter(c => (c.completion_percentage || 0) >= 100).length;
+                const teacherAssigned = !!group.book?.teacher_name;
+                const bookSet = !!group.book?.book_name && totalChapters > 0;
+                const pct = totalChapters > 0 ? Math.round((completedCount / totalChapters) * 100) : 0;
+                const status = !bookSet || !teacherAssigned ? 'Not Started' : completedCount >= totalChapters && totalChapters > 0 ? 'Completed' : 'In Progress';
+                const statusColor = status === 'Completed' ? 'success' : status === 'In Progress' ? 'primary' : 'default';
+                const totalHours = group.book?.estimated_hours || group.chapters.reduce((s, c) => s + (c.estimated_hours || 0), 0);
+
                 return (
-                  <TableRow key={item.id || i} sx={isBookEntry ? { bgcolor: alpha('#e3f2fd', 0.3) } : {}}>
-                    <TableCell><strong>{item.subject_name || '-'}</strong></TableCell>
-                    <TableCell>{item.class_name || '-'}</TableCell>
-                    <TableCell>{isBookEntry ? <strong>{item.book_name || '-'}</strong> : (item.book_name || '-')}</TableCell>
-                    <TableCell>{isBookEntry ? (item.total_chapters ? `${totalAdded}/${item.total_chapters}` : `${totalAdded} added`) : (item.chapter_number || '-')}</TableCell>
-                    <TableCell>{isBookEntry ? <Typography variant="caption" color="text.secondary">Syllabus Plan</Typography> : (item.chapter_name || '-')}</TableCell>
-                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {isBookEntry ? '-' : (typeof item.topics === 'string' ? item.topics.substring(0, 60) : '-')}
-                    </TableCell>
-                    <TableCell>{isBookEntry ? <strong>{item.estimated_hours || '-'}</strong> : (item.estimated_hours || '-')}</TableCell>
-                    <TableCell>
-                      {item.exam_included ? (
-                        <Chip label={`${item.exam_weightage || '?'} marks`} size="small" color="success" sx={chipStyle} />
-                      ) : (
-                        <Typography variant="caption" color="text.disabled">—</Typography>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 130 }}>
-                      {isBookEntry ? (
-                        <Typography variant="caption" color="text.disabled">—</Typography>
-                      ) : (
+                  <React.Fragment key={key}>
+                    <TableRow
+                      hover
+                      sx={{ cursor: 'pointer', bgcolor: alpha('#e3f2fd', 0.3), '&:hover': { bgcolor: alpha('#bbdefb', 0.4) } }}
+                      onClick={() => toggleGroup(key)}
+                    >
+                      <TableCell sx={{ pl: 1 }}>
+                        <IconButton size="small" sx={{ p: 0 }}>{isOpen ? <ExpandLess /> : <ExpandMore />}</IconButton>
+                      </TableCell>
+                      <TableCell><strong>{group.subject_name || '-'}</strong></TableCell>
+                      <TableCell><strong>{group.class_name || '-'}</strong></TableCell>
+                      <TableCell><strong>{group.book?.book_name || '-'}</strong></TableCell>
+                      <TableCell>
+                        {group.book?.teacher_name
+                          ? <Typography variant="body2">{group.book.teacher_name}</Typography>
+                          : <Typography variant="caption" color="text.disabled">Not assigned</Typography>}
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={totalChapters ? `${addedChapters}/${totalChapters} added` : `${addedChapters} chapters`} size="small" color={addedChapters > 0 ? 'primary' : 'default'} sx={chipStyle} />
+                      </TableCell>
+                      <TableCell>{totalHours || '-'}</TableCell>
+                      <TableCell sx={{ minWidth: 130 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <LinearProgress variant="determinate" value={Math.min(pct, 100)}
-                            sx={{ flex: 1, height: 8, borderRadius: '4px' }} />
+                          <LinearProgress variant="determinate" value={Math.min(pct, 100)} sx={{ flex: 1, height: 8, borderRadius: '4px' }} />
                           <Typography variant="caption" fontWeight={700}>{Math.round(pct)}%</Typography>
                         </Box>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Chip label={status} size="small" color={statusColor} variant={isBookEntry ? 'outlined' : 'filled'} sx={chipStyle} />
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={status} size="small" color={statusColor} sx={chipStyle} />
+                      </TableCell>
+                    </TableRow>
+                    {isOpen && group.chapters.map((ch) => {
+                      const chPct = ch.completion_percentage || 0;
+                      const chStatus = chPct >= 100 ? 'Completed' : chPct >= 50 ? 'In Progress' : chPct > 0 ? 'Started' : 'Not Started';
+                      const chStatusColor = chPct >= 100 ? 'success' : chPct >= 50 ? 'primary' : chPct > 0 ? 'warning' : 'default';
+                      return (
+                        <TableRow key={ch.id} hover sx={{ bgcolor: alpha('#fafafa', 0.6) }}>
+                          <TableCell sx={{ pl: 4 }}></TableCell>
+                          <TableCell sx={{ pl: 5 }}><Typography variant="caption" color="text.secondary">{group.subject_name}</Typography></TableCell>
+                          <TableCell><Typography variant="caption" color="text.secondary">{group.class_name}</Typography></TableCell>
+                          <TableCell><Typography variant="caption" color="text.secondary">{group.book?.book_name || '-'}</Typography></TableCell>
+                          <TableCell><Typography variant="caption" color="text.secondary">{group.book?.teacher_name || '-'}</Typography></TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Chip label={`Ch ${ch.chapter_number}`} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                              <Typography variant="caption" noWrap sx={{ maxWidth: 180 }}>{ch.chapter_name || '-'}</Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>{ch.estimated_hours || '-'}</TableCell>
+                          <TableCell sx={{ minWidth: 130 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <LinearProgress variant="determinate" value={Math.min(chPct, 100)} sx={{ flex: 1, height: 6, borderRadius: '3px' }} />
+                              <Typography variant="caption" fontWeight={600}>{Math.round(chPct)}%</Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={chStatus} size="small" color={chStatusColor} sx={chipStyle} />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {isOpen && group.chapters.length === 0 && (
+                      <TableRow sx={{ bgcolor: '#fafafa' }}>
+                        <TableCell colSpan={9} sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}>
+                          <Typography variant="caption">No chapters added yet. Teacher progress will appear here.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </TableBody>
@@ -2023,6 +2087,17 @@ function SyllabusProgressTab({ classes, subjects }) {
                   {subjects.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
                 </Select>
               </FormControl>
+              {form.class_id && form.subject_id && (
+                (() => {
+                  const matched = grouped.find(g => String(g.class_id) === String(form.class_id) && String(g.subject_id) === String(form.subject_id));
+                  const resolvedTeacher = matched?.book?.teacher_name;
+                  return (
+                    <Alert severity={resolvedTeacher ? 'success' : 'warning'} sx={{ borderRadius: 2 }}>
+                      {resolvedTeacher ? `Assigned Teacher: ${resolvedTeacher}` : 'No teacher assigned yet. Assign via Teachers or Class Teachers tab first.'}
+                    </Alert>
+                  );
+                })()
+              )}
               <TextField fullWidth size="small" label="Book Name" value={form.book_name} onChange={e => setForm({ ...form, book_name: e.target.value })} placeholder="e.g. Mathematics NCERT, RD Sharma" />
               <TextField fullWidth size="small" label="Total Chapters" type="number" value={form.total_chapters} onChange={e => setForm({ ...form, total_chapters: e.target.value })} />
               <TextField fullWidth size="small" label="Estimated Hours (total)" type="number" value={form.estimated_hours} onChange={e => setForm({ ...form, estimated_hours: e.target.value })} />
@@ -2282,7 +2357,7 @@ function CalendarTab({ classes }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', start_date: '', end_date: '', event_type: 'event', class_id: '' });
+  const [form, setForm] = useState({ title: '', description: '', start_date: '', end_date: '', event_type: 'event', class_ids: [], is_holiday: false, applies_to: 'all' });
   const [filter, setFilter] = useState('');
 
   const loadData = useCallback(() => {
@@ -2304,13 +2379,14 @@ function CalendarTab({ classes }) {
     try {
       const payload = {
         ...form,
-        class_id: form.class_id || null,
         end_date: form.end_date || form.start_date,
+        is_holiday: form.event_type === 'holiday' ? true : form.is_holiday,
+        applies_to: form.class_ids.length > 0 ? 'specific_class' : form.applies_to,
       };
       await academicsAPI.createCalendarEvent(payload);
       toast.success('Event created');
       setDialogOpen(false);
-      setForm({ title: '', description: '', start_date: '', end_date: '', event_type: 'event', class_id: '' });
+      setForm({ title: '', description: '', start_date: '', end_date: '', event_type: 'event', class_ids: [], is_holiday: false, applies_to: 'all' });
       loadData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create event');
@@ -2362,6 +2438,7 @@ function CalendarTab({ classes }) {
                 <TableCell>Start Date</TableCell>
                 <TableCell>End Date</TableCell>
                 <TableCell>Class</TableCell>
+                <TableCell>Applies To</TableCell>
                 <TableCell>Description</TableCell>
               </TableRow>
             </TableHead>
@@ -2375,7 +2452,22 @@ function CalendarTab({ classes }) {
                   </TableCell>
                   <TableCell>{e.start_date ? new Date(e.start_date).toLocaleDateString() : '-'}</TableCell>
                   <TableCell>{e.end_date ? new Date(e.end_date).toLocaleDateString() : '-'}</TableCell>
-                  <TableCell>{e.class_name || 'All'}</TableCell>
+                  <TableCell>
+                    {e.class_names && e.class_names.length > 0
+                      ? e.class_names.join(', ')
+                      : e.class_name || 'All'}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={
+                      e.applies_to === 'all' ? 'All' :
+                      e.applies_to === 'staff' ? 'Staff Only' :
+                      e.applies_to === 'students' ? 'Students Only' :
+                      e.applies_to === 'specific_class' ? (e.class_names && e.class_names.length > 1 ? `${e.class_names.length} Classes` : 'Specific Class') :
+                      e.applies_to || 'All'
+                    }
+                      size="small" variant="outlined"
+                      sx={{ textTransform: 'capitalize', fontSize: '0.7rem' }} />
+                  </TableCell>
                   <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.description || '-'}</TableCell>
                 </TableRow>
               ))}
@@ -2412,12 +2504,41 @@ function CalendarTab({ classes }) {
               onChange={e => setForm({ ...form, end_date: e.target.value })}
               InputLabelProps={{ shrink: true }} sx={inputStyle} />
             <FormControl fullWidth size="small">
-              <InputLabel>Class (optional)</InputLabel>
-              <Select value={form.class_id} onChange={e => setForm({ ...form, class_id: e.target.value })} label="Class (optional)" sx={selectStyle}>
-                <MenuItem value="">All Classes</MenuItem>
-                {classes.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              <InputLabel>Classes (select multiple)</InputLabel>
+              <Select
+                multiple
+                value={form.class_ids}
+                onChange={e => setForm({ ...form, class_ids: e.target.value })}
+                label="Classes (select multiple)"
+                sx={selectStyle}
+                renderValue={(selected) => {
+                  if (selected.length === 0) return 'All Classes';
+                  return selected.map(id => classes.find(c => c.id === id)?.name || id).join(', ');
+                }}
+              >
+                {classes.map(c => (
+                  <MenuItem key={c.id} value={c.id}>
+                    <Checkbox checked={form.class_ids.includes(c.id)} size="small" />
+                    <ListItemText primary={c.name} />
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel>Applies To</InputLabel>
+              <Select value={form.applies_to} onChange={e => setForm({ ...form, applies_to: e.target.value })} label="Applies To" sx={selectStyle}>
+                <MenuItem value="all">All (Students + Staff)</MenuItem>
+                <MenuItem value="students">Students Only</MenuItem>
+                <MenuItem value="staff">Staff Only</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControlLabel
+              control={<Switch checked={form.event_type === 'holiday' ? true : form.is_holiday}
+                onChange={e => setForm({ ...form, is_holiday: e.target.checked })}
+                disabled={form.event_type === 'holiday'} />}
+              label={form.event_type === 'holiday' ? 'Holiday (auto-enabled)' : 'Is this a Holiday?'}
+              sx={{ '& .MuiTypography-root': { fontWeight: 600 } }}
+            />
             <TextField size="small" label="Description" multiline rows={2} value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
               sx={inputStyle} />
@@ -2560,7 +2681,8 @@ function ReportsTab({ classes }) {
       { label: 'Syllabus Entries (done/total)', value: `${data.completed_syllabus_entries ?? 0} / ${data.total_syllabus_entries ?? 0}` },
       { label: 'Lesson Plan Submission Rate', value: `${data.lesson_plan_submission_rate ?? 0}%` },
       { label: 'Lesson Plans (submitted/total)', value: `${data.submitted_or_approved_plans ?? 0} / ${data.total_lesson_plans ?? 0}` },
-      { label: 'Homework per Month', value: data.homework_per_month ?? 0 },
+      { label: 'Total Homework Assigned', value: data.total_homework ?? 0 },
+      { label: 'Homework Months Active', value: (data.homework_per_month || []).length },
       { label: 'Avg Student Percentage', value: `${data.avg_student_percentage ?? 0}%` },
     ];
     return (

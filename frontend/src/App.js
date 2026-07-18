@@ -28,6 +28,7 @@ import TeacherLibrary from './pages/teacher/TeacherLibrary';
 import TeacherAssignments from './pages/teacher/TeacherAssignments';
 import TeacherMarksEntry from './pages/teacher/TeacherMarksEntry';
 import TeacherAttendancePage from './pages/teacher/TeacherAttendancePage';
+import TeacherMyAttendance from './pages/teacher/TeacherMyAttendance';
 import TeacherSyllabus from './pages/teacher/TeacherSyllabus';
 import ClassTeacherSubjects from './pages/teacher/ClassTeacherSubjects';
 import TeacherLeave from './pages/teacher/TeacherLeave';
@@ -68,6 +69,11 @@ import Sports from './pages/sports/Sports';
 import DataImport from './pages/settings/DataImport';
 import ParentPortal from './pages/parents/ParentPortal';
 import StudentPortal from './pages/student/StudentPortal';
+import StudentMyAttendance from './pages/student/StudentMyAttendance';
+import StudentSyllabusProgress from './pages/student/StudentSyllabusProgress';
+import StudentProfile from './pages/student/StudentProfile';
+import StudentEvents from './pages/student/StudentEvents';
+import StaffEvents from './pages/staff/StaffEvents';
 import PrincipalDashboard from './pages/principal/PrincipalDashboard';
 import ExamController from './pages/principal/ExamController';
 import InvigilatorDuty from './pages/principal/InvigilatorDuty';
@@ -200,9 +206,11 @@ function App() {
         <Route path="teacher/assignments" element={<TeacherAssignments />} />
         <Route path="teacher/marks-entry" element={<TeacherMarksEntry />} />
         <Route path="teacher/my-attendance" element={<TeacherAttendancePage />} />
+        <Route path="teacher/my-attendance-view" element={<TeacherMyAttendance />} />
         <Route path="teacher/syllabus" element={<TeacherSyllabus />} />
         <Route path="teacher/class-subjects" element={<ClassTeacherSubjects />} />
         <Route path="teacher/leave" element={<TeacherLeave />} />
+        <Route path="teacher/events" element={<StaffEvents />} />
         <Route path="teacher/question-papers" element={<TeacherQuestionPaperUpload />} />
         <Route path="teacher/invigilator-duty" element={<TeacherInvigilatorDuty />} />
         
@@ -278,6 +286,10 @@ function App() {
 
         {/* Student Portal (self-service for student role) */}
         <Route path="my-portal" element={<StudentPortal />} />
+        <Route path="student-my-attendance" element={<StudentMyAttendance />} />
+        <Route path="student-syllabus" element={<StudentSyllabusProgress />} />
+        <Route path="student-profile" element={<StudentProfile />} />
+        <Route path="student-events" element={<StudentEvents />} />
 
         {/* Principal Dashboard */}
         <Route path="principal-dashboard" element={<PrincipalDashboard />} />

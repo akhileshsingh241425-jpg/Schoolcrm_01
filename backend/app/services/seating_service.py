@@ -75,7 +75,7 @@ def generate_seating(exam_schedule_id, school_id, mode='roll_number', hall_ids=N
                     school_id=school_id,
                     exam_schedule_id=exam_schedule_id,
                     hall_id=hall.id,
-                    student_id=students[student_idx].id,
+                    student_id=students[student_idx].admission_no,
                     seat_number=f"R{row}C{col}",
                     row_number=row,
                     column_number=col,

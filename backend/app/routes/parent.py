@@ -13,7 +13,7 @@ from app.models.fee import FeeInstallment, FeePayment
 from app.models.academic import ExamResult, ExamSchedule, Exam, ReportCard, Homework, Timetable
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
-from app.utils.helpers import success_response, error_response, paginate, validate
+from app.utils.helpers import success_response, error_response, paginate, validate, working_records
 import re
 from sqlalchemy.orm import joinedload
 
@@ -771,6 +771,7 @@ def get_child_overview(student_id):
     att_records = StudentAttendance.query.filter_by(
         student_id=student_id, school_id=g.school_id
     ).filter(StudentAttendance.period.is_(None)).order_by(StudentAttendance.date.desc()).all()
+    att_records = working_records(att_records, g.school_id, context='student')
 
     total_att = len(att_records)
     present_count = sum(1 for r in att_records if r.status in ('present', 'late'))

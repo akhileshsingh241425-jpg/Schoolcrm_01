@@ -455,7 +455,7 @@ export default function ExamController() {
               </TableHead>
               <TableBody>
                 {exams.map(exam => {
-                  const colors = { upcoming: '#f59e0b', ongoing: '#3b82f6', completed: '#10b981', results_published: '#8b5cf6' };
+                  const colors = { upcoming: '#f59e0b', ongoing: '#3b82f6', completed: '#10b981', results_published: '#8b5cf6', postponed: '#0ea5e9', cancelled: '#ef4444' };
                   return (
                     <TableRow key={exam.id} hover>
                       <TableCell><Typography fontWeight={600}>{exam.name}</Typography></TableCell>

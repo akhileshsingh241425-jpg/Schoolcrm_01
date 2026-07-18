@@ -621,11 +621,29 @@ function ExamsTab() {
                       {r.subjects?.length || 0} subjects • {r.obtained}/{r.total_marks}
                     </Typography>
                   </Box>
-                  <Chip
-                    label={`${r.percentage}%`} size="medium"
-                    color={r.percentage >= 60 ? 'success' : r.percentage >= 33 ? 'warning' : 'error'}
-                    sx={{ fontWeight: 800, fontSize: '0.85rem' }}
-                  />
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    {r.grade && (() => {
+                      const gc = /^A/i.test(r.grade) ? '#10b981' :
+                        /^B/i.test(r.grade) ? '#3b82f6' :
+                        /^C/i.test(r.grade) ? '#f59e0b' :
+                        /^D/i.test(r.grade) ? '#f97316' :
+                        '#ef4444';
+                      return (
+                        <Chip label={r.grade} size="medium" variant="outlined"
+                          sx={{
+                            fontWeight: 800, fontSize: '0.85rem',
+                            bgcolor: alpha(gc, 0.1),
+                            color: gc,
+                            border: `1px solid ${alpha(gc, 0.3)}`,
+                          }} />
+                      );
+                    })()}
+                    <Chip
+                      label={`${r.percentage}%`} size="medium"
+                      color={r.percentage >= 60 ? 'success' : r.percentage >= 33 ? 'warning' : 'error'}
+                      sx={{ fontWeight: 800, fontSize: '0.85rem' }}
+                    />
+                  </Box>
                 </Box>
                 <TableContainer>
                   <Table size="small">
@@ -640,16 +658,28 @@ function ExamsTab() {
                     <TableBody>
                       {(r.subjects || []).map((s, si) => (
                         <TableRow key={si}>
-                          <TableCell>{s.subject_name || s.schedule?.subject?.name || '-'}</TableCell>
+                          <TableCell>{s.subject_name || s.subject?.name || '-'}</TableCell>
                           <TableCell sx={{ fontWeight: 700 }}>{s.marks_obtained ?? '-'}</TableCell>
                           <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                            {s.max_marks || s.schedule?.max_marks || '-'}
+                            {s.max_marks || '-'}
                           </TableCell>
                           <TableCell>
-                            {s.grade && (
-                              <Chip label={s.grade} size="small" color="primary" variant="outlined"
-                                sx={{ fontWeight: 700, fontSize: '0.7rem' }} />
-                            )}
+                            {s.grade && (() => {
+                              const gc = /^A/i.test(s.grade) ? '#10b981' :
+                                /^B/i.test(s.grade) ? '#3b82f6' :
+                                /^C/i.test(s.grade) ? '#f59e0b' :
+                                /^D/i.test(s.grade) ? '#f97316' :
+                                '#ef4444';
+                              return (
+                                <Chip label={s.grade} size="small" variant="outlined"
+                                  sx={{
+                                    fontWeight: 700, fontSize: '0.7rem',
+                                    bgcolor: alpha(gc, 0.1),
+                                    color: gc,
+                                    border: `1px solid ${alpha(gc, 0.3)}`,
+                                  }} />
+                              );
+                            })()}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -918,7 +948,7 @@ export default function StudentPortal() {
     { label: 'Attendance', icon: <CalendarMonth /> },
     { label: 'Timetable', icon: <Schedule /> },
     { label: 'Homework', icon: <Assignment /> },
-    { label: 'Exams', icon: <EmojiEvents /> },
+    { label: 'Results', icon: <EmojiEvents /> },
     { label: 'Lectures', icon: <MenuBook /> },
     { label: 'Fees', icon: <AttachMoney /> },
     { label: 'Announcements', icon: <AnnouncementIcon /> },

@@ -63,21 +63,17 @@ function FinanceDashboard({ onSnack }) {
           </Grid>
         ))}
       </Grid>
-      {data.monthly_collection?.length > 0 && (
+      {data.monthly_collection != null && data.monthly_collection > 0 && (
         <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" mb={2}>Monthly Collection</Typography>
-          <Box display="flex" gap={1} flexWrap="wrap">
-            {data.monthly_collection.map((m, i) => (
-              <Chip key={i} label={`${m.month}: ₹${fmt(m.total)}`} color="primary" variant="outlined" />
-            ))}
-          </Box>
+          <Typography variant="h6" mb={2}>This Month Collection</Typography>
+          <Typography variant="h4" fontWeight={700} color="primary">₹{fmt(data.monthly_collection)}</Typography>
         </Paper>
       )}
       {data.category_wise?.length > 0 && (
         <Paper sx={{ p: 2, mt: 2 }}>
           <Typography variant="h6" mb={2}>Category-wise Collection</Typography>
           <Table size="small"><TableHead><TableRow><TableCell>Category</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead>
-            <TableBody>{data.category_wise.map((c, i) => <TableRow key={i}><TableCell>{c.category}</TableCell><TableCell align="right">₹{fmt(c.total)}</TableCell></TableRow>)}</TableBody>
+            <TableBody>{data.category_wise.map((c, i) => <TableRow key={i}><TableCell>{c.category}</TableCell><TableCell align="right">₹{fmt(c.amount)}</TableCell></TableRow>)}</TableBody>
           </Table>
         </Paper>
       )}
@@ -125,6 +121,7 @@ function StructuresTab({ onSnack }) {
   const [classes, setClasses] = useState([]);
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState(false);
+  const [detailStructure, setDetailStructure] = useState(null);
   const [form, setForm] = useState({ fee_category_id: '', class_id: '', amount: '', frequency: 'monthly', academic_year_id: '', late_fee_amount: '', late_fee_type: 'fixed', grace_period_days: '0' });
   const load = useCallback(() => feesAPI.listStructures({ page: page + 1, per_page: 20 }).then(r => setData(r.data.data || { items: [], total: 0 })).catch(() => {}), [page]);
   useEffect(() => { load(); }, [load]);
@@ -143,7 +140,7 @@ function StructuresTab({ onSnack }) {
         <TableHead><TableRow><TableCell>Category</TableCell><TableCell>Class</TableCell><TableCell>Amount</TableCell><TableCell>Frequency</TableCell><TableCell>Late Fee</TableCell><TableCell>Grace Days</TableCell><TableCell>Year</TableCell><TableCell>Active</TableCell></TableRow></TableHead>
         <TableBody>
           {data.items?.map(s => (
-            <TableRow key={s.id}>
+            <TableRow key={s.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetailStructure(s)}>
               <TableCell>{s.category?.name || '-'}</TableCell><TableCell>{s.class_name || '-'}</TableCell><TableCell>₹{fmt(s.amount)}</TableCell>
               <TableCell><Chip label={s.frequency} size="small" /></TableCell>
               <TableCell>{s.late_fee_amount ? `₹${s.late_fee_amount} (${s.late_fee_type})` : '-'}</TableCell>
@@ -173,6 +170,55 @@ function StructuresTab({ onSnack }) {
         </Grid></DialogContent>
         <DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" onClick={save}>Create</Button></DialogActions>
       </Dialog>
+      {/* ─── Structure Detail Dialog ─── */}
+      <Dialog open={!!detailStructure} onClose={() => setDetailStructure(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <AccountBalance fontSize="small" />
+            <span>Fee Structure Detail</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Category" value={detailStructure?.category?.name || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Class" value={detailStructure?.class_name || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Amount (₹)" value={fmt(detailStructure?.amount)} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Frequency" value={detailStructure?.frequency || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField fullWidth label="Academic Year" value={detailStructure?.academic_year || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12}>
+              <Divider><Typography variant="body2" color="text.secondary">Late Fee Settings</Typography></Divider>
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Late Fee Amount" value={`₹${fmt(detailStructure?.late_fee_amount || 0)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Late Fee Type" value={detailStructure?.late_fee_type || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField fullWidth label="Grace Period (Days)" value={detailStructure?.grace_period_days || 0} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={6}>
+              <TextField fullWidth label="Due Date" value={detailStructure?.due_date ? new Date(detailStructure.due_date).toLocaleDateString() : 'Not set'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={6}>
+              <TextField fullWidth label="Status" value={detailStructure?.is_active !== false ? 'Active' : 'Inactive'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailStructure(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -185,7 +231,7 @@ function PaymentsTab({ onSnack }) {
   const [onlinePayOpen, setOnlinePayOpen] = useState(false);
   const [onlinePayData, setOnlinePayData] = useState({});
   const [onlinePayStep, setOnlinePayStep] = useState(0); // 0=closed, 1=search/details, 2=gateway
-  const [form, setForm] = useState({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' });
+  const [form, setForm] = useState({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', late_days: '0', late_fee_amount: '0', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' });
   const [feeStructures, setFeeStructures] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentOptions, setStudentOptions] = useState([]);
@@ -193,6 +239,7 @@ function PaymentsTab({ onSnack }) {
   const [onlineStudentSearch, setOnlineStudentSearch] = useState('');
   const [onlineStudentOptions, setOnlineStudentOptions] = useState([]);
   const [onlineSelectedStudent, setOnlineSelectedStudent] = useState(null);
+  const [detailPayment, setDetailPayment] = useState(null);
   const load = useCallback(() => feesAPI.listPayments({ page: page + 1, per_page: 20 }).then(r => setData(r.data.data || { items: [], total: 0 })).catch(() => {}), [page]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -245,13 +292,19 @@ function PaymentsTab({ onSnack }) {
     // Use selectedStudent as fallback in case form.admission_no was lost due to stale closure
     const admission_no = form.admission_no || selectedStudent?.admission_no;
     const student_name = form.student_name || selectedStudent?.name;
-    const payload = { ...form, admission_no, student_name, payment_mode: form.payment_method };
+    const payload = { 
+      ...form, 
+      admission_no, 
+      student_name, 
+      payment_mode: form.payment_method,
+      late_fee_paid: Number(form.late_fee_amount || 0)
+    };
     if (!admission_no) { onSnack('Please select a student first', 'error'); return; }
     if (!form.fee_structure_id) { onSnack('Please select a fee structure', 'error'); return; }
     if (!form.amount) { onSnack('Please enter the amount', 'error'); return; }
     if (form.payment_method !== 'cheque') { delete payload.cheque_no; delete payload.bank_name; }
-    delete payload.student_name; delete payload.payment_method;
-    feesAPI.recordPayment(payload).then(() => { onSnack('Payment recorded'); setOpen(false); setForm({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' }); setSelectedStudent(null); setStudentSearch(''); load(); })
+    delete payload.student_name; delete payload.payment_method; delete payload.late_days; delete payload.late_fee_amount;
+    feesAPI.recordPayment(payload).then(() => { onSnack('Payment recorded'); setOpen(false); setForm({ admission_no: '', student_name: '', fee_structure_id: '', amount: '', late_days: '0', late_fee_amount: '0', payment_method: 'cash', transaction_id: '', cheque_no: '', bank_name: '' }); setSelectedStudent(null); setStudentSearch(''); load(); })
       .catch(() => onSnack('Failed', 'error'));
   };
   const statusColor = { completed: 'success', pending: 'warning', failed: 'error', cancelled: 'default' };
@@ -262,12 +315,13 @@ function PaymentsTab({ onSnack }) {
         <Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>Record Payment</Button>
       </Box>
       <TableContainer component={Paper}><Table>
-        <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Amount</TableCell><TableCell>Late Fee</TableCell><TableCell>Total</TableCell><TableCell>Method</TableCell><TableCell>Status</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
+        <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Amount</TableCell><TableCell>Late Fee</TableCell><TableCell>Late Days</TableCell><TableCell>Total</TableCell><TableCell>Method</TableCell><TableCell>Status</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
         <TableBody>
           {data.items?.map(p => (
-            <TableRow key={p.id}>
+            <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetailPayment(p)}>
               <TableCell>{p.student_name || '-'}</TableCell><TableCell>₹{fmt(p.amount)}</TableCell>
-              <TableCell>{p.late_fee_paid ? `₹${fmt(p.late_fee_paid)}` : '-'}</TableCell>
+              <TableCell>{p.late_fee_paid ? `₹${fmt(p.late_fee_paid)}` : `₹0`}</TableCell>
+              <TableCell>{p.late_days || 0}</TableCell>
               <TableCell>₹{fmt(p.total_amount || p.amount)}</TableCell>
               <TableCell>{p.payment_method}</TableCell>
               <TableCell><Chip label={p.status || 'completed'} size="small" color={statusColor[p.status] || 'success'} /></TableCell>
@@ -302,6 +356,11 @@ function PaymentsTab({ onSnack }) {
             {!feeStructures.length && <MenuItem disabled>No fee structures found</MenuItem>}
           </Select></FormControl></Grid>
           <Grid item xs={12} sm={6}><TextField fullWidth label="Amount" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></Grid>
+          <Grid item xs={6} sm={4}><TextField fullWidth label="Late Days" type="number" value={form.late_days} onChange={e => setForm(f => ({ ...f, late_days: e.target.value }))} /></Grid>
+          <Grid item xs={6} sm={4}><TextField fullWidth label="Late Fee Amount" type="number" value={form.late_fee_amount} onChange={e => setForm(f => ({ ...f, late_fee_amount: e.target.value }))} /></Grid>
+          <Grid item xs={12} sm={4}>
+            <TextField fullWidth label="Total Amount" type="number" value={Number(form.amount || 0) + Number(form.late_fee_amount || 0)} InputProps={{ readOnly: true }} variant="filled" />
+          </Grid>
           <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Method</InputLabel><Select value={form.payment_method} label="Method" onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
             <MenuItem value="cash">Cash</MenuItem><MenuItem value="online">Online</MenuItem><MenuItem value="cheque">Cheque</MenuItem><MenuItem value="dd">DD</MenuItem><MenuItem value="upi">UPI</MenuItem>
           </Select></FormControl></Grid>
@@ -348,6 +407,137 @@ function PaymentsTab({ onSnack }) {
         paymentData={onlinePayData}
         onSuccess={() => { onSnack('Online payment successful!'); setOnlinePayOpen(false); setOnlinePayStep(0); setOnlinePayData({}); setOnlineSelectedStudent(null); load(); }}
       />
+      {/* ─── Payment Detail Dialog ─── */}
+      <Dialog open={!!detailPayment} onClose={() => setDetailPayment(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Receipt fontSize="small" />
+            <span>Payment Detail #{detailPayment?.receipt_no || detailPayment?.id}</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Student" value={detailPayment?.student_name || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Transaction ID" value={detailPayment?.transaction_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Amount Paid" value={`₹${fmt(detailPayment?.amount_paid)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Late Fee" value={`₹${fmt(detailPayment?.late_fee_paid || 0)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Late Days" value={detailPayment?.late_days ? detailPayment.late_days : '0'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Discount" value={`₹${fmt(detailPayment?.discount_amount || 0)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Total Amount" value={`₹${fmt(detailPayment?.total_amount)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Payment Method" value={detailPayment?.payment_method || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Receipt No" value={detailPayment?.receipt_no || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Date" value={detailPayment?.payment_date ? new Date(detailPayment.payment_date).toLocaleDateString() : '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Status" value={detailPayment?.status || 'completed'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            {detailPayment?.payment_mode === 'cheque' && <>
+              <Grid item xs={12}>
+                <Divider><Typography variant="body2" color="text.secondary">Cheque Details</Typography></Divider>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <TextField fullWidth label="Cheque No" value={detailPayment?.cheque_no || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <TextField fullWidth label="Bank Name" value={detailPayment?.bank_name || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <TextField fullWidth label="Cheque Status" value={detailPayment?.cheque_status || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+              </Grid>
+            </>}
+            {detailPayment?.gateway && <>
+              <Grid item xs={12}>
+                <Divider><Typography variant="body2" color="text.secondary">Gateway ({detailPayment.gateway}) Details</Typography></Divider>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Gateway" value={detailPayment?.gateway || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+              </Grid>
+              {detailPayment?.razorpay_payment_id && (
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth label="Razorpay Payment ID" value={detailPayment?.razorpay_payment_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+                </Grid>
+              )}
+              {detailPayment?.razorpay_order_id && (
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth label="Razorpay Order ID" value={detailPayment?.razorpay_order_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+                </Grid>
+              )}
+              {detailPayment?.paytm_order_id && (
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth label="Paytm Order ID" value={detailPayment?.paytm_order_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+                </Grid>
+              )}
+              {detailPayment?.paytm_txn_id && (
+                <Grid item xs={12} sm={6}>
+                  <TextField fullWidth label="Paytm Transaction ID" value={detailPayment?.paytm_txn_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+                </Grid>
+              )}
+            </>}
+            {detailPayment?.remarks && (
+              <Grid item xs={12}>
+                <TextField fullWidth label="Remarks" value={detailPayment?.remarks || ''} InputProps={{ readOnly: true }} variant="filled" size="small" multiline rows={2} />
+              </Grid>
+            )}
+            {detailPayment?.refunds?.length > 0 && <>
+              <Grid item xs={12}>
+                <Divider><Typography variant="body2" color="text.secondary">Refunds ({detailPayment.refunds.length})</Typography></Divider>
+              </Grid>
+              {detailPayment.refunds.map((rf, i) => (
+                <Grid item xs={12} key={rf.id}>
+                  <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'grey.50' }}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="caption" color="text.secondary">Amount</Typography>
+                        <Typography variant="body2" fontWeight="bold">₹{fmt(rf.refund_amount)}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="caption" color="text.secondary">Mode</Typography>
+                        <Typography variant="body2">{rf.refund_mode}</Typography>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="caption" color="text.secondary">Status</Typography>
+                        <Chip label={rf.status} size="small" color={rf.status === 'processed' ? 'success' : rf.status === 'rejected' ? 'error' : rf.status === 'approved' ? 'info' : 'warning'} />
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <Typography variant="caption" color="text.secondary">Date</Typography>
+                        <Typography variant="body2">{rf.processed_date ? new Date(rf.processed_date).toLocaleDateString() : '-'}</Typography>
+                      </Grid>
+                      {rf.reason && (
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary">Reason</Typography>
+                          <Typography variant="body2">{rf.reason}</Typography>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                </Grid>
+              ))}
+            </>}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailPayment(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -830,6 +1020,7 @@ function AccountingTab({ onSnack }) {
 function RefundsTab({ onSnack }) {
   const [data, setData] = useState([]);
   const [open, setOpen] = useState(false);
+  const [detailRefund, setDetailRefund] = useState(null);
   const [form, setForm] = useState({ student_id: '', payment_id: '', refund_amount: '', reason: '', refund_mode: 'cash' });
   const load = () => feesAPI.listRefunds({}).then(r => setData(r.data.data || [])).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -847,16 +1038,16 @@ function RefundsTab({ onSnack }) {
         <TableHead><TableRow><TableCell>Student</TableCell><TableCell>Payment ID</TableCell><TableCell>Amount</TableCell><TableCell>Reason</TableCell><TableCell>Mode</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell></TableRow></TableHead>
         <TableBody>
           {data.map(r => (
-            <TableRow key={r.id}>
-              <TableCell>{r.student_id}</TableCell><TableCell>{r.payment_id}</TableCell><TableCell>₹{fmt(r.refund_amount)}</TableCell>
+            <TableRow key={r.id} hover sx={{ cursor: 'pointer' }} onClick={() => setDetailRefund(r)}>
+              <TableCell>{r.student_name || r.student_id}</TableCell><TableCell>{r.payment_id || '-'}</TableCell><TableCell>₹{fmt(r.refund_amount)}</TableCell>
               <TableCell>{r.reason || '-'}</TableCell><TableCell>{r.refund_mode}</TableCell>
               <TableCell><Chip label={r.status} size="small" color={statusColors[r.status] || 'default'} /></TableCell>
               <TableCell>
                 {r.status === 'requested' && <>
-                  <IconButton size="small" color="success" onClick={() => updateStatus(r.id, 'approved')}><CheckCircle /></IconButton>
-                  <IconButton size="small" color="error" onClick={() => updateStatus(r.id, 'rejected')}><Cancel /></IconButton>
+                  <IconButton size="small" color="success" onClick={(e) => { e.stopPropagation(); updateStatus(r.id, 'approved'); }}><CheckCircle /></IconButton>
+                  <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); updateStatus(r.id, 'rejected'); }}><Cancel /></IconButton>
                 </>}
-                {r.status === 'approved' && <Button size="small" onClick={() => updateStatus(r.id, 'processed')}>Process</Button>}
+                {r.status === 'approved' && <Button size="small" onClick={(e) => { e.stopPropagation(); updateStatus(r.id, 'processed'); }}>Process</Button>}
               </TableCell>
             </TableRow>
           ))}
@@ -875,6 +1066,63 @@ function RefundsTab({ onSnack }) {
           <Grid item xs={12}><TextField fullWidth multiline rows={2} label="Reason" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} /></Grid>
         </Grid></DialogContent>
         <DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" onClick={save}>Submit</Button></DialogActions>
+      </Dialog>
+      {/* ─── Refund Detail Dialog ─── */}
+      <Dialog open={!!detailRefund} onClose={() => setDetailRefund(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <AttachMoney fontSize="small" />
+            <span>Refund Detail #{detailRefund?.id}</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Student" value={detailRefund?.student_name || detailRefund?.student_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Reference No" value={detailRefund?.reference_no || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12}>
+              <Divider><Typography variant="body2" color="text.secondary">Linked Payment</Typography></Divider>
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Payment ID" value={detailRefund?.payment_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Transaction ID" value={detailRefund?.payment_transaction_id || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Payment Amount" value={detailRefund?.payment_amount ? `₹${fmt(detailRefund.payment_amount)}` : '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12}>
+              <Divider><Typography variant="body2" color="text.secondary">Refund Details</Typography></Divider>
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Amount" value={`₹${fmt(detailRefund?.refund_amount)}`} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Mode" value={detailRefund?.refund_mode || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={6} sm={4}>
+              <TextField fullWidth label="Status" value={detailRefund?.status || '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Processed Date" value={detailRefund?.processed_date ? new Date(detailRefund.processed_date).toLocaleDateString() : '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Created At" value={detailRefund?.created_at ? new Date(detailRefund.created_at).toLocaleDateString() : '-'} InputProps={{ readOnly: true }} variant="filled" size="small" />
+            </Grid>
+            {detailRefund?.reason && (
+              <Grid item xs={12}>
+                <TextField fullWidth label="Reason" value={detailRefund?.reason || ''} InputProps={{ readOnly: true }} variant="filled" size="small" multiline rows={2} />
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailRefund(null)}>Close</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

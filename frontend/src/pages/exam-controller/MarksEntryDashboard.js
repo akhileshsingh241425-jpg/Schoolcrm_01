@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   LinearProgress, IconButton, Tooltip, TextField, MenuItem, Dialog,
   DialogTitle, DialogContent, DialogActions, FormControlLabel, Switch,
-  Skeleton, alpha, useTheme, Stack, CircularProgress
+  Skeleton, alpha, useTheme, Stack, CircularProgress, Divider
 } from '@mui/material';
 import {
   Assignment, CheckCircle, HourglassEmpty, Block, Lock, LockOpen,
@@ -82,6 +82,14 @@ export default function MarksEntryDashboard() {
   const [selectedSchedules, setSelectedSchedules] = useState([]);
 
   const [lockLoading, setLockLoading] = useState({});
+
+  // Detail dialog
+  const [detailSchedule, setDetailSchedule] = useState(null);
+  const [detailMarks, setDetailMarks] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Status filter from card click
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Load exams on mount
   useEffect(() => {
@@ -263,6 +271,25 @@ export default function MarksEntryDashboard() {
     }
   };
 
+  // Open schedule detail
+  const openDetail = async (schedule) => {
+    setDetailSchedule(schedule);
+    setDetailLoading(true);
+    try {
+      const res = await academicsAPI.getMarksSheet({ exam_schedule_id: schedule.exam_schedule_id });
+      setDetailMarks(res.data.data?.marks || []);
+    } catch (err) {
+      setDetailMarks([]);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  // Filter schedules by status (from card click)
+  const filteredSchedules = !statusFilter || statusFilter === 'total_schedules'
+    ? schedules
+    : schedules.filter(s => s.status === statusFilter || (statusFilter === 'locked' && s.is_marks_locked));
+
   // Unique filter values from schedules
   const filterOptions = useMemo(() => {
     const classSet = new Set();
@@ -345,7 +372,11 @@ export default function MarksEntryDashboard() {
                 background: alpha(color, 0.06),
                 border: `1px solid ${alpha(color, 0.15)}`,
                 boxShadow: 'none',
-              }}>
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                '&:hover': { transform: 'translateY(-2px)', boxShadow: `0 4px 12px ${alpha(color, 0.25)}` },
+                ...(statusFilter === key ? { borderColor: color, borderWidth: 2 } : {}),
+              }} onClick={() => setStatusFilter(statusFilter === key ? '' : key)}>
                 <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                     <Icon sx={{ color, fontSize: 20 }} />
@@ -365,6 +396,13 @@ export default function MarksEntryDashboard() {
         <Paper sx={{ p: 4, textAlign: 'center', mb: 3, borderRadius: 3 }}>
           <Typography color="text.secondary">Select an exam to view dashboard</Typography>
         </Paper>
+      )}
+
+      {statusFilter && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">Filtered by:</Typography>
+          <Chip label={SUMMARY_CARDS.find(c => c.key === statusFilter)?.label || statusFilter} size="small" onDelete={() => setStatusFilter('')} />
+        </Box>
       )}
 
       {/* Filter Bar */}
@@ -446,18 +484,18 @@ export default function MarksEntryDashboard() {
                     ))}
                   </TableRow>
                 ))
-              ) : schedules.length === 0 ? (
+              ) : filteredSchedules.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">No schedules found</Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                schedules.map((schedule) => {
+                filteredSchedules.map((schedule) => {
                   const pct = schedule.completion_percentage ?? 0;
                   const statusConf = STATUS_CONFIG[schedule.status] || STATUS_CONFIG.not_started;
                   return (
-                    <TableRow key={schedule.exam_schedule_id} hover>
+                    <TableRow key={schedule.exam_schedule_id} hover sx={{ cursor: 'pointer' }} onClick={() => openDetail(schedule)}>
                       <TableCell>{schedule.class_name}</TableCell>
                       <TableCell>{schedule.section_name}</TableCell>
                       <TableCell>{schedule.subject_name}</TableCell>
@@ -716,6 +754,94 @@ export default function MarksEntryDashboard() {
           >
             {deadlineLoading ? 'Saving...' : 'Set Deadline'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ─── Schedule Detail Dialog ─── */}
+      <Dialog open={!!detailSchedule} onClose={() => setDetailSchedule(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Assignment fontSize="small" />
+            <span>{detailSchedule?.subject_name} — {detailSchedule?.class_name}{detailSchedule?.section_name ? ` (${detailSchedule.section_name})` : ''}</span>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {detailLoading ? <LinearProgress sx={{ mt: 2 }} /> : (
+            <Box sx={{ mt: 1 }}>
+              <Grid container spacing={2} mb={2}>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Exam Date</Typography>
+                  <Typography variant="body2">{detailSchedule?.exam_date || '-'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Teacher</Typography>
+                  <Typography variant="body2">{detailSchedule?.teacher_name || 'Not assigned'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Max Marks</Typography>
+                  <Typography variant="body2">{detailSchedule?.max_marks || '-'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Passing Marks</Typography>
+                  <Typography variant="body2">{detailSchedule?.passing_marks || '-'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Deadline</Typography>
+                  <Typography variant="body2">{detailSchedule?.deadline ? dayjs(detailSchedule.deadline).format('DD MMM YYYY') : 'Not set'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Auto Lock</Typography>
+                  <Typography variant="body2">{detailSchedule?.auto_lock ? 'Yes' : 'No'}</Typography>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Status</Typography>
+                  <Chip label={detailSchedule?.status} color={(STATUS_CONFIG[detailSchedule?.status] || {}).color || 'default'} size="small" />
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Typography variant="caption" color="text.secondary">Locked</Typography>
+                  <Typography variant="body2">{detailSchedule?.is_marks_locked ? <Lock fontSize="small" color="error" /> : <LockOpen fontSize="small" color="success" />}</Typography>
+                </Grid>
+              </Grid>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" mb={1}>Student Marks Entry Progress ({detailMarks.length} students)</Typography>
+              {detailMarks.length > 0 ? (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>#</TableCell>
+                        <TableCell>Student</TableCell>
+                        <TableCell>Adm No</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {detailMarks.map((m, i) => (
+                        <TableRow key={m.student_id}>
+                          <TableCell>{i + 1}</TableCell>
+                          <TableCell>{m.student_name}</TableCell>
+                          <TableCell>{m.admission_no || '-'}</TableCell>
+                          <TableCell>
+                            {m.subjects?.length > 0 && m.subjects[0]?.marks_obtained != null
+                              ? <Chip label={`${m.subjects[0].marks_obtained} / ${m.subjects[0].max_marks || '?'}${m.subjects[0].grade ? ' - ' + m.subjects[0].grade : ''}`} color="success" size="small" variant="outlined" />
+                              : m.subjects?.length > 0 && m.subjects[0]?.is_absent
+                                ? <Chip label="Absent" color="error" size="small" />
+                                : <Chip label="Not Entered" color="default" size="small" variant="outlined" />
+                            }
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography color="text.secondary" textAlign="center" py={3}>No student data available</Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailSchedule(null)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

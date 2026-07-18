@@ -7,8 +7,8 @@ import {
   Popover, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Collapse, CircularProgress, Paper
 } from '@mui/material';
 import {
-  Menu as MenuIcon, Dashboard, People, School, PersonAdd, Campaign,
-  EventNote, AttachMoney, CalendarMonth, Announcement, Assessment,
+  Menu as MenuIcon, Dashboard, People, School, PersonAdd, Campaign, Person,
+  EventNote, Event, AttachMoney, CalendarMonth, Announcement, Assessment,
   Inventory, DirectionsBus, LocalLibrary, Settings, Logout,
   FamilyRestroom, HealthAndSafety, Hotel, Restaurant, SportsBasketball,
   CloudUpload, Search, NotificationsNoneOutlined, Palette, Close,
@@ -16,11 +16,11 @@ import {
   KeyboardArrowDown, KeyboardArrowUp, Book, Class, Schedule, MenuBook,
   Email, Sms, Message, Assignment, Edit, Lock, AccountBalance, Store, RateReview,
   ArrowUpward, SwapHoriz, TrendingUp, FactCheck, AutoGraph,
-  Timeline, HowToVote, TaskAlt, Checklist, Security, MeetingRoom
+  Timeline, HowToVote, TaskAlt, Checklist, Security, MeetingRoom, AccessTime
 } from '@mui/icons-material';
 import useAuthStore from '../../store/authStore';
 import useThemeStore from '../../store/themeStore';
-import api, { noticesAPI } from '../../services/api';
+import api, { noticesAPI, onNotificationUpdate } from '../../services/api';
 import toast from 'react-hot-toast';
 
 const LOGO_CRM = '/assets/images/logo-crm.svg';
@@ -95,6 +95,8 @@ const menuGroups = [
     role: ['teacher'],
     items: [
       { text: 'My Profile', icon: <Edit />, path: '/teacher/profile' },
+      { text: 'My Attendance', icon: <AccessTime />, path: '/teacher/my-attendance-view' },
+      { text: 'Events', icon: <Event />, path: '/teacher/events' },
       { text: 'My Leave', icon: <CalendarMonth />, path: '/teacher/leave' },
       { text: 'Payroll', icon: <AccountBalance />, path: '/teacher/payroll' },
     ],
@@ -175,7 +177,6 @@ export default function DashboardLayout() {
   const [noticeForm, setNoticeForm] = useState({ title: '', message: '', target_audience: 'all' });
   const [noticeSaving, setNoticeSaving] = useState(false);
   const [emergencyAlert, setEmergencyAlert] = useState(null);
-  const seenEmergencyIds = React.useRef(new Set());
   const navigate = useNavigate();
   const location = useLocation();
   const { user, school, features, logout } = useAuthStore();
@@ -215,16 +216,6 @@ export default function DashboardLayout() {
       const list = data.notifications || [];
       setNotifications(list);
       setUnreadCount(data.unread_count || 0);
-      // Detect a new UNREAD emergency alert → auto-popup with sound
-      const emergency = list.find(n =>
-        !n.read_at && typeof n.title === 'string' && n.title.includes('[EMERGENCY]')
-        && !seenEmergencyIds.current.has(n.id)
-      );
-      if (emergency) {
-        seenEmergencyIds.current.add(emergency.id);
-        setEmergencyAlert(emergency);
-        playAlarm();
-      }
     } catch { setNotifications([]); setUnreadCount(0); }
     finally { setNotifLoading(false); }
   }, []);
@@ -254,10 +245,35 @@ export default function DashboardLayout() {
   }, []);
 
   useEffect(() => {
-    loadNotifications();
-    const interval = setInterval(loadNotifications, 30000); // poll every 30s for new notices
-    return () => clearInterval(interval);
+    loadNotifications(); // initial fetch
   }, [loadNotifications]);
+
+  // Listen for unread count from every backend response (no polling needed)
+  useEffect(() => {
+    const unsub = onNotificationUpdate(count => {
+      setUnreadCount(count);
+    });
+    return unsub;
+  }, []);
+
+  // SSE — real-time emergency alerts (uses JWT cookie, no token in URL)
+  useEffect(() => {
+    const es = new EventSource('/api/global/emergency-stream');
+
+    es.addEventListener('emergency', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setEmergencyAlert(data);
+        playAlarm();
+      } catch {}
+    });
+
+    es.onerror = () => {
+      // EventSource auto-reconnects on failure
+    };
+
+    return () => es.close();
+  }, []);
 
   const canPostNotice = ['principal', 'school_admin', 'super_admin', 'exam_controller', 'academic_controller'].includes(user?.role?.name);
 
@@ -315,6 +331,12 @@ export default function DashboardLayout() {
     { label: 'Student Portal', items: [
       { text: 'My Portal', icon: <Dashboard />, path: '/my-portal', module: 'dashboard' },
       { text: 'My Exams', icon: <EventNote />, path: '/student-exams', module: 'dashboard' },
+    ] },
+    { label: 'My Pages', items: [
+      { text: 'My Attendance', icon: <CalendarMonth />, path: '/student-my-attendance', module: 'dashboard' },
+      { text: 'Events', icon: <Event />, path: '/student-events', module: 'dashboard' },
+      { text: 'Syllabus Progress', icon: <MenuBook />, path: '/student-syllabus', module: 'dashboard' },
+      { text: 'Profile', icon: <Person />, path: '/student-profile', module: 'dashboard' },
     ] },
   ];
 
@@ -517,7 +539,6 @@ export default function DashboardLayout() {
 
     const groups = [];
     const userRoleNames = (user?.roles || []).map(r => r.name);
-    console.log('=== SIDEBAR DEBUG ===', { userRoleNames, roles: (user?.roles || []).map(r => r.name) });
 
     (user?.roles || []).map(r => r.name).filter(n => roleMenuMap[n]).forEach(roleName =>
       groups.push(...roleMenuMap[roleName].map(g => ({ ...g, _key: g.label + '-' + roleName })))
@@ -525,7 +546,6 @@ export default function DashboardLayout() {
 
     groups.push(...menuGroups.map((g, i) => ({ ...g, _key: g.label + '-main-' + i })));
 
-    console.log('=== SIDEBAR GROUPS ===', groups.map(g => g.label));
     return groups;
   };
 
@@ -871,7 +891,7 @@ export default function DashboardLayout() {
               <Button variant="outlined" color="error" onClick={() => playAlarm()}
                 sx={{ textTransform: 'none', fontWeight: 600 }}>🔊 Replay Sound</Button>
               <Button variant="contained" color="error"
-                onClick={() => { if (emergencyAlert) handleMarkRead(emergencyAlert.id); setEmergencyAlert(null); }}
+                onClick={() => { if (emergencyAlert?.id) handleMarkRead(emergencyAlert.id); setEmergencyAlert(null); }}
                 sx={{ textTransform: 'none', fontWeight: 700, px: 4 }}>
                 Acknowledge
               </Button>

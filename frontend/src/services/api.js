@@ -16,9 +16,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor - handle 401
+// Track unread notification count from backend (injected into every response)
+const notifListeners = [];
+export const onNotificationUpdate = (fn) => { notifListeners.push(fn); return () => { const i = notifListeners.indexOf(fn); if (i >= 0) notifListeners.splice(i, 1); }; };
+
+// Response interceptor - handle 401 & extract _notif_unread
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const unread = response.data?._notif_unread;
+    if (typeof unread === 'number') {
+      notifListeners.forEach(fn => fn(unread));
+    }
+    return response;
+  },
   async (error) => {
     if (error.response?.status === 401) {
       const refreshToken = localStorage.getItem('refresh_token');
@@ -30,6 +40,7 @@ api.interceptors.response.use(
           });
           const newToken = res.data.data.access_token;
           localStorage.setItem('access_token', newToken);
+          document.cookie = `access_token_cookie=${newToken}; path=/; SameSite=Lax`;
           error.config.headers.Authorization = `Bearer ${newToken}`;
           return api(error.config);
         } catch {
@@ -185,7 +196,6 @@ export const staffAPI = {
   addDocument: (staffId, data) => api.post(`/staff/${staffId}/documents`, data),
   verifyDocument: (docId) => api.put(`/staff/documents/${docId}/verify`),
   deleteDocument: (docId) => api.delete(`/staff/documents/${docId}`),
-  createLogin: (staffId, data) => api.post(`/staff/${staffId}/create-login`, data),
   updateLogin: (staffId, data) => api.put(`/staff/${staffId}/login`, data),
   deleteLogin: (staffId) => api.delete(`/staff/${staffId}/login`),
   // Salary Structure
@@ -347,6 +357,8 @@ export const academicsAPI = {
   addExamSchedule: (examId, data) => api.post(`/academics/exams/${examId}/schedules`, data),
   updateSchedule: (scheduleId, data) => api.put(`/academics/exams/schedules/${scheduleId}`, data),
   deleteSchedule: (scheduleId) => api.delete(`/academics/exams/schedules/${scheduleId}`),
+  postponeSchedule: (scheduleId, data) => api.put(`/academics/exams/schedules/${scheduleId}/postpone`, data),
+  resetPostponeSchedule: (scheduleId) => api.delete(`/academics/exams/schedules/${scheduleId}/postpone`),
   bulkAddSchedules: (examId, data) => api.post(`/academics/exams/${examId}/schedules/bulk`, data),
   // Exam Groups
   listExamGroups: () => api.get('/academics/exam-groups'),
@@ -478,6 +490,9 @@ export const attendanceAPI = {
   staffReport: (params) => api.get('/attendance/staff/report', { params }),
   updateStaffAttendance: (id, data) => api.put(`/attendance/staff/${id}`, data),
   staffMonthly: (params) => api.get('/attendance/staff/monthly', { params }),
+  staffMonthlyGrid: (params) => api.get('/attendance/staff/monthly-grid', { params }),
+  studentMonthlyGrid: (params) => api.get('/attendance/student/monthly-grid', { params }),
+  staffEvents: () => api.get('/attendance/staff-events'),
 
   // Leave types
   getLeaveTypes: (params) => api.get('/attendance/leave-types', { params }),
@@ -723,10 +738,17 @@ export const studentPortalAPI = {
   timetable: () => api.get('/student/timetable'),
   homework: (params) => api.get('/student/homework', { params }),
   exams: () => api.get('/student/exams'),
+  examsList: () => api.get('/student/exams-list'),
+  examDatesheet: (examId) => api.get(`/student/exams-list/${examId}/datesheet`),
+  examSeating: (examId) => api.get(`/student/exams-list/${examId}/seating`),
   fees: () => api.get('/student/fees'),
   announcements: () => api.get('/student/announcements'),
   activities: () => api.get('/student/activities'),
   lectures: (params) => api.get('/academics/study-materials', { params }),
+  mySyllabus: () => api.get('/student/my-syllabus'),
+  myProfile: () => api.get('/student/my-profile'),
+  myAttendanceMonthly: (month) => api.get('/student/attendance/monthly', { params: { month } }),
+  myEvents: () => api.get('/student/events'),
 };
 
 // File Upload

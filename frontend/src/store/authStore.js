@@ -9,11 +9,19 @@ const useAuthStore = create((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
 
+  _setTokenCookie: (token) => {
+    document.cookie = `access_token_cookie=${token}; path=/; SameSite=Lax`;
+  },
+  _clearTokenCookie: () => {
+    document.cookie = 'access_token_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  },
+
   login: async (credentials) => {
     const res = await authAPI.login(credentials);
     const { access_token, refresh_token, user, school, features, allowed_modules } = res.data.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    get()._setTokenCookie(access_token);
     set({ user, school, features, allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
     return res.data;
   },
@@ -23,6 +31,7 @@ const useAuthStore = create((set, get) => ({
     const { access_token, refresh_token, user, school, features, allowed_modules } = res.data.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    get()._setTokenCookie(access_token);
     set({ user, school, features: features || [], allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
     return res.data;
   },
@@ -34,6 +43,8 @@ const useAuthStore = create((set, get) => ({
         set({ isLoading: false });
         return;
       }
+      // Restore cookie for SSE (cleared on tab close)
+      document.cookie = `access_token_cookie=${token}; path=/; SameSite=Lax`;
       const res = await authAPI.getMe();
       const { user, school, features, allowed_modules } = res.data.data;
       set({ user, school, features, allowedModules: allowed_modules || [], isAuthenticated: true, isLoading: false });
@@ -56,6 +67,7 @@ const useAuthStore = create((set, get) => ({
 
   logout: () => {
     localStorage.clear();
+    get()._clearTokenCookie();
     set({ user: null, school: null, features: [], allowedModules: [], isAuthenticated: false });
   },
 

@@ -465,10 +465,10 @@ def all_report_cards():
         stu = r.student
         if not stu:
             continue
-        key = stu.id
+        key = stu.admission_no
         if key not in students_map:
             students_map[key] = {
-                'student_id': stu.id,
+                'student_id': stu.admission_no,
                 'student_name': f"{stu.first_name} {stu.last_name or ''}".strip(),
                 'admission_no': stu.admission_no,
                 'roll_no': stu.roll_no,

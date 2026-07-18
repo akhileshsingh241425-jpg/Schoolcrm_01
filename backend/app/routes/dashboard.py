@@ -9,7 +9,7 @@ from app.models.admission import Admission
 from app.models.attendance import StudentAttendance
 from app.models.staff import Staff
 from app.utils.decorators import school_required
-from app.utils.helpers import success_response, error_response, get_teacher_scope
+from app.utils.helpers import success_response, error_response, get_teacher_scope, working_records
 from app.models.academic import TeacherSubject, Timetable, Subject, ExamSchedule, ExamResult
 from app.models.student import Section
 from sqlalchemy.orm import joinedload
@@ -243,16 +243,14 @@ def get_teacher_dashboard():
         ).all()
 
         for s in students_query:
-            # Recent attendance percentage
-            recent_att = db.session.query(
-                func.count(StudentAttendance.id),
-            func.sum(case((StudentAttendance.status.in_(['present', 'late', 'half_day']), 1), else_=0))
-            ).filter(
+            # Recent attendance percentage (excluding Sundays & holidays)
+            all_att = StudentAttendance.query.filter(
                 StudentAttendance.student_id == s.admission_no,
                 StudentAttendance.school_id == school_id
-            ).first()
-            total_att = recent_att[0] or 0
-            present_att = int(recent_att[1] or 0)
+            ).all()
+            all_att = working_records(all_att, school_id, context='student')
+            total_att = len(all_att)
+            present_att = sum(1 for r in all_att if r.status in ('present', 'late', 'half_day'))
             att_pct = round((present_att / total_att * 100), 1) if total_att > 0 else 0
 
             # Latest marks

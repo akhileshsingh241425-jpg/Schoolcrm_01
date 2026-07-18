@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Collapse
 } from '@mui/material';
 import {
-  Book, School, People, Schedule, MenuBook, TrendingUp, Edit,
+  Book, School, People, Schedule, MenuBook, TrendingUp, Edit, RateReview,
   ExpandMore, ExpandLess, Refresh, CheckCircle
 } from '@mui/icons-material';
 import { dashboardAPI, academicsAPI } from '../../services/api';
@@ -148,6 +148,12 @@ export default function TeacherSubjects() {
                                   label="Syllabus" size="small" clickable
                                   sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
                               </Tooltip>
+                              <Button size="small" variant="outlined" color="secondary"
+                                startIcon={<RateReview sx={{ fontSize: 14 }} />}
+                                onClick={(e) => { e.stopPropagation(); window.location.href = '/teacher/marks-entry'; }}
+                                sx={{ borderRadius: 2, textTransform: 'none', fontSize: '0.7rem', fontWeight: 600, minWidth: 0, px: 1, py: 0.3 }}>
+                                Marks Entry
+                              </Button>
                               <Button size="small" variant="contained"
                                 startIcon={<TrendingUp sx={{ fontSize: 14 }} />}
                                 onClick={(e) => { e.stopPropagation(); setProgressDialog({ class_id: cls.class_id, subject_id: cls.subject_id }); setProgressForm({ chapter_number: '', chapter_name: '', topics_covered: '', date: new Date().toISOString().split('T')[0], percentage_covered: '' }); }}

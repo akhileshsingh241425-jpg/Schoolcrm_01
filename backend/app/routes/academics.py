@@ -10,7 +10,7 @@ from app.models.academic import (
     ReportCard, ExamIncident,
     Syllabus, SyllabusProgress, LessonPlan,
     Homework, HomeworkSubmission, StudyMaterial,
-    AcademicCalendar, TeacherSubject,
+    AcademicCalendar, CalendarEventClass, TeacherSubject,
     ElectiveGroup, ElectiveSubject, StudentElective, StudentSubjectEnrollment
 )
 from app.models.student import Student, Class, Section, AcademicYear
@@ -838,6 +838,20 @@ def calculate_grade(gs_id):
 @academics_bp.route('/exams', methods=['GET'])
 @school_required
 def list_exams():
+    # Auto-complete: exams past their end_date and still 'upcoming' → 'completed'
+    from datetime import date
+    today = date.today()
+    expired = Exam.query.filter(
+        Exam.school_id == g.school_id,
+        Exam.status == 'upcoming',
+        Exam.end_date != None,
+        Exam.end_date < today
+    ).all()
+    for ex in expired:
+        ex.status = 'completed'
+    if expired:
+        db.session.commit()
+
     query = Exam.query.filter_by(school_id=g.school_id)
     status = request.args.get('status')
     academic_year_id = request.args.get('academic_year_id', type=int)
@@ -922,14 +936,19 @@ def delete_exam(exam_id):
 
 
 @academics_bp.route('/exams/<int:exam_id>/status', methods=['PUT'])
-@role_required('school_admin', 'exam_controller')
+@role_required('school_admin', 'exam_controller', 'teacher', 'principal')
 @validate({
-    'status': {'required': True, 'message': 'Status is required'},
+    'status': {
+        'required': True,
+        'allowed': ['upcoming', 'ongoing', 'completed', 'cancelled', 'results_published'],
+        'message': 'Status is required',
+    },
 })
 def update_exam_status(exam_id):
     exam = Exam.query.filter_by(id=exam_id, school_id=g.school_id).first_or_404()
     data = g.get('validated_data') or request.get_json()
-    exam.status = data['status']
+    new_status = data['status']
+    exam.status = new_status
     db.session.commit()
     return success_response(exam.to_dict(), 'Status updated')
 
@@ -1000,6 +1019,29 @@ def delete_exam_schedule(schedule_id):
     db.session.delete(schedule)
     db.session.commit()
     return success_response(message='Deleted')
+
+
+@academics_bp.route('/exams/schedules/<int:schedule_id>/postpone', methods=['PUT'])
+@role_required('school_admin', 'exam_controller', 'teacher', 'principal')
+@validate({
+    'new_date': {'required': True, 'regex': r'\d{4}-\d{2}-\d{2}', 'message': 'New exam date is required (YYYY-MM-DD)'},
+})
+def postpone_exam_schedule(schedule_id):
+    schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
+    data = g.get('validated_data') or request.get_json()
+    from datetime import datetime as dt
+    schedule.postponed_to = dt.strptime(data['new_date'], '%Y-%m-%d').date()
+    db.session.commit()
+    return success_response(schedule.to_dict(), 'Schedule postponed')
+
+
+@academics_bp.route('/exams/schedules/<int:schedule_id>/postpone', methods=['DELETE'])
+@role_required('school_admin', 'exam_controller')
+def reset_postpone_exam_schedule(schedule_id):
+    schedule = ExamSchedule.query.filter_by(id=schedule_id, school_id=g.school_id).first_or_404()
+    schedule.postponed_to = None
+    db.session.commit()
+    return success_response(schedule.to_dict(), 'Postpone reset')
 
 
 @academics_bp.route('/exams/<int:exam_id>/schedules/bulk', methods=['POST'])
@@ -1318,9 +1360,9 @@ def bulk_marks_entry():
 
     entries = data.get('entries', [])
 
-    # Validate marks using MarksEntryService
-    from app.services.marks_entry_service import MarksEntryService
-    is_valid, validation_errors = MarksEntryService.validate_marks_entry(entries, schedule)
+    # Validate marks
+    from app.services.marks_entry_service import validate_marks_entry, calculate_grade
+    is_valid, validation_errors = validate_marks_entry(entries, schedule)
     if not is_valid:
         return error_response({
             'message': 'Marks validation failed',
@@ -1350,15 +1392,13 @@ def bulk_marks_entry():
         percentage = None
         if marks is not None and schedule.max_marks and float(schedule.max_marks) > 0:
             exam = schedule.exam
-            grading_system_id = exam.grading_system_id if exam else None
-            grade_info = MarksEntryService.calculate_grade(
+            grade_info = calculate_grade(
                 marks_obtained=marks,
                 max_marks=schedule.max_marks,
-                grading_system_id=grading_system_id,
-                school_id=g.school_id
+                exam=exam
             )
             percentage = grade_info['percentage']
-            grade_name = grade_info['grade_name']
+            grade_name = grade_info['grade']
             grade_point = grade_info['grade_point']
 
         now = datetime.utcnow()
@@ -2829,6 +2869,11 @@ def exam_dashboard():
     ongoing = base_exam.filter(Exam.status == 'ongoing').count()
     completed = base_exam.filter(Exam.status == 'completed').count()
     results_published = base_exam.filter(Exam.status == 'results_published').count()
+    postponed = ExamSchedule.query.filter(
+        ExamSchedule.school_id == g.school_id,
+        ExamSchedule.postponed_to != None
+    ).count()
+    cancelled = base_exam.filter(Exam.status == 'cancelled').count()
 
     total_subjects = Subject.query.filter_by(school_id=g.school_id, is_active=True).count()
     total_halls = ExamHall.query.filter_by(school_id=g.school_id, is_active=True).count()
@@ -2845,6 +2890,8 @@ def exam_dashboard():
             'ongoing': ongoing,
             'completed': completed,
             'results_published': results_published,
+            'postponed': postponed,
+            'cancelled': cancelled,
             'total_subjects': total_subjects,
             'total_halls': total_halls,
             'total_report_cards': total_report_cards,
@@ -2902,7 +2949,39 @@ def get_syllabus():
         if key not in seen:
             seen[key] = True
             deduped.append(s)
-    return success_response([s.to_dict() for s in deduped])
+
+    # Collect unique (class_id, subject_id) pairs and fetch teacher assignments
+    # Priority: TeacherSubject (subject-level) > Section class_teacher (section-level)
+    cs_pairs = set((s.class_id, s.subject_id) for s in deduped)
+    teacher_map = {}
+    class_ids_needed = set(cls_id for cls_id, _ in cs_pairs)
+    section_teacher_map = {}
+    if class_ids_needed:
+        sections = Section.query.filter(
+            Section.school_id == g.school_id,
+            Section.class_id.in_(class_ids_needed),
+            Section.class_teacher_id.isnot(None)
+        ).all()
+        for sec in sections:
+            if sec.class_teacher:
+                section_teacher_map[sec.class_id] = f"{sec.class_teacher.first_name} {sec.class_teacher.last_name or ''}".strip()
+
+    if cs_pairs:
+        for cls_id, sub_id in cs_pairs:
+            ts = TeacherSubject.query.filter_by(
+                school_id=g.school_id, class_id=cls_id, subject_id=sub_id, status='active'
+            ).first()
+            if ts and ts.teacher:
+                teacher_map[(cls_id, sub_id)] = f"{ts.teacher.first_name} {ts.teacher.last_name or ''}".strip()
+            elif cls_id in section_teacher_map:
+                teacher_map[(cls_id, sub_id)] = section_teacher_map[cls_id]
+
+    result = []
+    for s in deduped:
+        d = s.to_dict()
+        d['teacher_name'] = teacher_map.get((s.class_id, s.subject_id))
+        result.append(d)
+    return success_response(result)
 
 
 @academics_bp.route('/syllabus', methods=['POST'])
@@ -3636,10 +3715,11 @@ def get_calendar():
     if event_type:
         query = query.filter_by(event_type=event_type)
     if class_id:
-        # Show events for this class + events that apply to 'all'
+        matching_event_ids = [r.event_id for r in CalendarEventClass.query.filter_by(class_id=class_id).all()]
         query = query.filter(
             or_(
                 AcademicCalendar.class_id == class_id,
+                AcademicCalendar.id.in_(matching_event_ids),
                 AcademicCalendar.applies_to == 'all',
                 AcademicCalendar.applies_to == 'students'
             )
@@ -3664,7 +3744,7 @@ def get_calendar():
     'start_date': {'required': True, 'message': 'Start date is required'},
 })
 def create_calendar_event():
-    """Create calendar event"""
+    """Create calendar event — supports multiple classes via class_ids"""
     data = g.get('validated_data') or request.get_json()
     event = AcademicCalendar(
         school_id=g.school_id,
@@ -3686,6 +3766,18 @@ def create_calendar_event():
         created_by=g.current_user.id,
     )
     db.session.add(event)
+    db.session.flush()
+
+    class_ids = data.get('class_ids') or []
+    if not class_ids and data.get('class_id'):
+        class_ids = [data['class_id']]
+    if not class_ids and data.get('applies_to') == 'specific_class':
+        pass
+    for cid in class_ids:
+        db.session.add(CalendarEventClass(
+            school_id=g.school_id, event_id=event.id, class_id=cid
+        ))
+
     db.session.commit()
     return success_response(event.to_dict(), 201)
 
@@ -3694,7 +3786,7 @@ def create_calendar_event():
 @role_required('school_admin', 'academic_controller')
 @validate({})
 def update_calendar_event(event_id):
-    """Update calendar event"""
+    """Update calendar event — supports multiple classes via class_ids"""
     event = AcademicCalendar.query.filter_by(id=event_id, school_id=g.school_id).first()
     if not event:
         return error_response('Event not found', 404)
@@ -3705,6 +3797,17 @@ def update_calendar_event(event_id):
                   'color', 'is_recurring', 'recurrence_pattern', 'notify_parents']:
         if field in data:
             setattr(event, field, data[field])
+
+    if 'class_ids' in data:
+        CalendarEventClass.query.filter_by(event_id=event.id).delete()
+        class_ids = data['class_ids'] or []
+        if not class_ids and event.class_id:
+            class_ids = [event.class_id]
+        for cid in class_ids:
+            db.session.add(CalendarEventClass(
+                school_id=g.school_id, event_id=event.id, class_id=cid
+            ))
+
     db.session.commit()
     return success_response(event.to_dict())
 
@@ -4075,17 +4178,21 @@ def get_my_class():
 # ============================================================
 
 def _resolve_class_teacher_section():
-    """Return (staff, section) for the logged-in class teacher, or (staff, None)."""
+    """Return (staff, section) for the logged-in class teacher, or (staff, None).
+    Checks both class_teacher_id and co_class_teacher_id on Section."""
     staff = Staff.query.filter_by(school_id=g.school_id, user_id=g.user_id).first()
     if not staff:
         return None, None
-    section = Section.query.filter_by(school_id=g.school_id, class_teacher_id=staff.id).first()
+    section = Section.query.filter(
+        Section.school_id == g.school_id,
+        (Section.class_teacher_id == staff.id) | (Section.co_class_teacher_id == staff.id)
+    ).first()
     return staff, section
 
 
 @academics_bp.route('/class-teacher/roster', methods=['GET'])
 @school_required
-@role_required('teacher')
+@role_required('teacher', 'school_admin', 'principal')
 def class_teacher_roster():
     """Return the class teacher's section, its students, and available subjects,
     plus each student's current subject enrollments for the academic year."""
@@ -4132,11 +4239,11 @@ def class_teacher_roster():
         'academic_year_id': ay_id,
         'subjects': [s.to_dict() for s in subjects],
         'students': [{
-            'student_id': s.id,
+            'student_id': s.admission_no,
             'student_name': f"{s.first_name} {s.last_name or ''}".strip(),
             'admission_no': s.admission_no,
             'roll_no': s.roll_no,
-            'enrolled_subject_ids': enr_map.get(s.id, []),
+            'enrolled_subject_ids': enr_map.get(s.admission_no, []),
         } for s in students],
         'enrollment_ids': enr_id_map,
     })
@@ -4144,9 +4251,9 @@ def class_teacher_roster():
 
 @academics_bp.route('/class-teacher/enrollments', methods=['POST'])
 @school_required
-@role_required('teacher')
+@role_required('teacher', 'school_admin', 'principal')
 @validate({
-    'student_id': {'type': int, 'message': 'Student ID is required'},
+    'student_id': {'type': str, 'required': True, 'message': 'Student admission_no is required'},
 })
 def class_teacher_set_enrollments():
     """Set the subjects for a single student in the class teacher's section.
@@ -4168,7 +4275,7 @@ def class_teacher_set_enrollments():
 
     # Student must belong to this class teacher's section
     student = Student.query.filter_by(
-        id=student_id, school_id=g.school_id,
+        admission_no=student_id, school_id=g.school_id,
         current_class_id=section.class_id, current_section_id=section.id
     ).first()
     if not student:

@@ -286,6 +286,8 @@ class ExamSchedule(db.Model):
     hall_id = db.Column(db.Integer, db.ForeignKey('exam_halls.id'))
     instructions = db.Column(db.Text)
     is_marks_locked = db.Column(db.Boolean, default=False)
+    postponed_to = db.Column(db.Date)
+    paper_status = db.Column(db.Enum('scheduled', 'cancelled', 'postponed'), default='scheduled')
 
     subject = db.relationship('Subject')
     class_ref = db.relationship('Class')
@@ -311,6 +313,8 @@ class ExamSchedule(db.Model):
             'hall_id': self.hall_id,
             'hall_name': self.hall.name if self.hall else None,
             'is_marks_locked': self.is_marks_locked,
+            'postponed_to': self.postponed_to.isoformat() if self.postponed_to else None,
+            'paper_status': self.paper_status or 'scheduled',
         }
 
 
@@ -389,16 +393,17 @@ class ExamResult(db.Model):
             'student_id': self.student_id,
             'student_name': f"{self.student.first_name} {self.student.last_name}" if self.student else None,
             'admission_no': self.student.admission_no if self.student else None,
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'max_marks': float(self.schedule.max_marks) if self.schedule and self.schedule.max_marks else None,
             'passing_marks': float(self.schedule.passing_marks) if self.schedule and self.schedule.passing_marks else None,
             'grade': self.grade,
-            'grade_point': float(self.grade_point) if self.grade_point else None,
-            'percentage': float(self.percentage) if self.percentage else None,
+            'grade_point': float(self.grade_point) if self.grade_point is not None else None,
+            'percentage': float(self.percentage) if self.percentage is not None else None,
             'is_absent': self.is_absent,
             'is_exempted': self.is_exempted,
             'remarks': self.remarks,
             'subject': self.schedule.subject.to_dict() if self.schedule and self.schedule.subject else None,
+            'subject_name': self.schedule.subject.name if self.schedule and self.schedule.subject else None,
         }
 
 
@@ -429,7 +434,7 @@ class MarkEntry(db.Model):
             'student_id': self.student_id,
             'component_id': self.component_id,
             'component_name': self.component.name if self.component else 'Total',
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'max_marks': float(self.component.max_marks) if self.component else None,
             'is_absent': self.is_absent,
             'is_exempted': self.is_exempted,
@@ -955,7 +960,7 @@ class HomeworkSubmission(db.Model):
             'attachment_url': self.attachment_url,
             'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
             'is_late': self.is_late,
-            'marks_obtained': float(self.marks_obtained) if self.marks_obtained else None,
+            'marks_obtained': float(self.marks_obtained) if self.marks_obtained is not None else None,
             'grade': self.grade,
             'teacher_remarks': self.teacher_remarks,
             'graded_at': self.graded_at.isoformat() if self.graded_at else None,
@@ -1053,6 +1058,9 @@ class AcademicCalendar(db.Model):
     class_ref = db.relationship('Class')
 
     def to_dict(self):
+        event_class_rows = CalendarEventClass.query.filter_by(event_id=self.id).all()
+        class_ids = [rc.class_id for rc in event_class_rows]
+        class_names = [rc.class_ref.name for rc in event_class_rows if rc.class_ref]
         return {
             'id': self.id,
             'academic_year_id': self.academic_year_id,
@@ -1067,12 +1075,27 @@ class AcademicCalendar(db.Model):
             'applies_to': self.applies_to,
             'class_id': self.class_id,
             'class_name': self.class_ref.name if self.class_ref else None,
+            'class_ids': class_ids,
+            'class_names': class_names,
             'color': self.color,
             'is_recurring': self.is_recurring,
             'recurrence_pattern': self.recurrence_pattern,
             'notify_parents': self.notify_parents,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class CalendarEventClass(db.Model):
+    """Multi-class mapping for AcademicCalendar events"""
+    __tablename__ = 'calendar_event_classes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
+    event_id = db.Column(db.Integer, db.ForeignKey('academic_calendar.id', ondelete='CASCADE'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+
+    event = db.relationship('AcademicCalendar', backref=db.backref('event_classes', lazy='dynamic', cascade='all, delete-orphan'))
+    class_ref = db.relationship('Class')
 
 
 # =====================================================
