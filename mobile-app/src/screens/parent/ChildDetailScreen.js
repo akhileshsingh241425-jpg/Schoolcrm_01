@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import Screen from '../../components/Screen';
 import { Card, CardTitle } from '../../components/Card';
 import InfoRow from '../../components/InfoRow';
 import AttendanceSummary from '../../components/AttendanceSummary';
 import TimetableGrid from '../../components/TimetableGrid';
+import FeesSummary from '../../components/FeesSummary';
+import ExamResults from '../../components/ExamResults';
+import HomeworkList from '../../components/HomeworkList';
 import { parentAPI } from '../../api/parent';
 
-const TABS = ['Attendance', 'Timetable', 'Profile'];
+const TABS = ['Attendance', 'Timetable', 'Fees', 'Exams', 'Homework', 'Profile'];
 
 export default function ChildDetailScreen({ route, navigation }) {
   const { studentId, name } = route.params;
@@ -38,13 +41,13 @@ export default function ChildDetailScreen({ route, navigation }) {
 
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
-      <View style={styles.tabRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll} contentContainerStyle={styles.tabRow}>
         {TABS.map((t) => (
           <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {tab === 'Attendance' && (
         <AttendanceSummary
@@ -55,6 +58,18 @@ export default function ChildDetailScreen({ route, navigation }) {
       )}
 
       {tab === 'Timetable' && <TimetableGrid entries={data?.timetable || []} />}
+
+      {tab === 'Fees' && <FeesSummary feesData={data?.fees} />}
+
+      {tab === 'Exams' && (
+        <ExamResults
+          upcoming={data?.upcoming_exams}
+          resultsByExam={data?.exams?.results_by_exam}
+          reportCards={data?.exams?.report_cards}
+        />
+      )}
+
+      {tab === 'Homework' && <HomeworkList items={data?.homework} />}
 
       {tab === 'Profile' && (
         <>
@@ -79,8 +94,9 @@ export default function ChildDetailScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  tabRow: { flexDirection: 'row', marginBottom: 16, backgroundColor: '#fff', borderRadius: 10, padding: 4 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  tabScroll: { marginBottom: 16 },
+  tabRow: { backgroundColor: '#fff', borderRadius: 10, padding: 4, gap: 4 },
+  tab: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, alignItems: 'center' },
   tabActive: { backgroundColor: '#4361ee' },
   tabText: { fontSize: 13, fontWeight: '700', color: '#666' },
   tabTextActive: { color: '#fff' },

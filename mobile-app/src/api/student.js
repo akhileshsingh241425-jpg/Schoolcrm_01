@@ -5,4 +5,8 @@ export const studentPortalAPI = {
   dashboard: () => api.get('/student/dashboard'),
   attendance: () => api.get('/student/attendance'),
   timetable: () => api.get('/student/timetable'),
+  fees: () => api.get('/student/fees'),
+  exams: () => api.get('/student/exams'),
+  homework: (params) => api.get('/student/homework', { params }),
+  announcements: () => api.get('/student/announcements'),
 };

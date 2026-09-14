@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Screen from '../../components/Screen';
 import { Card, CardTitle } from '../../components/Card';
 import StatTile from '../../components/StatTile';
+import QuickLinks from '../../components/QuickLinks';
 import { studentPortalAPI } from '../../api/student';
 import useAuthStore from '../../store/authStore';
 
-export default function StudentDashboardScreen() {
+export default function StudentDashboardScreen({ navigation }) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [data, setData] = useState(null);
@@ -42,6 +43,15 @@ export default function StudentDashboardScreen() {
           <Text style={styles.logout}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      <QuickLinks
+        links={[
+          { label: 'Fees', icon: '💰', color: '#2ecc71', onPress: () => navigation.navigate('Fees') },
+          { label: 'Exams', icon: '📝', color: '#4361ee', onPress: () => navigation.navigate('Exams') },
+          { label: 'Homework', icon: '📚', color: '#f39c12', onPress: () => navigation.navigate('Homework') },
+          { label: 'Notices', icon: '📢', color: '#9b59b6', onPress: () => navigation.navigate('Announcements') },
+        ]}
+      />
 
       <Card>
         <CardTitle>Attendance</CardTitle>
