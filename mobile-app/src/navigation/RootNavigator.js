@@ -9,6 +9,7 @@ import UpdateRequiredScreen from '../screens/UpdateRequiredScreen';
 import StudentTabs from './StudentTabs';
 import ParentTabs from './ParentTabs';
 import TeacherTabs from './TeacherTabs';
+import AdminTabs from './AdminTabs';
 
 export default function RootNavigator() {
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -61,11 +62,12 @@ export default function RootNavigator() {
   if (roleName === 'student') return <StudentTabs />;
   if (roleName === 'parent') return <ParentTabs />;
   if (roleName === 'teacher') return <TeacherTabs />;
+  if (roleName === 'school_admin' || roleName === 'principal') return <AdminTabs />;
 
   return (
     <View style={styles.center}>
       <Text style={styles.message}>
-        This app currently supports student, parent and teacher accounts only.
+        This app currently supports student, parent, teacher and admin accounts only.
       </Text>
       <TouchableOpacity onPress={logout}>
         <Text style={styles.logout}>Logout</Text>

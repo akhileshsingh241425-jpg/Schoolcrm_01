@@ -66,10 +66,10 @@ export default function MessageThreadScreen({ route, navigation }) {
         {loading && <ActivityIndicator style={{ marginTop: 40 }} />}
         {!loading && messages.length === 0 && <Text style={styles.empty}>No messages yet - say hello.</Text>}
         {messages.map((m) => (
-          <View key={m.id} style={[styles.bubbleRow, m.sender_type === 'teacher' ? styles.rowMine : styles.rowTheirs]}>
-            <View style={[styles.bubble, m.sender_type === 'teacher' ? styles.bubbleMine : styles.bubbleTheirs]}>
-              <Text style={m.sender_type === 'teacher' ? styles.textMine : styles.textTheirs}>{m.message}</Text>
-              <Text style={m.sender_type === 'teacher' ? styles.timeMine : styles.timeTheirs}>
+          <View key={m.id} style={[styles.bubbleRow, m.sender_type === 'staff' ? styles.rowMine : styles.rowTheirs]}>
+            <View style={[styles.bubble, m.sender_type === 'staff' ? styles.bubbleMine : styles.bubbleTheirs]}>
+              <Text style={m.sender_type === 'staff' ? styles.textMine : styles.textTheirs}>{m.message}</Text>
+              <Text style={m.sender_type === 'staff' ? styles.timeMine : styles.timeTheirs}>
                 {(m.created_at || '').slice(0, 16).replace('T', ' ')}
               </Text>
             </View>
