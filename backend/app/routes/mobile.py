@@ -7,10 +7,10 @@ mobile_bp = Blueprint('mobile', __name__)
 # min_version: below this, the app blocks usage and forces an update.
 # latest_version: shown to the user even when not force-blocked, for a "new version available" note.
 MOBILE_VERSION_INFO = {
-    'latest_version': '1.0.0',
-    'min_version': '1.0.0',
+    'latest_version': '1.0.1',
+    'min_version': '1.0.1',
     'download_url': 'http://93.127.194.235/downloads/school-crm-latest.apk',
-    'changelog': 'Initial release: attendance, timetable and profile for students, parents and teachers.',
+    'changelog': 'Fixes login/network failing on Android (cleartext HTTP was blocked by default).',
 }
 
 

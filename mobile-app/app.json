@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "School CRM",
-    "slug": "school-crm-mobile",
-    "version": "1.0.0",
+    "slug": "akhilesh-singh-sikarwar",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.schoolcrm.mobile",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,7 +23,21 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiUrl": "http://93.127.194.235/api"
-    }
+      "apiUrl": "http://93.127.194.235/api",
+      "eas": {
+        "projectId": "c8b70a24-8cc7-454c-8bcb-5a160b8fcb81"
+      }
+    },
+    "owner": "akhilesh1407s-team",
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
   }
 }
