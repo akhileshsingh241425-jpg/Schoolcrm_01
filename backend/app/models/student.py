@@ -256,7 +256,8 @@ class ParentDetail(db.Model):
             'occupation': self.occupation,
             'income': self.income,
             'qualification': self.qualification,
-            'aadhar_no': self._mask(self.aadhar_no)
+            'aadhar_no': self._mask(self.aadhar_no),
+            'user_id': self.user_id
         }
 
 

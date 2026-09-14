@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Screen from '../../components/Screen';
 import { Card, CardTitle } from '../../components/Card';
+import QuickLinks from '../../components/QuickLinks';
 import { teacherAPI } from '../../api/teacher';
 import useAuthStore from '../../store/authStore';
 
@@ -34,6 +35,14 @@ export default function TeacherDashboardScreen({ navigation }) {
           <Text style={styles.logout}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      <QuickLinks
+        links={[
+          { label: 'Marks Entry', icon: '📝', color: '#4361ee', onPress: () => navigation.navigate('MarksEntry') },
+          { label: 'Homework', icon: '📚', color: '#f39c12', onPress: () => navigation.navigate('HomeworkAssign') },
+          { label: 'Messages', icon: '💬', color: '#9b59b6', onPress: () => navigation.navigate('Messages') },
+        ]}
+      />
 
       <Card>
         <CardTitle>My Classes</CardTitle>
