@@ -41,6 +41,7 @@ export default function TeacherDashboardScreen({ navigation }) {
           { label: 'Marks Entry', icon: '📝', color: '#4361ee', onPress: () => navigation.navigate('MarksEntry') },
           { label: 'Homework', icon: '📚', color: '#f39c12', onPress: () => navigation.navigate('HomeworkAssign') },
           { label: 'Messages', icon: '💬', color: '#9b59b6', onPress: () => navigation.navigate('Messages') },
+          { label: 'Post Notice', icon: '📢', color: '#e67e22', onPress: () => navigation.navigate('Notice') },
         ]}
       />
 

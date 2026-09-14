@@ -9,4 +9,6 @@ export const studentPortalAPI = {
   exams: () => api.get('/student/exams'),
   homework: (params) => api.get('/student/homework', { params }),
   announcements: () => api.get('/student/announcements'),
+  hostel: () => api.get('/student/hostel'),
+  transport: () => api.get('/transport/my-transport'),
 };

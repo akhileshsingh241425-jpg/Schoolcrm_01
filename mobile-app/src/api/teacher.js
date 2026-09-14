@@ -24,4 +24,7 @@ export const teacherAPI = {
   getMessages: (studentId) => api.get('/parent/messages', { params: { student_id: studentId } }),
   sendMessage: (data) => api.post('/parent/messages', data),
   markMessageRead: (id) => api.put(`/parent/messages/${id}/read`),
+
+  // Notices / announcements
+  postAnnouncement: (data) => api.post('/communication/announcements', data),
 };

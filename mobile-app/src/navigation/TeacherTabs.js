@@ -9,6 +9,7 @@ import MarksEntrySheetScreen from '../screens/teacher/MarksEntrySheetScreen';
 import HomeworkAssignScreen from '../screens/teacher/HomeworkAssignScreen';
 import MessagesScreen from '../screens/teacher/MessagesScreen';
 import MessageThreadScreen from '../screens/teacher/MessageThreadScreen';
+import NoticeScreen from '../screens/teacher/NoticeScreen';
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
@@ -23,6 +24,7 @@ function HomeStackNavigator() {
       <HomeStack.Screen name="HomeworkAssign" component={HomeworkAssignScreen} options={{ title: 'Assign Homework' }} />
       <HomeStack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages' }} />
       <HomeStack.Screen name="MessageThread" component={MessageThreadScreen} />
+      <HomeStack.Screen name="Notice" component={NoticeScreen} options={{ title: 'Post Notice' }} />
     </HomeStack.Navigator>
   );
 }

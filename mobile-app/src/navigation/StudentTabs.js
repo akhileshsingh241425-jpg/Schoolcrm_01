@@ -9,6 +9,8 @@ import FeesScreen from '../screens/student/FeesScreen';
 import ExamsScreen from '../screens/student/ExamsScreen';
 import HomeworkScreen from '../screens/student/HomeworkScreen';
 import AnnouncementsScreen from '../screens/student/AnnouncementsScreen';
+import HostelScreen from '../screens/student/HostelScreen';
+import TransportScreen from '../screens/student/TransportScreen';
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
@@ -21,6 +23,8 @@ function HomeStackNavigator() {
       <HomeStack.Screen name="Exams" component={ExamsScreen} />
       <HomeStack.Screen name="Homework" component={HomeworkScreen} />
       <HomeStack.Screen name="Announcements" component={AnnouncementsScreen} />
+      <HomeStack.Screen name="Hostel" component={HostelScreen} />
+      <HomeStack.Screen name="Transport" component={TransportScreen} options={{ title: 'Bus / Transport' }} />
     </HomeStack.Navigator>
   );
 }
