@@ -1,7 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Constants from 'expo-constants';
 import useAuthStore from '../store/authStore';
+import { mobileAPI } from '../api/mobile';
+import { isOlderVersion } from '../utils/version';
 import LoginScreen from '../screens/auth/LoginScreen';
+import UpdateRequiredScreen from '../screens/UpdateRequiredScreen';
 import StudentTabs from './StudentTabs';
 import ParentTabs from './ParentTabs';
 import TeacherTabs from './TeacherTabs';
@@ -11,24 +15,47 @@ export default function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
   const loadUser = useAuthStore((s) => s.loadUser);
+  const logout = useAuthStore((s) => s.logout);
+
+  const [updateInfo, setUpdateInfo] = useState(null); // set only if a forced update is needed
+  const [checkingVersion, setCheckingVersion] = useState(true);
 
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
-  if (isLoading) {
+  useEffect(() => {
+    const currentVersion = Constants.expoConfig?.version;
+    mobileAPI
+      .getVersionInfo()
+      .then((res) => {
+        const info = res.data.data;
+        if (isOlderVersion(currentVersion, info.min_version)) {
+          setUpdateInfo(info);
+        }
+      })
+      .catch(() => {
+        // No internet / backend unreachable - don't block app usage on this check alone.
+      })
+      .finally(() => setCheckingVersion(false));
+  }, []);
+
+  if (checkingVersion || isLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#4361ee" />
       </View>
     );
+  }
+
+  if (updateInfo) {
+    return <UpdateRequiredScreen downloadUrl={updateInfo.download_url} changelog={updateInfo.changelog} />;
   }
 
   if (!isAuthenticated) {
     return <LoginScreen />;
   }
 
-  const logout = useAuthStore((s) => s.logout);
   const roleName = user?.role?.name;
 
   if (roleName === 'student') return <StudentTabs />;
