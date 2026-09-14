@@ -52,6 +52,7 @@ export default function StudentDashboardScreen({ navigation }) {
           { label: 'Notices', icon: '📢', color: '#9b59b6', onPress: () => navigation.navigate('Announcements') },
           { label: 'Hostel', icon: '🏠', color: '#16a085', onPress: () => navigation.navigate('Hostel') },
           { label: 'Bus', icon: '🚌', color: '#e67e22', onPress: () => navigation.navigate('Transport') },
+          { label: 'Library', icon: '📖', color: '#3498db', onPress: () => navigation.navigate('Library') },
         ]}
       />
 

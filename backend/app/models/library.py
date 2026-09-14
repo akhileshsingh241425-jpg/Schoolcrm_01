@@ -105,7 +105,9 @@ class LibraryIssue(db.Model):
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id', ondelete='CASCADE'), nullable=False)
     book_id = db.Column(db.Integer, db.ForeignKey('library_books.id', ondelete='CASCADE'), nullable=False)
     copy_id = db.Column(db.Integer, db.ForeignKey('book_copies.id'))
-    issued_to = db.Column(db.Integer, nullable=False)
+    # Polymorphic: a student's admission_no (string) when issued_to_type='student',
+    # or a staff.id (numeric, stored as string) when issued_to_type='staff'.
+    issued_to = db.Column(db.String(50), nullable=False)
     issued_to_type = db.Column(db.Enum('student', 'staff'), nullable=False)
     issue_date = db.Column(db.Date, nullable=False)
     due_date = db.Column(db.Date, nullable=False)
@@ -120,6 +122,17 @@ class LibraryIssue(db.Model):
     book = db.relationship('LibraryBook', backref='issues')
 
     def to_dict(self):
+        issued_to_name = None
+        if self.issued_to_type == 'student':
+            from app.models.student import Student
+            s = Student.query.filter_by(admission_no=self.issued_to, school_id=self.school_id).first()
+            if s:
+                issued_to_name = f"{s.first_name} {s.last_name or ''}".strip()
+        elif self.issued_to_type == 'staff':
+            from app.models.staff import Staff
+            st = Staff.query.get(self.issued_to)
+            if st:
+                issued_to_name = f"{st.first_name} {st.last_name or ''}".strip()
         return {
             'id': self.id,
             'book': self.book.to_dict() if self.book else None,
@@ -127,6 +140,7 @@ class LibraryIssue(db.Model):
             'copy_id': self.copy_id,
             'issued_to': self.issued_to,
             'issued_to_type': self.issued_to_type,
+            'issued_to_name': issued_to_name,
             'issue_date': self.issue_date.isoformat() if self.issue_date else None,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'return_date': self.return_date.isoformat() if self.return_date else None,
