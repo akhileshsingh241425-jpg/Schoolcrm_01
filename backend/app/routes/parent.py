@@ -14,6 +14,7 @@ from app.models.academic import ExamResult, ExamSchedule, Exam, ReportCard, Home
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate, validate, working_records
+from app.utils.push import send_push
 import re
 from sqlalchemy.orm import joinedload
 
@@ -539,6 +540,10 @@ def send_message():
     )
     db.session.add(msg)
     db.session.commit()
+
+    sender_name = g.current_user.full_name
+    send_push([msg.receiver_id], f'Message from {sender_name}', msg.message, {'type': 'message', 'id': msg.id})
+
     return success_response(msg.to_dict(), 'Message sent', 201)
 
 

@@ -18,6 +18,7 @@ from app.models.school import School
 from app.models.staff import Staff
 from app.utils.decorators import school_required, role_required, feature_required
 from app.utils.helpers import success_response, error_response, paginate, get_teacher_scope, clean_val, validate
+from app.utils.push import send_push
 from sqlalchemy import func, case, and_, or_
 from datetime import datetime, date
 
@@ -3499,6 +3500,15 @@ def create_homework():
     )
     db.session.add(hw)
     db.session.commit()
+
+    if hw.status == 'published':
+        student_query = Student.query.filter_by(school_id=g.school_id, current_class_id=hw.class_id)
+        if hw.section_id:
+            student_query = student_query.filter_by(current_section_id=hw.section_id)
+        user_ids = [uid for (uid,) in student_query.with_entities(Student.user_id).all() if uid]
+        send_push(user_ids, f'New homework: {hw.subject.name if hw.subject else ""}'.strip(),
+                  hw.title, {'type': 'homework', 'id': hw.id})
+
     return success_response(hw.to_dict(), 201)
 
 

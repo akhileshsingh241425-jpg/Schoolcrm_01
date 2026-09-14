@@ -84,6 +84,7 @@ from app.models.audit import AuditLog
 from app.models.platform_staff import PlatformStaff, PlatformStaffAttendance, PlatformStaffPayroll, PlatformStaffLeave
 from app.models.support import SupportTicket
 from app.models.principal import ClassObservation, DisciplineCase, TeacherPerformanceScore
+from app.models.device_token import DeviceToken
 from app.models.exam_extended import (
     ExamDateSheet, QuestionPaper, MarksEntryDeadline, GraceMarks,
     ReExam, ReExamStudent, ExamNotification, ExamGrievance,

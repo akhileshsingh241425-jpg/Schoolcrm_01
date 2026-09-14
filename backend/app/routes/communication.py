@@ -6,8 +6,10 @@ from app.models.attendance import StudentAttendance, StaffAttendance
 from app.models.student import Student, ParentDetail
 from app.models.academic import Exam, ExamSchedule
 from app.models.fee import FeeInstallment, FeePayment
+from app.models.user import User, Role
 from app.utils.decorators import school_required, role_required
 from app.utils.helpers import success_response, error_response, paginate, send_email, send_whatsapp, make_ivr_call, validate, working_records
+from app.utils.push import send_push
 
 communication_bp = Blueprint('communication', __name__)
 
@@ -37,7 +39,43 @@ def create_announcement():
     )
     db.session.add(announcement)
     db.session.commit()
+
+    if announcement.is_published:
+        _notify_announcement(announcement)
+
     return success_response(announcement.to_dict(), 'Announcement created', 201)
+
+
+def _notify_announcement(announcement):
+    """Push-notify whoever the announcement targets."""
+    audience = announcement.target_audience
+    school_id = announcement.school_id
+    user_ids = []
+
+    if audience == 'class_specific' and announcement.target_class_id:
+        user_ids = [
+            uid for (uid,) in Student.query.filter_by(
+                school_id=school_id, current_class_id=announcement.target_class_id
+            ).with_entities(Student.user_id).all() if uid
+        ]
+    elif audience in ('students', 'all'):
+        user_ids += [
+            uid for (uid,) in Student.query.filter_by(school_id=school_id)
+            .with_entities(Student.user_id).all() if uid
+        ]
+    if audience in ('parents', 'all'):
+        user_ids += [
+            uid for (uid,) in ParentDetail.query.filter_by(school_id=school_id)
+            .with_entities(ParentDetail.user_id).all() if uid
+        ]
+    if audience in ('teachers', 'staff', 'all'):
+        user_ids += [
+            uid for (uid,) in User.query.join(Role, User.role_id == Role.id)
+            .filter(User.school_id == school_id, Role.name == 'teacher')
+            .with_entities(User.id).all()
+        ]
+
+    send_push(list(set(user_ids)), announcement.title, announcement.message, {'type': 'announcement', 'id': announcement.id})
 
 
 @communication_bp.route('/notifications', methods=['GET'])

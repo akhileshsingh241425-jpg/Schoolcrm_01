@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import useAuthStore from '../store/authStore';
 import { mobileAPI } from '../api/mobile';
 import { isOlderVersion } from '../utils/version';
+import { registerForPushNotifications } from '../utils/pushNotifications';
 import LoginScreen from '../screens/auth/LoginScreen';
 import UpdateRequiredScreen from '../screens/UpdateRequiredScreen';
 import StudentTabs from './StudentTabs';
@@ -24,6 +25,12 @@ export default function RootNavigator() {
   useEffect(() => {
     loadUser();
   }, [loadUser]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      registerForPushNotifications();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const currentVersion = Constants.expoConfig?.version;
