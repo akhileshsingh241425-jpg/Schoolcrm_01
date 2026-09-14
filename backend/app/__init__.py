@@ -117,6 +117,7 @@ def create_app(config_name='default'):
     from app.routes.store import store_bp
     from app.routes.roles_permissions import roles_bp
     from app.routes.support import support_bp
+    from app.routes.mobile import mobile_bp
 
     app.register_blueprint(platform_staff_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -152,6 +153,7 @@ def create_app(config_name='default'):
     app.register_blueprint(store_bp, url_prefix='/api/store')
     app.register_blueprint(roles_bp, url_prefix='/api/roles')
     app.register_blueprint(support_bp, url_prefix='/api/support')
+    app.register_blueprint(mobile_bp, url_prefix='/api/mobile')
 
     from flask import send_from_directory
 
