@@ -18,6 +18,7 @@ from app.models.academic import (
 )
 from app.models.communication import Announcement
 from app.models.parent import DailyActivity
+from app.models.hostel import HostelAllocation, MessMenu
 from app.utils.decorators import school_required
 from app.utils.helpers import success_response, error_response, working_records
 
@@ -850,6 +851,36 @@ def fees():
         },
         'installments': [i.to_dict() for i in installments],
         'recent_payments': [p.to_dict() for p in payments],
+    })
+
+
+# ───────────────────────────── HOSTEL ─────────────────────────────
+
+@student_portal_bp.route('/hostel', methods=['GET'])
+@school_required
+def hostel():
+    student = _resolve_student()
+    if not student:
+        return error_response('No student profile linked to this account', 404)
+
+    allocation = HostelAllocation.query.filter_by(
+        student_id=student.admission_no, school_id=g.school_id, status='active'
+    ).order_by(HostelAllocation.allocation_date.desc()).first()
+
+    if not allocation:
+        return success_response({'has_hostel': False})
+
+    today = date.today()
+    menu = MessMenu.query.filter(
+        MessMenu.school_id == g.school_id,
+        MessMenu.day_of_week == today.strftime('%A'),
+        MessMenu.is_active == True,
+    ).all()
+
+    return success_response({
+        'has_hostel': True,
+        'allocation': allocation.to_dict(),
+        'today_menu': [m.to_dict() for m in menu],
     })
 
 
