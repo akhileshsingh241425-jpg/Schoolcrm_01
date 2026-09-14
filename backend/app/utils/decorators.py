@@ -30,7 +30,7 @@ def school_required(f):
         user = User.query.get(int(user_id))
 
         if not user:
-            return jsonify({'error': 'User not found'}), 404
+            return jsonify({'success': False, 'message': 'User not found'}), 404
 
         # Super admin bypasses school checks
         if user.role and user.has_role('super_admin'):
@@ -38,13 +38,14 @@ def school_required(f):
             g.user_id = user.id
             g.school_id = user.school_id
             g.school = None
+            g.is_super_admin = True
             return f(*args, **kwargs)
 
         school = School.query.get(user.school_id)
         if not school or not school.is_active:
-            return jsonify({'error': 'School is inactive or not found'}), 403
+            return jsonify({'success': False, 'message': 'School is inactive or not found'}), 403
         if not school.has_active_subscription():
-            return jsonify({'error': 'School subscription is inactive or expired'}), 403
+            return jsonify({'success': False, 'message': 'School subscription is inactive or expired'}), 403
 
         g.current_user = user
         g.user_id = user.id
@@ -65,13 +66,14 @@ def role_required(*roles):
             user = User.query.get(int(user_id))
 
             if not user:
-                return jsonify({'error': 'User not found'}), 404
+                return jsonify({'success': False, 'message': 'User not found'}), 404
 
             # Super admin and principal bypass all role checks
             if user.role and user.has_role('super_admin', 'principal'):
                 g.current_user = user
                 g.user_id = user.id
                 g.school_id = user.school_id
+                g.is_super_admin = user.has_role('super_admin')
                 if user.has_role('super_admin'):
                     g.school = None
                 else:
@@ -83,9 +85,9 @@ def role_required(*roles):
 
             school = School.query.get(user.school_id)
             if not school or not school.is_active:
-                return jsonify({'error': 'School is inactive'}), 403
+                return jsonify({'success': False, 'message': 'School is inactive'}), 403
             if not school.has_active_subscription():
-                return jsonify({'error': 'School subscription is inactive or expired'}), 403
+                return jsonify({'success': False, 'message': 'School subscription is inactive or expired'}), 403
 
             g.current_user = user
             g.user_id = user.id
@@ -104,7 +106,7 @@ def feature_required(feature_name):
         def decorated(*args, **kwargs):
             school_id = g.get('school_id')
             if not school_id:
-                return jsonify({'error': 'School context not found'}), 400
+                return jsonify({'success': False, 'message': 'School context not found'}), 400
 
             feature = SchoolFeature.query.filter_by(
                 school_id=school_id,
@@ -113,7 +115,7 @@ def feature_required(feature_name):
             ).first()
 
             if not feature:
-                return jsonify({'error': f'Feature "{feature_name}" is not enabled for your school'}), 403
+                return jsonify({'success': False, 'message': f'Feature "{feature_name}" is not enabled for your school'}), 403
 
             return f(*args, **kwargs)
         return decorated
@@ -129,7 +131,7 @@ def super_admin_required(f):
         user = User.query.get(int(user_id))
 
         if not user or not user.has_role('super_admin'):
-            return jsonify({'error': 'Super admin access required'}), 403
+            return jsonify({'success': False, 'message': 'Super admin access required'}), 403
 
         g.current_user = user
         g.user_id = user.id

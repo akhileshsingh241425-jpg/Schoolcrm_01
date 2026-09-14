@@ -52,6 +52,16 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+    // Normalize error message - ensure 'message' is always available
+    if (error.response?.data) {
+      const d = error.response.data;
+      if (!d.message && d.error) {
+        d.message = d.error;
+      }
+      if (!d.message && typeof d === 'string') {
+        d.message = d;
+      }
+    }
     // Show user-friendly permission error
     if (error.response?.status === 403) {
       const msg = error.response?.data?.message || 'You do not have permission to perform this action.';

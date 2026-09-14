@@ -124,7 +124,7 @@ export default function OnlinePaymentModal({ open, onClose, paymentData, onSucce
       const rzp = new window.Razorpay(options);
       rzp.on('payment.failed', (response) => {
         setStatus('failed');
-        setError(response.error?.description || 'Payment failed');
+        setError(response.message || response.error?.description || 'Payment failed');
       });
       rzp.open();
     } catch (err) {

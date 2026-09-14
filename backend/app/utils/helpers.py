@@ -34,31 +34,28 @@ def validate(rules):
                 msg = opts.get('message', f'{field.replace("_", " ").title()} is required')
 
                 if opts.get('required') and (val is None or (isinstance(val, str) and val.strip() == '')):
-                    return jsonify({'error': msg, 'success': False}), 400
+                    return error_response(msg)
 
                 if val is not None and val != '' and not isinstance(val, bool):
                     if opts.get('type') == int:
                         try:
                             data[field] = int(val) if not isinstance(val, int) else val
                         except (ValueError, TypeError):
-                            return jsonify({
-                                'error': opts.get('type_msg', f'{field.replace("_", " ").title()} must be a number'),
-                                'success': False
-                            }), 400
+                            return error_response(opts.get('type_msg', f'{field.replace("_", " ").title()} must be a number'))
                     elif opts.get('type') == float:
                         try:
                             data[field] = float(val) if not isinstance(val, float) else val
                         except (ValueError, TypeError):
-                            return jsonify({'error': f'{field.replace("_", " ").title()} must be a decimal number', 'success': False}), 400
+                            return error_response(f'{field.replace("_", " ").title()} must be a decimal number')
 
                     if opts.get('min') is not None and isinstance(data.get(field), (int, float)) and data[field] < opts['min']:
-                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at least {opts["min"]}', 'success': False}), 400
+                        return error_response(f'{field.replace("_", " ").title()} must be at least {opts["min"]}')
                     if opts.get('max') is not None and isinstance(data.get(field), (int, float)) and data[field] > opts['max']:
-                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at most {opts["max"]}', 'success': False}), 400
+                        return error_response(f'{field.replace("_", " ").title()} must be at most {opts["max"]}')
                     if opts.get('min_len') and isinstance(val, str) and len(val) < opts['min_len']:
-                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at least {opts["min_len"]} characters', 'success': False}), 400
+                        return error_response(f'{field.replace("_", " ").title()} must be at least {opts["min_len"]} characters')
                     if opts.get('max_len') and isinstance(val, str) and len(val) > opts['max_len']:
-                        return jsonify({'error': f'{field.replace("_", " ").title()} must be at most {opts["max_len"]} characters', 'success': False}), 400
+                        return error_response(f'{field.replace("_", " ").title()} must be at most {opts["max_len"]} characters')
 
             g.validated_data = data
             return f(*args, **kwargs)

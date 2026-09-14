@@ -268,7 +268,7 @@ def get_student_360(student_id):
 @role_required('school_admin', 'teacher', 'counselor', 'principal')
 @validate({
     'first_name': {'required': True, 'message': 'Student first name is required'},
-    'class_id': {'type': int, 'message': 'Class is required'},
+    'class_id': {'required': True, 'type': int, 'message': 'Class is required'},
     'section_id': {'type': int},
     'academic_year_id': {'type': int},
     'phone': {'type': str, 'max_len': 20},
@@ -276,6 +276,36 @@ def get_student_360(student_id):
 })
 def create_student():
     data = g.get('validated_data') or request.get_json()
+
+    admission_no = clean_val(data.get('admission_no'))
+    if not admission_no:
+        from app.models.school import School
+        school = School.query.get(g.school_id)
+        school_code = school.code if school else 'SCH'
+        latest = Student.query.filter(
+            Student.school_id == g.school_id,
+            Student.admission_no.like(f'{school_code}-%')
+        ).order_by(Student.created_at.desc(), Student.admission_no.desc()).first()
+        next_num = 1
+        if latest and latest.admission_no and '-' in latest.admission_no:
+            try:
+                next_num = int(latest.admission_no.split('-')[-1]) + 1
+            except ValueError:
+                next_num = 1
+        admission_no = f'{school_code}-{next_num:05d}'
+
+    roll_no = clean_val(data.get('roll_no'))
+    if not roll_no:
+        max_roll = db.session.query(db.func.max(Student.roll_no)).filter(
+            Student.school_id == g.school_id
+        ).scalar()
+        next_roll = 1
+        if max_roll:
+            try:
+                next_roll = int(max_roll) + 1
+            except ValueError:
+                next_roll = 1
+        roll_no = str(next_roll)
 
     # ---- validation ----
     phone_val = data.get('phone')
@@ -313,7 +343,7 @@ def create_student():
     student = Student(
         school_id=g.school_id,
         first_name=data['first_name'], last_name=clean_val(data.get('last_name')),
-        admission_no=clean_val(data.get('admission_no')), roll_no=clean_val(data.get('roll_no')),
+        admission_no=admission_no, roll_no=roll_no,
         gender=clean_val(data.get('gender')), date_of_birth=clean_val(data.get('date_of_birth')),
         blood_group=clean_val(data.get('blood_group')), religion=clean_val(data.get('religion')),
         category=clean_val(data.get('category')), nationality=data.get('nationality', 'Indian'),
@@ -1679,8 +1709,10 @@ def transfer_student(student_id):
 @students_bp.route('/smart-allocate', methods=['POST'])
 @role_required('school_admin')
 def smart_section_allocation():
-    data = request.get_json()
-    class_id = data['class_id']
+    data = request.get_json() or {}
+    class_id = data.get('class_id')
+    if not class_id:
+        return error_response('class_id is required')
     sections = Section.query.filter_by(class_id=class_id, school_id=g.school_id).all()
     if not sections:
         return error_response('No sections found for this class')

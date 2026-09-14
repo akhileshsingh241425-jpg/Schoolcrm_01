@@ -73,11 +73,11 @@ def create_app(config_name='default'):
 
     @jwt.invalid_token_loader
     def invalid_token_callback(error_string):
-        return jsonify({'success': False, 'message': 'Invalid token', 'error': error_string}), 401
+        return jsonify({'success': False, 'message': f'Invalid token: {error_string}'}), 401
 
     @jwt.unauthorized_loader
     def missing_token_callback(error_string):
-        return jsonify({'success': False, 'message': 'Missing token', 'error': error_string}), 401
+        return jsonify({'success': False, 'message': f'Missing token: {error_string}'}), 401
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
@@ -169,6 +169,20 @@ def create_app(config_name='default'):
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         return response
+
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        if exception:
+            db.session.rollback()
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Internal server error'}), 500
+
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({'success': False, 'message': 'Not found'}), 404
 
     return app
 
