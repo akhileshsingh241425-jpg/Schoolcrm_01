@@ -12,6 +12,7 @@
     "android": {
       "package": "com.schoolcrm.mobile",
       "versionCode": 4,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
